@@ -2,7 +2,6 @@
 #include "aca.h"
 #include "kernel.h"
 
-#include <stdio.h>
 #include <algorithm>
 #include <cmath>
 
@@ -252,15 +251,20 @@ int main(int argc, char* argv[]) {
   int m = argc > 2 ? atoi(argv[2]) : 32;
   int n = argc > 3 ? atoi(argv[3]) : m;
 
+  rank = std::min(rank, m);
+  rank = std::min(rank, n);
+
+  int rp = rank + 8;
+
   std::srand(199);
-  std::vector<real_t> left(m, rank), right(n, rank);
+  std::vector<real_t> left(m * rank), right(n * rank);
 
   for(auto& i : left)
     i = ((real_t)std::rand() / RAND_MAX) * 100;
   for(auto& i : right)
     i = ((real_t)std::rand() / RAND_MAX) * 100;
 
-  std::vector<real_t> a(m, n), u(m, rank), v(n, rank);
+  std::vector<real_t> a(m * n), u(m * rp), v(n * rp);
 
   for(int j = 0; j < n; j++) {
     for(int i = 0; i < m; i++) {
@@ -274,7 +278,7 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int iters;
-  raca(m, n, rank, a.data(), m, u.data(), m, v.data(), n, &iters);
+  raca(m, n, rp, a.data(), m, u.data(), m, v.data(), n, &iters);
 
   double err = 0.;
   for(int j = 0; j < n; j++) {
