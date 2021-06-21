@@ -239,3 +239,55 @@ void nbd::raca(int64_t m, int64_t n, int64_t max_iters, const real_t* a, int64_t
   if (info != nullptr)
     *info = (int)iter;
 }
+
+
+#include <cstdio>
+#include <cstdlib>
+#include <random>
+#include <chrono>
+
+int main(int argc, char* argv[]) {
+
+  int rank = argc > 1 ? atoi(argv[1]) : 16;
+  int m = argc > 2 ? atoi(argv[2]) : 32;
+  int n = argc > 3 ? atoi(argv[3]) : m;
+
+  std::srand(199);
+  std::vector<real_t> left(m, rank), right(n, rank);
+
+  for(auto& i : left)
+    i = ((real_t)std::rand() / RAND_MAX) * 100;
+  for(auto& i : right)
+    i = ((real_t)std::rand() / RAND_MAX) * 100;
+
+  std::vector<real_t> a(m, n), u(m, rank), v(n, rank);
+
+  for(int j = 0; j < n; j++) {
+    for(int i = 0; i < m; i++) {
+      real_t e = 0.;
+      for(int k = 0; k < rank; k++)
+        e += left[i + k * m] * right[j + k * m];
+      a[i + j * m] = e;
+    }
+  }
+
+  using namespace nbd;
+
+  int iters;
+  raca(m, n, rank, a.data(), m, u.data(), m, v.data(), n, &iters);
+
+  double err = 0.;
+  for(int j = 0; j < n; j++) {
+    for(int i = 0; i < m; i++) {
+      real_t e = 0.;
+      for(int k = 0; k < iters; k++)
+        e += u[i + k * m] * v[j + k * m];
+      e -= a[i + j * m];
+      err += e * e;
+    }
+  }
+
+  printf("abs err: %e, aca iters %d\n", err, iters);
+
+  return 0;
+}

@@ -20,3 +20,9 @@ add_executable(main
   main.cpp
 )
 target_link_libraries(main nbd)
+target_include_directories(main PRIVATE "./" )
+
+add_executable(aca_test
+  aca.cpp nbd.h aca.h
+)
+target_include_directories(aca_test PRIVATE "./" )
