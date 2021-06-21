@@ -270,7 +270,7 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < m; i++) {
       real_t e = 0.;
       for(int k = 0; k < rank; k++)
-        e += left[i + k * m] * right[j + k * m];
+        e += left[i + k * m] * right[j + k * n];
       a[i + j * m] = e;
     }
   }
@@ -280,18 +280,19 @@ int main(int argc, char* argv[]) {
   int iters;
   raca(m, n, rp, a.data(), m, u.data(), m, v.data(), n, &iters);
 
-  double err = 0.;
+  double err = 0., nrm = 0.;
   for(int j = 0; j < n; j++) {
     for(int i = 0; i < m; i++) {
       real_t e = 0.;
       for(int k = 0; k < iters; k++)
-        e += u[i + k * m] * v[j + k * m];
+        e += u[i + k * m] * v[j + k * n];
       e -= a[i + j * m];
       err += e * e;
+      nrm += a[i + j * m];
     }
   }
 
-  printf("abs err: %e, aca iters %d\n", err, iters);
+  printf("rel err: %e, aca iters %d\n", err / nrm, iters);
 
   return 0;
 }
