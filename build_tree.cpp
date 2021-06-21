@@ -107,3 +107,33 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
   return cells;
 }
 
+
+void nbd::getList(Cell * Ci, Cell * Cj, int64_t dim, real_t theta) {
+  real_t dX = 0., CiR = 0., CjR = 0.;
+  for (int d = 0; d < dim; d++) {
+    real_t CiC = (Ci->Xmin[d] + Ci->Xmax[d]) / 2;
+    real_t CjC = (Cj->Xmin[d] + Cj->Xmax[d]) / 2;
+    real_t diff = CiC - CjC;
+    dX += diff * diff;
+
+    CiR = std::max(CiR, CiC - Ci->Xmin[d]);
+    CiR = std::max(CiR, - CiC + Ci->Xmax[d]);
+    CjR = std::max(CjR, CjC - Cj->Xmin[d]);
+    CjR = std::max(CjR, - CjC + Cj->Xmax[d]);
+  }
+  real_t R2 = dX * theta * theta;
+
+  if (R2 > (CiR + CjR) * (CiR + CjR)) {
+    Ci->listFar.push_back(Cj);
+  } else if (Ci->NCHILD == 0 && Cj->NCHILD == 0) {
+    Ci->listNear.push_back(Cj);
+  } else if (Cj->NCHILD == 0 || (CiR >= CjR && Ci->NCHILD != 0)) {
+    for (Cell * ci=Ci->CHILD; ci!=Ci->CHILD+Ci->NCHILD; ci++) {
+      getList(ci, Cj, dim, theta);
+    }
+  } else {
+    for (Cell * cj=Cj->CHILD; cj!=Cj->CHILD+Cj->NCHILD; cj++) {
+      getList(Ci, cj, dim, theta);
+    }
+  }
+}
