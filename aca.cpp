@@ -2,38 +2,28 @@
 #include "aca.h"
 #include "kernel.h"
 
+#include "mkl.h"
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 using namespace nbd;
 
-void ddot(int64_t n, real_t* x, int64_t incx, real_t* y, int64_t incy, real_t* res) {
-  real_t s = 0.;
-  for (int64_t i = 0; i < n; i++)
-    s += x[i * incx] * y[i * incy];
-  *res = s;
-}
+void nbd::daca(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info) {
 
-void dscal(int64_t n, real_t a, real_t* x, int64_t incx) {
-  for (int64_t i = 0; i < n; i++)
-    x[i * incx] = a * x[i * incx];
-}
-
-void nbd::raca(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int64_t max_iters, real_t* u, int64_t ldu, real_t* v, int64_t ldv, int* info) {
-
-  int64_t y = 0, x, iter = 1, m = ci->NBODY, n = cj->NBODY, piv_i = 0;
-  real_t piv = 0;
-  std::vector<int64_t> p_u, p_v;
+  int y = 0, x, iter = 1, m = ci->NBODY, n = cj->NBODY, piv_i = 0;
+  double piv = 0;
+  std::vector<int> p_u, p_v;
 
   p_u.reserve(max_iters);
   p_v.reserve(max_iters);
 
 #ifdef ACA_USE_NORM
-  real_t my_norm_u, my_norm_v, epi2 = ACA_EPI * ACA_EPI;
-  real_t norm;
+  double my_norm_u, my_norm_v, epi2 = ACA_EPI * ACA_EPI;
+  double norm;
 #endif
 
-  for (int64_t i = 0; i < n; i++) {
+  for (int i = 0; i < n; i++) {
     real_t s;
     eval(r2f, ci->BODY + y, cj->BODY + i, dim, &s);
     v[i] = s;
@@ -43,10 +33,10 @@ void nbd::raca(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int64_t
   }
 
   x = piv_i;
-  dscal(n, 1. / piv, v, 1);
+  cblas_dscal(n, 1. / piv, v, 1);
 
   piv = 0.;
-  for (int64_t i = 0; i < m; i++) {
+  for (int i = 0; i < m; i++) {
     real_t s;
     eval(r2f, ci->BODY + i, cj->BODY + x, dim, &s);
     u[i] = s;
@@ -59,26 +49,25 @@ void nbd::raca(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int64_t
   p_v.push_back(x);
 
 #ifdef ACA_USE_NORM
-  ddot(m, u, 1, u, 1, &my_norm_u);
-  ddot(n, v, 1, v, 1, &my_norm_v);
+  my_norm_u = cblas_ddot(m, u, 1, u, 1);
+  my_norm_v = cblas_ddot(n, v, 1, v, 1);
 
-  real_t n2 = my_norm_u * my_norm_v;
+  double n2 = my_norm_u * my_norm_v;
   if (n2 <= epi2 * (norm = n2))
     piv_i = -1;
 #endif
 
   while (piv_i != -1 && iter < max_iters) {
-    real_t* curr_u = u + iter * ldu;
-    real_t* curr_v = v + iter * ldv;
+    double* curr_u = u + (size_t)iter * ldu;
+    double* curr_v = v + (size_t)iter * ldv;
     y = piv_i;
 
     piv = 0.;
-    for (int64_t i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {
       real_t vi;
       eval(r2f, ci->BODY + y, cj->BODY + i, dim, &vi);
 
-      real_t s;
-      ddot(iter, u + y, ldu, v + i, ldv, &s);
+      double s = cblas_ddot(iter, u + y, ldu, v + i, ldv);
       vi -= s;
       curr_v[i] = vi;
 
@@ -89,18 +78,17 @@ void nbd::raca(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int64_t
     }
 
     x = piv_i;
-    dscal(n, 1. / piv, curr_v, 1);
+    cblas_dscal(n, 1. / piv, curr_v, 1);
 
     p_u.push_back(y);
     p_v.push_back(x);
 
     piv = 0.;
-    for (int64_t i = 0; i < m; i++) {
+    for (int i = 0; i < m; i++) {
       real_t ui;
       eval(r2f, ci->BODY + i, cj->BODY + x, dim, &ui);
 
-      real_t s;
-      ddot(iter, v + x, ldv, u + i, ldu, &s);
+      double s = cblas_ddot(iter, v + x, ldv, u + i, ldu);
       ui -= s;
       curr_u[i] = ui;
 
@@ -111,16 +99,16 @@ void nbd::raca(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int64_t
     }
 
 #ifdef ACA_USE_NORM
-    for (int64_t j = 0; j < iter; j++) {
-      ddot(m, u + j * ldu, 1, curr_u, 1, &my_norm_u);
-      ddot(n, v + j * ldv, 1, curr_v, 1, &my_norm_v);
+    for (int j = 0; j < iter; j++) {
+      my_norm_u = cblas_ddot(m, u + (size_t)j * ldu, 1, curr_u, 1);
+      my_norm_v = cblas_ddot(n, v + (size_t)j * ldv, 1, curr_v, 1);
 
       norm += 2. * my_norm_u * my_norm_v;
     }
-    ddot(m, curr_u, 1, curr_u, 1, &my_norm_u);
-    ddot(n, curr_v, 1, curr_v, 1, &my_norm_v);
+    my_norm_u = cblas_ddot(m, curr_u, 1, curr_u, 1);
+    my_norm_v = cblas_ddot(n, curr_v, 1, curr_v, 1);
 
-    real_t n2 = my_norm_u * my_norm_v;
+    double n2 = my_norm_u * my_norm_v;
     if (n2 <= epi2 * (norm += n2))
       piv_i = -1;
 #endif
@@ -132,21 +120,21 @@ void nbd::raca(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int64_t
 }
 
 
-void nbd::raca(int64_t m, int64_t n, int64_t max_iters, const real_t* a, int64_t lda, real_t* u, int64_t ldu, real_t* v, int64_t ldv, int* info) {
-  int64_t y = 0, x, iter = 1, piv_i = 0;
-  real_t piv = 0;
-  std::vector<int64_t> p_u, p_v;
+void nbd::daca(int m, int n, int max_iters, const double* a, int lda, double* u, int ldu, double* v, int ldv, int* info) {
+  int y = 0, x, iter = 1, piv_i = 0;
+  double piv = 0;
+  std::vector<int> p_u, p_v;
 
   p_u.reserve(max_iters);
   p_v.reserve(max_iters);
 
 #ifdef ACA_USE_NORM
-  real_t my_norm_u, my_norm_v, epi2 = ACA_EPI * ACA_EPI;
-  real_t norm;
+  double my_norm_u, my_norm_v, epi2 = ACA_EPI * ACA_EPI;
+  double norm;
 #endif
 
-  for (int64_t i = 0; i < n; i++) {
-    real_t s = a[i * lda + y];
+  for (int i = 0; i < n; i++) {
+    double s = a[i * lda + y];
     v[i] = s;
 
     if (std::abs(s) > std::abs(piv))
@@ -154,11 +142,11 @@ void nbd::raca(int64_t m, int64_t n, int64_t max_iters, const real_t* a, int64_t
   }
 
   x = piv_i;
-  dscal(n, 1. / piv, v, 1);
+  cblas_dscal(n, 1. / piv, v, 1);
 
   piv = 0.;
-  for (int64_t i = 0; i < m; i++) {
-    real_t s = a[x * lda + i];
+  for (int i = 0; i < m; i++) {
+    double s = a[x * lda + i];
     u[i] = s;
 
     if (i > 0 && std::abs(s) > std::abs(piv))
@@ -169,25 +157,24 @@ void nbd::raca(int64_t m, int64_t n, int64_t max_iters, const real_t* a, int64_t
   p_v.push_back(x);
 
 #ifdef ACA_USE_NORM
-  ddot(m, u, 1, u, 1, &my_norm_u);
-  ddot(n, v, 1, v, 1, &my_norm_v);
+  my_norm_u = cblas_ddot(m, u, 1, u, 1);
+  my_norm_v = cblas_ddot(n, v, 1, v, 1);
 
-  real_t n2 = my_norm_u * my_norm_v;
+  double n2 = my_norm_u * my_norm_v;
   if (n2 <= epi2 * (norm = n2))
     piv_i = -1;
 #endif
 
   while (piv_i != -1 && iter < max_iters) {
-    real_t* curr_u = u + iter * ldu;
-    real_t* curr_v = v + iter * ldv;
+    double* curr_u = u + (size_t)iter * ldu;
+    double* curr_v = v + (size_t)iter * ldv;
     y = piv_i;
 
     piv = 0.;
-    for (int64_t i = 0; i < n; i++) {
-      real_t vi = a[i * lda + y];
+    for (int i = 0; i < n; i++) {
+      double vi = a[i * lda + y];
 
-      real_t s;
-      ddot(iter, u + y, ldu, v + i, ldv, &s);
+      double s = cblas_ddot(iter, u + y, ldu, v + i, ldv);
       vi -= s;
       curr_v[i] = vi;
 
@@ -198,17 +185,16 @@ void nbd::raca(int64_t m, int64_t n, int64_t max_iters, const real_t* a, int64_t
     }
 
     x = piv_i;
-    dscal(n, 1. / piv, curr_v, 1);
+    cblas_dscal(n, 1. / piv, curr_v, 1);
 
     p_u.push_back(y);
     p_v.push_back(x);
 
     piv = 0.;
-    for (int64_t i = 0; i < m; i++) {
-      real_t ui = a[x * lda + i];
+    for (int i = 0; i < m; i++) {
+      double ui = a[x * lda + i];
 
-      real_t s;
-      ddot(iter, v + x, ldv, u + i, ldu, &s);
+      double s = cblas_ddot(iter, v + x, ldv, u + i, ldu);
       ui -= s;
       curr_u[i] = ui;
 
@@ -219,16 +205,16 @@ void nbd::raca(int64_t m, int64_t n, int64_t max_iters, const real_t* a, int64_t
     }
 
 #ifdef ACA_USE_NORM
-    for (int64_t j = 0; j < iter; j++) {
-      ddot(m, u + j * ldu, 1, curr_u, 1, &my_norm_u);
-      ddot(n, v + j * ldv, 1, curr_v, 1, &my_norm_v);
+    for (int j = 0; j < iter; j++) {
+      my_norm_u = cblas_ddot(m, u + (size_t)j * ldu, 1, curr_u, 1);
+      my_norm_v = cblas_ddot(n, v + (size_t)j * ldv, 1, curr_v, 1);
 
       norm += 2. * my_norm_u * my_norm_v;
     }
-    ddot(m, curr_u, 1, curr_u, 1, &my_norm_u);
-    ddot(n, curr_v, 1, curr_v, 1, &my_norm_v);
+    my_norm_u = cblas_ddot(m, curr_u, 1, curr_u, 1);
+    my_norm_v = cblas_ddot(n, curr_v, 1, curr_v, 1);
 
-    real_t n2 = my_norm_u * my_norm_v;
+    double n2 = my_norm_u * my_norm_v;
     if (n2 <= epi2 * (norm += n2))
       piv_i = -1;
 #endif
@@ -257,18 +243,18 @@ int main(int argc, char* argv[]) {
   int rp = rank + 8;
 
   std::srand(199);
-  std::vector<real_t> left(m * rank), right(n * rank);
+  std::vector<double> left(m * rank), right(n * rank);
 
   for(auto& i : left)
-    i = ((real_t)std::rand() / RAND_MAX) * 100;
+    i = ((double)std::rand() / RAND_MAX) * 100;
   for(auto& i : right)
-    i = ((real_t)std::rand() / RAND_MAX) * 100;
+    i = ((double)std::rand() / RAND_MAX) * 100;
 
-  std::vector<real_t> a(m * n), u(m * rp), v(n * rp);
+  std::vector<double> a(m * n), u(m * rp), v(n * rp);
 
   for(int j = 0; j < n; j++) {
     for(int i = 0; i < m; i++) {
-      real_t e = 0.;
+      double e = 0.;
       for(int k = 0; k < rank; k++)
         e += left[i + k * m] * right[j + k * n];
       a[i + j * m] = e;
@@ -278,12 +264,12 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int iters;
-  raca(m, n, rp, a.data(), m, u.data(), m, v.data(), n, &iters);
+  daca(m, n, rp, a.data(), m, u.data(), m, v.data(), n, &iters);
 
   double err = 0., nrm = 0.;
   for(int j = 0; j < n; j++) {
     for(int i = 0; i < m; i++) {
-      real_t e = 0.;
+      double e = 0.;
       for(int k = 0; k < iters; k++)
         e += u[i + k * m] * v[j + k * n];
       e -= a[i + j * m];
@@ -292,7 +278,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  printf("rel err: %e, aca iters %d\n", err / nrm, iters);
+  printf("rel err: %e, aca iters %d\n", std::sqrt(err / nrm), iters);
 
   return 0;
 }

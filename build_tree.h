@@ -8,7 +8,7 @@ namespace nbd {
 
   Cells buildTree(Bodies& bodies, int ncrit, int dim);
 
-  void getList(Cell * Ci, Cell * Cj, int64_t dim, real_t theta);
+  void getList(Cell * Ci, Cell * Cj, int dim, real_t theta);
 
 }
 

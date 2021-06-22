@@ -2,7 +2,6 @@
 #include "build_tree.h"
 #include "kernel.h"
 #include "aca.h"
-#include "min_blas.h"
 
 #include <cstdio>
 #include <random>

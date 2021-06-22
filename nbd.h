@@ -3,12 +3,11 @@
 
 #include <vector>
 #include <set>
-#include <cstdint>
 
 namespace nbd {
 
   typedef double real_t;
-  constexpr int64_t dim = 4;
+  constexpr int dim = 4;
 
   struct Body {
     real_t X[dim];
@@ -18,8 +17,8 @@ namespace nbd {
   typedef std::vector<real_t> Matrix;
 
   struct Cell {
-    int64_t NCHILD = 0;
-    int64_t NBODY = 0;
+    int NCHILD = 0;
+    int NBODY = 0;
     Cell* CHILD = NULL;
     Body* BODY = NULL;
     real_t Xmin[dim];

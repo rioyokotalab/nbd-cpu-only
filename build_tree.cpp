@@ -12,7 +12,7 @@ Bodies::iterator spart(Bodies::iterator first, Bodies::iterator last, int sdim, 
   return std::partition(first, last, l);
 }
 
-Bodies::iterator spart_size_k(Bodies::iterator first, Bodies::iterator last, int sdim, int64_t k) {
+Bodies::iterator spart_size_k(Bodies::iterator first, Bodies::iterator last, int sdim, int k) {
 
   if (last == first)
     return first;
@@ -22,12 +22,12 @@ Bodies::iterator spart_size_k(Bodies::iterator first, Bodies::iterator last, int
     [pivot, sdim](const Body& element) { return element.X[sdim] < pivot; });
   Bodies::iterator i2 = std::partition(i1, last,
     [pivot, sdim](const Body& element) { return !(pivot < element.X[sdim]); });
-  int64_t d1 = i1 - first, d2 = i2 - first;
+  auto d1 = i1 - first, d2 = i2 - first;
   
   if (d1 > k)
     return spart_size_k(first, i1, sdim, k);
   else if (d2 < k)
-    return spart_size_k(i2, last, sdim, k - d2);
+    return spart_size_k(i2, last, sdim, (int)(k - d2));
   else
     return first + k;
 }
@@ -38,27 +38,27 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
   cells.reserve(bodies.size());
 
   cells[0].BODY = bodies.data();
-  cells[0].NBODY = bodies.size();
+  cells[0].NBODY = (int)bodies.size();
   cells[0].NCHILD = 0;
   for (int d = 0; d < dim; d++) 
     cells[0].Xmin[d] = cells[0].Xmax[d] = bodies[0].X[d];
-  for (int64_t b = 0; b < (int64_t)bodies.size(); b++) {
+  for (int b = 0; b < (int)bodies.size(); b++) {
     for (int d = 0; d < dim; d++) 
       cells[0].Xmin[d] = std::fmin(bodies[b].X[d], cells[0].Xmin[d]);
     for (int d = 0; d < dim; d++) 
       cells[0].Xmax[d] = std::fmax(bodies[b].X[d], cells[0].Xmax[d]);
   }
 
-  int64_t nlis = (bodies.size() + ncrit - 1) / ncrit, iters = 0;
+  int nlis = ((int)bodies.size() + ncrit - 1) / ncrit, iters = 0;
   int sdim = 0;
   while (nlis >>= 1) ++iters;
-  int64_t last_off = 0, last_len = 1;
+  int last_off = 0, last_len = 1;
 
-  for (int64_t i = 1; i <= iters; i++) {
+  for (int i = 1; i <= iters; i++) {
 
-    int64_t len = 0;
+    int len = 0;
 
-    for (int64_t j = last_off; j < last_off + last_len; j++) {
+    for (int j = last_off; j < last_off + last_len; j++) {
       Cell& cell = cells[j];
       Bodies::iterator cell_b = bodies.begin() + std::distance(bodies.data(), cell.BODY);
 
@@ -69,16 +69,16 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
       real_t med = (cell.Xmin[sdim] + cell.Xmax[sdim]) / 2;
       auto p = spart(cell_b, cell_b + cell.NBODY, sdim, med);
 #endif
-      int64_t size[2];
-      size[0] = p - cell_b;
+      int size[2];
+      size[0] = (int)(p - cell_b);
       size[1] = cell.NBODY - size[0];
 
-      cell.NCHILD = (int64_t)(size[0] > 0) + (int64_t)(size[1] > 0);
+      cell.NCHILD = (int)(size[0] > 0) + (int)(size[1] > 0);
       cells.resize(cells.size() + cell.NCHILD);
       Cell* child = &cells.back() - cell.NCHILD + 1;
       cell.CHILD = child;
 
-      int64_t offset = 0;
+      int offset = 0;
       for (int k = 0; k < 2; k++) {
         if (size[k]) {
           child->BODY = cell.BODY + offset;
@@ -108,7 +108,7 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
 }
 
 
-void nbd::getList(Cell * Ci, Cell * Cj, int64_t dim, real_t theta) {
+void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta) {
   real_t dX = 0., CiR = 0., CjR = 0.;
   for (int d = 0; d < dim; d++) {
     real_t CiC = (Ci->Xmin[d] + Ci->Xmax[d]) / 2;

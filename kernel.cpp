@@ -27,11 +27,11 @@ void nbd::eval(eval_func_t r2f, const Body* bi, const Body* bj, int dim, real_t*
 }
 
 
-void nbd::dense_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, real_t* a, int64_t lda) {
-  int64_t m = ci->NBODY, n = cj->NBODY;
+void nbd::dense_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, real_t* a, int lda) {
+  int m = ci->NBODY, n = cj->NBODY;
 
-  for (int64_t i = 0; i < m * n; i++) {
-    int64_t x = i / m, y = i - x * m;
+  for (int i = 0; i < m * n; i++) {
+    int x = i / m, y = i - x * m;
     real_t r2;
     eval(r2f, ci->BODY + y, cj->BODY + x, dim, &r2);
     a[x * lda + y] = r2;
@@ -40,11 +40,11 @@ void nbd::dense_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim,
 
 
 void nbd::mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, const real_t* x_vec, real_t* b_vec) {
-  int64_t m = ci->NBODY, n = cj->NBODY;
+  int m = ci->NBODY, n = cj->NBODY;
 
-  for (int64_t y = 0; y < m; y++) {
+  for (int y = 0; y < m; y++) {
     real_t sum = 0.;
-    for (int64_t x = 0; x < n; x++) {
+    for (int x = 0; x < n; x++) {
       real_t r2;
       eval(r2f, ci->BODY + y, cj->BODY + x, dim, &r2);
       sum += r2 * x_vec[x];
