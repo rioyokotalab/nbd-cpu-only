@@ -20,7 +20,8 @@ add_library(nbd STATIC
   nbd.h
   kernel.cpp kernel.h
   build_tree.cpp build_tree.h 
-  aca.cpp aca.h)
+  aca.cpp aca.h
+  svd.cpp svd.h)
 target_include_directories(nbd PRIVATE "./" )
 target_link_libraries(nbd mkl_intel_lp64 mkl_sequential mkl_core)
 
