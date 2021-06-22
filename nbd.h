@@ -35,7 +35,6 @@ namespace nbd {
   typedef void (*eval_func_t) (real_t&);
 
   typedef std::set<std::pair<Cell*, Cell*>, Matrix> Matrices;
-  typedef std::set<std::pair<Cell*, Cell*>, std::pair<Matrix, Matrix>> LR_Matrices;
 
 
 }

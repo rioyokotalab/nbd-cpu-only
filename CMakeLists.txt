@@ -31,8 +31,8 @@ add_executable(main
 target_link_libraries(main nbd)
 target_include_directories(main PRIVATE "./" )
 
-add_executable(aca_test
-  aca.cpp nbd.h aca.h
+add_executable(lra_example
+  lra_example.cpp
 )
-target_link_libraries(aca_test nbd)
-target_include_directories(aca_test PRIVATE "./" )
+target_link_libraries(lra_example nbd)
+target_include_directories(lra_example PRIVATE "./" )

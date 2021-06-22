@@ -1,6 +1,5 @@
 
 #include "svd.h"
-#include "aca.h"
 #include "kernel.h"
 
 #include "mkl.h"
@@ -27,7 +26,7 @@ void nbd::dsvd(int m, int n, double* a, int lda, double* s, double* u, int ldu, 
 }
 
 void nbd::dlr_svd(int m, int n, int r, double* u, int ldu, double* v, int ldv, double* s, int* info) {
-  std::vector<double> a((size_t)r * r);
+  std::vector<double> a((size_t)r * r, 0.);
   std::vector<double> left((size_t)m * r);
   std::vector<double> right((size_t)n * r);
   std::vector<double> Ltau(r);
@@ -46,4 +45,32 @@ void nbd::dlr_svd(int m, int n, int r, double* u, int ldu, double* v, int ldv, d
 
   mkl_domatcopy('C', 'N', m, r, 1., &left[0], m, u, ldu);
   mkl_domatcopy('C', 'N', n, r, 1., &right[0], n, v, ldv);
+}
+
+
+void nbd::dtsvd(int m, int n, int r, double* s, int* out) {
+  double t = std::numeric_limits<double>::epsilon() * std::max(m, n) * s[0];
+  auto p = std::find_if(s, s + r, [t](double si) { return si < t; });
+  *out = (int)(p - s);
+}
+
+
+void nbd::dpinvl_svd(int m, int n, int r, const double* s, const double* u, int ldu, const double* v, int ldv, double* a, int na, int lda) {
+  std::vector<double> work((size_t)r * na);
+  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, r, na, m, 1., u, ldu, a, lda, 0., &work[0], r);
+
+  for (int i = 0; i < r; i++)
+    cblas_dscal(na, 1. / s[i], &work[i], r);
+
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, na, r, 1., v, ldv, &work[0], r, 0., a, lda);
+}
+
+void nbd::dpinvr_svd(int m, int n, int r, const double* s, const double* u, int ldu, const double* v, int ldv, double* a, int ma, int lda) {
+  std::vector<double> work((size_t)ma * r);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, ma, r, n, 1., a, lda, v, ldv, 0., &work[0], ma);
+
+  for (int i = 0; i < r; i++)
+    cblas_dscal(ma, 1. / s[i], &work[(size_t)i * ma], 1);
+
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, ma, m, r, 1., &work[0], ma, u, ldu, 0., a, lda);
 }
