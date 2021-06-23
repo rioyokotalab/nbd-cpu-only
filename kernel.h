@@ -14,4 +14,8 @@ namespace nbd {
 
   void mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, const real_t* x_vec, real_t* b_vec);
 
+  void P2M_L2P(eval_func_t r2f, int p, Cell* c, int dim);
+
+  void M2L(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& s);
+
 }

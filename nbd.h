@@ -27,6 +27,7 @@ namespace nbd {
     std::vector<Cell*> listFar;
     std::vector<Cell*> listNear;
 
+    Bodies inner;
     Matrix V;
   };
 

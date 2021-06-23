@@ -1,8 +1,10 @@
 
 #include "build_tree.h"
+
 #include <cmath>
 #include <algorithm>
 #include <iterator>
+#include <random>
 
 using namespace nbd;
 
@@ -136,4 +138,52 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta) {
       getList(Ci, cj, dim, theta);
     }
   }
+}
+
+inline real_t rand(real_t min, real_t max) {
+  return min + (max - min) * ((double)std::rand() / RAND_MAX);
+}
+
+void scalBox(real_t a, int dim, const real_t Xmin[], const real_t Xmax[], real_t Xmin_out[], real_t Xmax_out[]) {
+  for (int d = 0; d < dim; d++) {
+    real_t cc = (Xmin[d] + Xmax[d]) / 2;
+    real_t rc = cc - Xmin[d];
+
+    real_t arc = a * rc;
+    Xmin_out[d] = cc - arc;
+    Xmax_out[d] = cc + arc;
+  }
+}
+
+void nbd::getBoundBox(int m, Cell* cell, Bodies& outer, int dim, real_t inner_s, real_t outer_s) {
+  Bodies& inner = cell->inner;
+  inner.resize(m);
+  outer.resize(m);
+
+  real_t Xmin_in[nbd::dim], Xmax_in[nbd::dim];
+  real_t Xmin_out[nbd::dim], Xmax_out[nbd::dim];
+  scalBox(inner_s, dim, cell->Xmin, cell->Xmax, Xmin_in, Xmax_in);
+  scalBox(outer_s, dim, cell->Xmin, cell->Xmax, Xmin_out, Xmax_out);
+
+  int i = 0;
+  for (int d = 0; d < dim; d++) {
+    int end = m * (2 * d + 1) / dim / 2;
+    while (i < end) {
+      for (int db = 0; db < dim; db++) {
+        inner[i].X[db] = db == d ? Xmin_in[db] : rand(Xmin_in[db], Xmax_in[db]);
+        outer[i].X[db] = db == d ? Xmin_out[db] : rand(Xmin_out[db], Xmax_out[db]);
+      }
+      i++;
+    }
+
+    end = m * (2 * d + 2) / dim / 2;
+    while (i < end) {
+      for (int db = 0; db < dim; db++) {
+        inner[i].X[db] = db == d ? Xmax_in[db] : rand(Xmin_in[db], Xmax_in[db]);
+        outer[i].X[db] = db == d ? Xmax_out[db] : rand(Xmin_out[db], Xmax_out[db]);
+      }
+      i++;
+    }
+  }
+
 }

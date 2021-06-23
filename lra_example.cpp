@@ -193,3 +193,4 @@ void verify_inversion(int m, int n, double* a, int lda, double* b, int ldb) {
 
   printf("inversion rel err: %e\n", std::sqrt(err / nrm));
 }
+

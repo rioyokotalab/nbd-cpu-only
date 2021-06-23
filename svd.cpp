@@ -74,3 +74,4 @@ void nbd::dpinvr_svd(int m, int n, int r, const double* s, const double* u, int 
 
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, ma, m, r, 1., &work[0], ma, u, ldu, 0., a, lda);
 }
+
