@@ -34,6 +34,9 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
   double piv = 0;
   std::vector<int> p_u, p_v;
 
+  max_iters = std::min(max_iters, m);
+  max_iters = std::min(max_iters, n);
+  
   p_u.reserve(max_iters);
   p_v.reserve(max_iters);
 
