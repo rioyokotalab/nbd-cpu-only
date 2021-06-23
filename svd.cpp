@@ -12,7 +12,12 @@ using namespace nbd;
 void nbd::dsvd(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, double* s, double* u, int ldu, double* v, int ldv, int* info) {
   int m = ci->NBODY, n = cj->NBODY;
   std::vector<double> a((size_t)m * n);
-  dense_kernel(r2f, ci, cj, dim, &a[0], m);
+  for (int i = 0; i < m * n; i++) {
+    int x = i / m, y = i - x * m;
+    real_t r2;
+    eval(r2f, ci->BODY + y, cj->BODY + x, dim, &r2);
+    a[(size_t)x * m + y] = r2;
+  }
   dsvd(m, n, &a[0], m, s, u, ldu, v, ldv, info);
 }
 

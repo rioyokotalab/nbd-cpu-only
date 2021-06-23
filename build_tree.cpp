@@ -1,10 +1,12 @@
 
 #include "build_tree.h"
+#include "kernel.h"
 
 #include <cmath>
 #include <algorithm>
 #include <iterator>
 #include <random>
+#include <cstdio>
 
 using namespace nbd;
 
@@ -140,6 +142,28 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta) {
   }
 }
 
+void nbd::evaluate(eval_func_t r2f, Cells& cells, int dim, Matrices& d, Matrices& lr, int rank) {
+  for (auto& i : cells) {
+    auto y = &i - cells.data();
+    for (auto& j : i.listFar) {
+      auto x = j - cells.data();
+      M2L(r2f, &i, j, dim, d[y + x * cells.size()], lr[y + x * cells.size()], rank);
+    }
+    for (auto& j : i.listNear) {
+      auto x = j - cells.data();
+      P2P(r2f, &i, j, dim, d[y + x * cells.size()]);
+    }
+  }
+}
+
+void nbd::traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matrices& d, Matrices& lr, real_t theta, int rank) {
+  getList(&icells[0], &jcells[0], dim, theta);
+  d.resize(icells.size() * jcells.size());
+  lr.resize(icells.size() * jcells.size());
+
+  evaluate(r2f, icells, dim, d, lr, rank);
+}
+
 inline real_t rand(real_t min, real_t max) {
   return min + (max - min) * ((double)std::rand() / RAND_MAX);
 }
@@ -155,35 +179,37 @@ void scalBox(real_t a, int dim, const real_t Xmin[], const real_t Xmax[], real_t
   }
 }
 
-void nbd::getBoundBox(int m, Cell* cell, Bodies& outer, int dim, real_t inner_s, real_t outer_s) {
-  Bodies& inner = cell->inner;
-  inner.resize(m);
-  outer.resize(m);
+void nbd::getBoundBox(int m, Cell* cell, Bodies& box, int dim, real_t s) {
+  box.resize(m);
 
-  real_t Xmin_in[nbd::dim], Xmax_in[nbd::dim];
-  real_t Xmin_out[nbd::dim], Xmax_out[nbd::dim];
-  scalBox(inner_s, dim, cell->Xmin, cell->Xmax, Xmin_in, Xmax_in);
-  scalBox(outer_s, dim, cell->Xmin, cell->Xmax, Xmin_out, Xmax_out);
+  real_t Xmin_b[nbd::dim], Xmax_b[nbd::dim];
+  scalBox(s, dim, cell->Xmin, cell->Xmax, Xmin_b, Xmax_b);
 
   int i = 0;
   for (int d = 0; d < dim; d++) {
     int end = m * (2 * d + 1) / dim / 2;
     while (i < end) {
-      for (int db = 0; db < dim; db++) {
-        inner[i].X[db] = db == d ? Xmin_in[db] : rand(Xmin_in[db], Xmax_in[db]);
-        outer[i].X[db] = db == d ? Xmin_out[db] : rand(Xmin_out[db], Xmax_out[db]);
-      }
+      for (int db = 0; db < dim; db++)
+        box[i].X[db] = db == d ? Xmin_b[db] : rand(Xmin_b[db], Xmax_b[db]);
       i++;
     }
 
     end = m * (2 * d + 2) / dim / 2;
     while (i < end) {
-      for (int db = 0; db < dim; db++) {
-        inner[i].X[db] = db == d ? Xmax_in[db] : rand(Xmin_in[db], Xmax_in[db]);
-        outer[i].X[db] = db == d ? Xmax_out[db] : rand(Xmin_out[db], Xmax_out[db]);
-      }
+      for (int db = 0; db < dim; db++)
+        box[i].X[db] = db == d ? Xmax_b[db] : rand(Xmin_b[db], Xmax_b[db]);
       i++;
     }
   }
 
+}
+
+
+void nbd::printTree(const Cell* cell, int level, int offset) {
+  for (int i = 0; i < level; i++)
+    printf("  ");
+  printf("<%d, %d>", offset, offset + cell->NBODY);
+  printf("\n");
+  for (auto c = cell->CHILD; c != cell->CHILD + cell->NCHILD; c++)
+    printTree(c, level + 1, offset + (int)(c->BODY - cell->BODY));
 }

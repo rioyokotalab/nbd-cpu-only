@@ -10,7 +10,14 @@ namespace nbd {
 
   void getList(Cell * Ci, Cell * Cj, int dim, real_t theta);
 
-  void getBoundBox(int m, Cell * cell, Bodies& outer, int dim, real_t inner_s = 1.03, real_t outer_s = 2.97);
+  void evaluate(eval_func_t r2f, Cells& cells, int dim, Matrices& d, Matrices& lr, int rank);
+
+  void traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matrices& d, Matrices& lr, real_t theta, int rank);
+
+  void getBoundBox(int m, Cell * cell, Bodies& box, int dim, real_t inner_s);
+
+  void printTree(const Cell * cell, int level = 0, int offset = 0);
+
 
 }
 

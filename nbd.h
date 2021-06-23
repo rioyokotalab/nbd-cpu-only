@@ -2,19 +2,21 @@
 #pragma once
 
 #include <vector>
-#include <set>
+#include <algorithm>
+#include <cstddef>
 
 namespace nbd {
 
   typedef double real_t;
   constexpr int dim = 4;
 
+  typedef void (*eval_func_t) (real_t&);
+
   struct Body {
     real_t X[dim];
   };
 
   typedef std::vector<Body> Bodies;
-  typedef std::vector<real_t> Matrix;
 
   struct Cell {
     int NCHILD = 0;
@@ -26,16 +28,22 @@ namespace nbd {
 
     std::vector<Cell*> listFar;
     std::vector<Cell*> listNear;
-
-    Bodies inner;
-    Matrix V;
   };
 
   typedef std::vector<Cell> Cells;
 
-  typedef void (*eval_func_t) (real_t&);
+  struct Matrix {
+    std::vector<real_t> A;
+    int M;
+    int N;
+    int LDA;
+    Matrix(int m = 0, int n = 0, int lda = 0) : M(m), N(n), LDA(std::max(lda, m)) 
+      { A.resize((size_t)LDA * N); }
 
-  typedef std::set<std::pair<Cell*, Cell*>, Matrix> Matrices;
+    operator real_t*()
+      { return A.data(); }
+  };
 
+  typedef std::vector<Matrix> Matrices;
 
 }

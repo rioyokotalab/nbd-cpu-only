@@ -40,11 +40,6 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
   p_u.reserve(max_iters);
   p_v.reserve(max_iters);
 
-#ifdef ACA_USE_NORM
-  double my_norm_u, my_norm_v, epi2 = ACA_EPI * ACA_EPI;
-  double norm;
-#endif
-
   for (int i = 0; i < n; i++) {
     real_t s;
     _eval(M, y, i, &s);
@@ -71,11 +66,13 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
   p_v.push_back(x);
 
 #ifdef ACA_USE_NORM
-  my_norm_u = cblas_ddot(m, u, 1, u, 1);
-  my_norm_v = cblas_ddot(n, v, 1, v, 1);
+  double my_norm_u = cblas_ddot(m, u, 1, u, 1);
+  double my_norm_v = cblas_ddot(n, v, 1, v, 1);
+  double norm = my_norm_u * my_norm_v;
+  double epi2 = ACA_EPI * ACA_EPI;
 
-  double n2 = my_norm_u * my_norm_v;
-  if (n2 <= epi2 * (norm = n2))
+  double n2 = norm;
+  if (n2 <= epi2 * n2)
     piv_i = -1;
 #endif
 
@@ -130,7 +127,7 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
     my_norm_u = cblas_ddot(m, curr_u, 1, curr_u, 1);
     my_norm_v = cblas_ddot(n, curr_v, 1, curr_v, 1);
 
-    double n2 = my_norm_u * my_norm_v;
+    n2 = my_norm_u * my_norm_v;
     if (n2 <= epi2 * (norm += n2))
       piv_i = -1;
 #endif
@@ -141,7 +138,7 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
     *info = (int)iter;
 }
 
-void nbd::daca(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info) {
+void nbd::daca_cells(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info) {
   InputMat M{ ci->NBODY, cj->NBODY, NULL, 0, r2f, ci, cj, dim };
   _daca(&M, max_iters, u, ldu, v, ldv, info);
 }
