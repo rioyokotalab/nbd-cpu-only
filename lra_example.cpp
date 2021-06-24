@@ -1,7 +1,7 @@
 
 #include "aca.h"
 #include "kernel.h"
-#include "svd.h"
+#include "test_util.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,15 +13,7 @@
 
 using namespace nbd;
 
-void compress_using_tsvd_aca(int m, int n, int r, double* a, int lda);
-
-void compress_using_tsvd(int m, int n, double* a, int lda);
-
-void invert_using_tsvd_aca(int m, int n, int r, double* a, int lda, double* b, int ldb);
-
-void invert_using_tsvd(int m, int n, double* a, int lda, double* b, int ldb);
-
-void verify_inversion(int m, int n, double* a, int lda, double* b, int ldb);
+void compress_using_aca(int m, int n, int r, double* a, int lda);
 
 int main(int argc, char* argv[]) {
 
@@ -51,146 +43,28 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  compress_using_tsvd_aca(m, n, r, a.data(), m);
-  compress_using_tsvd(m, n, a.data(), m);
-
-  std::vector<double> b(n * m);
-  invert_using_tsvd_aca(m, n, r, a.data(), m, b.data(), n);
-  verify_inversion(m, n, a.data(), m, b.data(), n);
-
-  invert_using_tsvd(m, n, a.data(), m, b.data(), n);
-  verify_inversion(m, n, a.data(), m, b.data(), n);
+  compress_using_aca(m, n, r, a.data(), m);
 
   return 0;
 }
 
 
-void compress_using_tsvd_aca(int m, int n, int r, double* a, int lda) {
+void compress_using_aca(int m, int n, int r, double* a, int lda) {
   int rp = r + 8;
-  std::vector<double> u(m * rp), v(n * rp);
+  std::vector<double> u(m * rp), v(n * rp), b(m * n);
 
   int iters;
   daca(m, n, rp, a, lda, u.data(), m, v.data(), n, &iters);
 
-  std::vector<double> s(iters);
-  dlr_svd(m, n, iters, u.data(), m, v.data(), n, s.data());
-  dtsvd(m, n, iters, s.data(), &iters);
-
-  double err = 0., nrm = 0.;
   for (int j = 0; j < n; j++) {
     for (int i = 0; i < m; i++) {
       double e = 0.;
       for (int k = 0; k < iters; k++)
-        e += u[i + k * m] * v[j + k * n] * s[k];
-      e -= a[i + j * lda];
-      err += e * e;
-      nrm += a[i + j * lda] * a[i + j * lda];
+        e += u[i + k * m] * v[j + k * n];
+      b[i + j * lda] = e;
     }
   }
 
-  printf("aca_svd rel err: %e, aca iters %d\n", std::sqrt(err / nrm), iters);
-}
-
-
-void compress_using_tsvd(int m, int n, double* a, int lda) {
-
-  int iters;
-  std::vector<double> b(m * n), full_u(m * std::min(m, n)), full_v(n * std::min(m, n));
-  std::vector<double> full_s(std::min(m, n));
-
-  for (int j = 0; j < n; j++) {
-    for (int i = 0; i < m; i++) {
-      b[i + j * m] = a[i + j * lda];
-    }
-  }
-
-  dsvd(m, n, b.data(), m, full_s.data(), full_u.data(), m, full_v.data(), n);
-  dtsvd(m, n, std::min(m, n), full_s.data(), &iters);
-
-  double err = 0., nrm = 0.;
-  for (int j = 0; j < n; j++) {
-    for (int i = 0; i < m; i++) {
-      double e = 0.;
-      for (int k = 0; k < iters; k++)
-        e += full_u[i + k * m] * full_v[j + k * n] * full_s[k];
-      e -= a[i + j * lda];
-      err += e * e;
-      nrm += a[i + j * lda] * a[i + j * lda];
-    }
-  }
-
-  printf("svd rel err: %e, svd rank %d\n", std::sqrt(err / nrm), iters);
-}
-
-
-void invert_using_tsvd_aca(int m, int n, int r, double* a, int lda, double* b, int ldb) {
-  int rp = r + 8;
-  std::vector<double> u(m * rp), v(n * rp);
-
-  int iters;
-  daca(m, n, rp, a, lda, u.data(), m, v.data(), n, &iters);
-
-  std::vector<double> s(iters);
-  dlr_svd(m, n, iters, u.data(), m, v.data(), n, s.data());
-  dtsvd(m, n, iters, s.data(), &iters);
-
-  for (int j = 0; j < m; j++) {
-    for (int i = 0; i < n; i++) {
-      b[j * ldb + i] = (double)(i == j);
-    }
-  }
-
-  dpinvr_svd(m, n, iters, s.data(), u.data(), m, v.data(), n, b, n, ldb);
-}
-
-
-void invert_using_tsvd(int m, int n, double* a, int lda, double* b, int ldb) {
-  int iters;
-  std::vector<double> c(m * n), full_u(m * std::min(m, n)), full_v(n * std::min(m, n));
-  std::vector<double> full_s(std::min(m, n));
-
-  for (int j = 0; j < n; j++) {
-    for (int i = 0; i < m; i++) {
-      c[i + j * m] = a[i + j * lda];
-    }
-  }
-
-  dsvd(m, n, c.data(), m, full_s.data(), full_u.data(), m, full_v.data(), n);
-  dtsvd(m, n, std::min(m, n), full_s.data(), &iters);
-
-  for (int j = 0; j < m; j++) {
-    for (int i = 0; i < n; i++) {
-      b[j * ldb + i] = (double)(i == j);
-    }
-  }
-
-  dpinvl_svd(m, n, iters, full_s.data(), full_u.data(), m, full_v.data(), n, b, m, ldb);
-}
-
-
-void verify_inversion(int m, int n, double* a, int lda, double* b, int ldb) {
-  std::vector<double> c(m * m);
-  for (int j = 0; j < m; j++) {
-    for (int i = 0; i < m; i++) {
-      double e = 0.;
-      for (int k = 0; k < n; k++)
-        e += a[i + k * lda] * b[k + j * ldb];
-      c[i + j * m] = e;
-    }
-  }
-
-  double err = 0., nrm = 0.;
-  for (int j = 0; j < n; j++) {
-    for (int i = 0; i < m; i++) {
-      double e = 0.;
-      for (int k = 0; k < m; k++)
-        e += c[i + k * m] * a[k + j * lda];
-      e -= a[i + j * lda];
-      err += e * e;
-      nrm += a[i + j * lda] * a[i + j * lda];
-    }
-  }
-
-  printf("inversion rel err: %e\n", std::sqrt(err / nrm));
+  printf("aca rel err: %e, aca iters %d\n", rel2err(b.data(), a, m, n, m, m), iters);
 }
 

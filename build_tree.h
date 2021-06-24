@@ -30,10 +30,5 @@ namespace nbd {
 
   void shared_epilogue(Matrices& d);
 
-  void getBoundBox(int m, Cell * cell, Bodies& box, int dim, real_t inner_s);
-
-  void printTree(const Cell * cell, int level = 0, int offset_c = 0, int offset_b = 0);
-
-
 }
 

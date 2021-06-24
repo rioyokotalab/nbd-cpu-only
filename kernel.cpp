@@ -5,7 +5,6 @@
 #include "svd.h"
 
 #include <cmath>
-#include <cassert>
 
 using namespace nbd;
 
@@ -78,13 +77,13 @@ void nbd::P2Pfar(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matri
 }
 
 void nbd::SampleP2Pi(Matrix& s, const Matrix& a) {
-  assert(a.R > 0);
-  drspl(s.M, a.N, a.R, a.A.data(), a.LDA, a.B.data(), a.LDB, s.N, s, s.LDA);
+  if (a.R > 0)
+    drspl(s.M, a.N, a.R, a.A.data(), a.LDA, a.B.data(), a.LDB, s.N, s, s.LDA);
 }
 
 void nbd::SampleP2Pj(Matrix& s, const Matrix& a) {
-  assert(a.R > 0);
-  drspl(s.M, a.M, a.R, a.B.data(), a.LDB, a.A.data(), a.LDA, s.N, s, s.LDA);
+  if (a.R > 0)
+    drspl(s.M, a.M, a.R, a.B.data(), a.LDB, a.A.data(), a.LDA, s.N, s, s.LDA);
 }
 
 void nbd::SampleParent(Matrix& s, int rank) {
@@ -131,24 +130,26 @@ void nbd::BasisInvLeft(const Matrix* s, int ls, Matrix& a) {
 }
 
 void nbd::BasisInvRight(const Matrix& s, Matrix& a) {
-  assert(a.R > 0);
-  int m = a.N, n = a.R, k = s.N;
-  std::vector<real_t> b = a.B;
+  if (a.R > 0) {
+    int m = a.N, n = a.R, k = s.N;
+    std::vector<real_t> b = a.B;
 
-  a.A.resize((size_t)k * n);
-  dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDB, a, k);
-  a.LDB = a.N = k;
+    a.A.resize((size_t)k * n);
+    dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDB, a, k);
+    a.LDB = a.N = k;
+  }
 }
 
 void nbd::MergeS(Matrix& a) {
-  assert(a.R > 0);
-  int m = a.M, n = a.N, k = a.R;
-  std::vector<real_t> ua = a.A, va = a.B;
-  
-  a.A.resize((size_t)a.LDA * n);
-  a.B.clear();
+  if (a.R > 0) {
+    int m = a.M, n = a.N, k = a.R;
+    std::vector<real_t> ua = a.A, va = a.B;
 
-  dmul_s(m, n, k, ua.data(), a.LDA, va.data(), a.LDB, a, a.LDA);
-  a.N = n;
-  a.R = a.LDB = 0;
+    a.A.resize((size_t)a.LDA * n);
+    a.B.clear();
+
+    dmul_s(m, n, k, ua.data(), a.LDA, va.data(), a.LDB, a, a.LDA);
+    a.N = n;
+    a.R = a.LDB = 0;
+  }
 }

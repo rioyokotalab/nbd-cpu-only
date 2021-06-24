@@ -1,18 +1,16 @@
 
 #pragma once
 
-#include <iostream>
+#include "nbd.h"
 
-void printVec(double* a, int n, int inc) {
-  for (int i = 0; i < n; i++)
-    std::cout << a[i * inc] << " ";
-  std::cout << std::endl;
-}
+namespace nbd {
+  void printVec(real_t* a, int n, int inc);
 
-void printMat(double* a, int m, int n, int lda) {
-  for (int i = 0; i < m; i++) {
-    for (int j = 0; j < n; j++)
-      std::cout << a[i + j * lda] << " ";
-    std::cout << std::endl;
-  }
+  void printMat(real_t* a, int m, int n, int lda);
+
+  void initRandom(Bodies& b, int m, int dim, real_t min, real_t max, unsigned int seed = 0);
+
+  void printTree(const Cell* cell, int level = 0, int offset_c = 0, int offset_b = 0);
+
+  real_t rel2err(const real_t* a, const real_t* ref, int m, int n, int lda, int ldref);
 }
