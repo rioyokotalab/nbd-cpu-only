@@ -3,7 +3,6 @@
 #include "kernel.h"
 
 #include <cmath>
-#include <algorithm>
 #include <iterator>
 #include <random>
 #include <cstdio>

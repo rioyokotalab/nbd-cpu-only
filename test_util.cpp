@@ -3,7 +3,6 @@
 
 #include <iostream>
 #include <random>
-#include <algorithm>
 #include <cmath>
 
 using namespace nbd;

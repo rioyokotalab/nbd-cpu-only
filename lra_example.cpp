@@ -3,9 +3,7 @@
 #include "kernel.h"
 #include "test_util.h"
 
-#include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <random>
