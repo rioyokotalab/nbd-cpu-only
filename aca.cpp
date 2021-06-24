@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <random>
 
 using namespace nbd;
 
@@ -146,4 +147,47 @@ void nbd::daca_cells(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, i
 void nbd::daca(int m, int n, int max_iters, const double* a, int lda, double* u, int ldu, double* v, int ldv, int* info) {
   InputMat M{ m, n, a, lda, NULL, NULL, NULL, 0 };
   _daca(&M, max_iters, u, ldu, v, ldv, info);
+}
+
+
+inline real_t rand(real_t min, real_t max) {
+  return min + (max - min) * ((double)std::rand() / RAND_MAX);
+}
+
+void nbd::ddspl(int m, int na, const double* a, int lda, int ns, double* s, int lds) {
+  std::vector<double> rnd((size_t)na * ns);
+  std::vector<double> work((size_t)m * ns);
+
+  for (auto& i : rnd)
+    i = rand(0, 1);
+
+  mkl_domatcopy('C', 'N', m, ns, 1., s, lds, &work[0], m);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, ns, na, 1., a, lda, &rnd[0], na, 1., &work[0], m);
+  mkl_domatcopy('C', 'N', m, ns, 1., &work[0], m, s, lds);
+}
+
+void nbd::drspl(int m, int na, int r, const double* ua, int ldu, const double* va, int ldv, int ns, double* s, int lds) {
+  std::vector<double> rnd((size_t)ns * na);
+  std::vector<double> work((size_t)ns * r);
+
+  for (auto& i : rnd)
+    i = rand(0, 1);
+
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, ns, r, na, 1., &rnd[0], ns, va, ldv, 0., &work[0], ns);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, m, ns, r, 1., ua, ldu, &work[0], ns, 1., s, lds);
+
+}
+
+void nbd::dorth(int m, int n, double* a, int lda) {
+  std::vector<double> tau(std::min(m, n));
+  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, a, lda, &tau[0]);
+  LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, n, n, a, lda, &tau[0]);
+}
+
+void nbd::dmul_ut(int m, int n, int k, const double* u, int ldu, const double* a, int lda, double* c, int ldc) {
+  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, k, n, m, 1., u, ldu, a, lda, 0., c, ldc);
+}
+
+void nbd::dmul_s(int m, int n, int k, const double* u, int ldu, const double* v, int ldv, double* s, int lds) {
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, m, n, k, 1., u, ldu, v, ldv, 0., s, lds);
 }

@@ -12,9 +12,9 @@ int main(int argc, char* argv[]) {
 
   using namespace nbd;
 
-  int m = 64;
+  int m = 512;
   int dim = 2;
-  int leaf = 16;
+  int leaf = 64;
 
   Bodies b1(m);
   auto fun = l2d();
@@ -27,11 +27,10 @@ int main(int argc, char* argv[]) {
 
   Cells c1 = buildTree(b1, leaf, dim);
 
-  Matrices d, lr;
-  traverse(fun, c1, c1, dim, d, lr, 1., 8);
-  
-  for (auto& i : d)
-    printMat(i, i.M, i.N, i.LDA);
+  Matrices d, bi;
+  traverse(fun, c1, c1, dim, d, 1.0, 48);
+  traverse_i(c1, c1, d, bi);
+  shared_epilogue(d);
 
   printTree(&c1[0]);
 

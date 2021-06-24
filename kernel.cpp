@@ -5,6 +5,7 @@
 #include "svd.h"
 
 #include <cmath>
+#include <cassert>
 
 using namespace nbd;
 
@@ -51,12 +52,9 @@ void nbd::mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, 
 }
 
 
-void nbd::P2P(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a) {
+void nbd::P2Pnear(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a) {
   int m = ci->NBODY, n = cj->NBODY;
-  a.A.resize((size_t)m * n);
-  a.M = m;
-  a.N = n;
-  a.LDA = m;
+  a = Matrix(m, n, m);
 
   for (int i = 0; i < m * n; i++) {
     int x = i / m, y = i - x * m;
@@ -66,18 +64,91 @@ void nbd::P2P(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& 
   }
 }
 
-void nbd::M2L(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& u, Matrix& v, int rank) {
+void nbd::P2Pfar(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a, int rank) {
   int m = ci->NBODY, n = cj->NBODY;
-  u.A.resize((size_t)m * rank);
-  u.M = u.LDA = m;
-
-  v.A.resize((size_t)n * rank);
-  v.M = v.LDA = n;
-  u.N = v.N = rank;
+  a = Matrix(m, n, rank, m, n);
 
   int iters;
-  daca_cells(r2f, ci, cj, dim, rank, u, u.LDA, v, v.LDA, &iters);
-  u.A.resize((size_t)m * iters);
-  v.A.resize((size_t)n * iters);
-  u.N = v.N = iters;
+  daca_cells(r2f, ci, cj, dim, rank, a, a.LDA, a.B.data(), a.LDB, &iters);
+  if (iters != rank) {
+    a.A.resize((size_t)m * iters);
+    a.B.resize((size_t)n * iters);
+    a.R = iters;
+  }
+}
+
+void nbd::SampleP2Pi(Matrix& s, const Matrix& a) {
+  assert(a.R > 0);
+  drspl(s.M, a.N, a.R, a.A.data(), a.LDA, a.B.data(), a.LDB, s.N, s, s.LDA);
+}
+
+void nbd::SampleP2Pj(Matrix& s, const Matrix& a) {
+  assert(a.R > 0);
+  drspl(s.M, a.M, a.R, a.B.data(), a.LDB, a.A.data(), a.LDA, s.N, s, s.LDA);
+}
+
+void nbd::SampleParent(Matrix& s, int rank) {
+  std::vector<real_t> p = s.A;
+  if (rank > 0 && rank != s.N)
+    s.A.resize((size_t)s.LDA * rank);
+  if (s.N > 0)
+    ddspl(s.M, s.N, p.data(), s.LDA, rank, s, s.LDA);
+  else
+    std::fill(s.A.begin(), s.A.end(), 0.);
+  s.N = rank;
+}
+
+void nbd::CopyParentBasis(Matrix& sc, const Matrix& sp) {
+  if (sp.N > 0) {
+    sc = Matrix(sp.M, sp.N, sp.M);
+    if (sp.LDA == sp.M)
+      std::copy(sp.A.begin(), sp.A.end(), sc.A.begin());
+    else
+      for(size_t i = 0; i < sp.N; i++)
+        std::copy(sp.A.begin() + i * sp.LDA, sp.A.begin() + i * sp.LDA + sp.LDA, sc.A.begin() + i * sc.LDA);
+  }
+}
+
+void nbd::BasisOrth(Matrix& s) {
+  dorth(s.M, s.N, s, s.LDA);
+}
+
+void nbd::BasisInvLeft(const Matrix* s, int ls, Matrix& a) {
+  int m = a.M, n = a.R > 0 ? a.R : a.N, k = 0;
+  std::vector<real_t> b = a.A;
+  for (auto p = s; p != s + ls; p++)
+    k += p->N;
+  
+  if (k > 0) {
+    a.A.resize((size_t)k * n);
+    int off = 0;
+    for (auto p = s; p != s + ls; p++) {
+      dmul_ut(p->M, n, p->N, p->A.data(), p->LDA, b.data() + off, a.LDA, a + off, k);
+      off += p->N;
+    }
+    a.LDA = a.M = k;
+  }
+}
+
+void nbd::BasisInvRight(const Matrix& s, Matrix& a) {
+  assert(a.R > 0);
+  int m = a.N, n = a.R, k = s.N;
+  std::vector<real_t> b = a.B;
+
+  a.A.resize((size_t)k * n);
+  dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDB, a, k);
+  a.LDB = a.N = k;
+}
+
+void nbd::MergeS(Matrix& a) {
+  assert(a.R > 0);
+  int m = a.M, n = a.N, k = a.R;
+  std::vector<real_t> ua = a.A, va = a.B;
+  
+  a.A.resize((size_t)a.LDA * n);
+  a.B.clear();
+
+  dmul_s(m, n, k, ua.data(), a.LDA, va.data(), a.LDB, a, a.LDA);
+  a.N = n;
+  a.R = a.LDB = 0;
 }

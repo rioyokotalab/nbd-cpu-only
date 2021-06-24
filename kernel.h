@@ -14,10 +14,24 @@ namespace nbd {
 
   void mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, const real_t* x_vec, real_t* b_vec);
 
-  void P2P(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a);
+  void P2Pnear(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a);
 
-  void M2L(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& u, Matrix& v, int rank);
+  void P2Pfar(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a, int rank);
 
-  void P2M_L2P(eval_func_t r2f, int p, Cell* c, int dim);
+  void SampleP2Pi(Matrix& s, const Matrix& a);
+
+  void SampleP2Pj(Matrix& s, const Matrix& a);
+
+  void SampleParent(Matrix& s, int rank);
+
+  void CopyParentBasis(Matrix& sc, const Matrix& sp);
+
+  void BasisOrth(Matrix& s);
+
+  void BasisInvLeft(const Matrix* s, int ls, Matrix& a);
+
+  void BasisInvRight(const Matrix& s, Matrix& a);
+
+  void MergeS(Matrix& a);
 
 }

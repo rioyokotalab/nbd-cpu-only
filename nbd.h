@@ -37,8 +37,19 @@ namespace nbd {
     int M;
     int N;
     int LDA;
-    Matrix(int m = 0, int n = 0, int lda = 0) : M(m), N(n), LDA(std::max(lda, m)) 
+
+    std::vector<real_t> B;
+    int R;
+    int LDB;
+
+    Matrix() : M(0), N(0), LDA(0), R(0), LDB(0)
+      { }
+
+    Matrix(int m, int n, int lda) : M(m), N(n), LDA(std::max(lda, m)), R(0), LDB(0)
       { A.resize((size_t)LDA * N); }
+
+    Matrix(int m, int n, int r, int lda, int ldb) : M(m), N(n), LDA(std::max(lda, m)), R(r), LDB(std::max(ldb, n))
+      { A.resize((size_t)LDA * R); B.resize((size_t)LDB * R); }
 
     operator real_t*()
       { return A.data(); }
