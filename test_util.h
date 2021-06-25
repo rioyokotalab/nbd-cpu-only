@@ -15,6 +15,8 @@ namespace nbd {
 
   void printTree(const Cell* cell, int level = 0, int offset_c = 0, int offset_b = 0);
 
+  void convertHmat2Dense(const Cells& icells, const Cells& jcells, const Matrices& d, real_t* a, int lda);
+
   real_t rel2err(const real_t* a, const real_t* ref, int m, int n, int lda, int ldref);
 
 

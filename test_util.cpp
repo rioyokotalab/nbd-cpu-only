@@ -40,6 +40,38 @@ void nbd::vecRandom(real_t* a, int n, int inc, real_t min, real_t max, unsigned 
 }
 
 
+void nbd::convertHmat2Dense(const Cells& icells, const Cells& jcells, const Matrices& d, real_t* a, int lda) {
+  auto j_begin = jcells[0].BODY;
+  auto i_begin = icells[0].BODY;
+  int ld = (int)icells.size();
+
+  for (auto& i : icells) {
+    auto y = &i - icells.data();
+    auto yi = i.BODY - i_begin;
+    for (auto& j : i.listNear) {
+      auto _x = j - &jcells[0];
+      auto xi = j->BODY - j_begin;
+      const Matrix& m = d[y + _x * ld];
+      for (int jj = 0; jj < m.N; jj++)
+        for (int ii = 0; ii < m.M; ii++)
+          a[ii + yi + (jj + xi) * lda] = m.A[ii + (size_t)jj * m.LDA];
+    }
+    for (auto& j : i.listFar) {
+      auto _x = j - &jcells[0];
+      auto xi = j->BODY - j_begin;
+      const Matrix& m = d[y + _x * ld];
+      for (int jj = 0; jj < m.N; jj++)
+        for (int ii = 0; ii < m.M; ii++) {
+          double e = 0.;
+          for (int k = 0; k < m.R; k++)
+            e += m.A[ii + (size_t)k * m.LDA] * m.B[jj + (size_t)k * m.LDB];
+          a[ii + yi + (jj + xi) * lda] = e;
+        }
+    }
+  }
+}
+
+
 void nbd::printTree(const Cell* cell, int level, int offset_c, int offset_b) {
   for (int i = 0; i < level; i++)
     printf("  ");
