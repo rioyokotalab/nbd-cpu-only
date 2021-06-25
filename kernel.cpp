@@ -96,40 +96,40 @@ void nbd::BasisOrth(Matrix& s) {
 
 void nbd::BasisInvLeft(const Matrix& s, Matrix& a) {
   if (a.R > 0) {
-    int m = a.M, n = a.R, k = s.N;
+    int m = s.N, n = a.R, k = s.M;
     std::vector<real_t> b = a.A;
 
-    a.A.resize((size_t)k * n);
-    dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDA, a.A.data(), k);
-    a.LDA = a.M = k;
+    a.A.resize((size_t)m * n);
+    dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDA, a.A.data(), m);
+    a.LDA = a.M = m;
   }
 }
 
 void nbd::BasisInvRight(const Matrix& s, Matrix& a) {
   if (a.R > 0) {
-    int m = a.N, n = a.R, k = s.N;
+    int m = s.N, n = a.R, k = s.M;
     std::vector<real_t> b = a.B;
 
-    a.B.resize((size_t)k * n);
-    dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDB, a.B.data(), k);
-    a.LDB = a.N = k;
+    a.B.resize((size_t)m * n);
+    dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDB, a.B.data(), m);
+    a.LDB = a.N = m;
   }
 }
 
 void nbd::BasisInvMultipleLeft(const Matrix* s, int ls, Matrix& a) {
-  int m = a.M, n = a.N, k = 0;
+  int m = 0, n = a.N, k = a.M;
   for (auto p = s; p != s + ls; p++)
-    k += p->N;
+    m += p->N;
   std::vector<real_t> b = a.A;
 
-  a.A.resize((size_t)k * n);
+  a.A.resize((size_t)m * n);
   int off_a = 0, off_b = 0;
   for (auto p = s; p != s + ls; p++) {
-    dmul_ut(p->M, n, p->N, p->A.data(), p->LDA, b.data() + off_b, a.LDA, a + off_a, k);
+    dmul_ut(p->N, n, p->M, p->A.data(), p->LDA, b.data() + off_b, a.LDA, a + off_a, m);
     off_a += p->N;
     off_b += p->M;
   }
-  a.LDA = a.M = k;
+  a.LDA = a.M = m;
 }
 
 void nbd::MergeS(Matrix& a) {

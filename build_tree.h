@@ -14,9 +14,9 @@ namespace nbd {
 
   void traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank);
 
-  void sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base);
+  void sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p);
 
-  void sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base);
+  void sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p);
 
   void sample_base_recur(Cell* cell, Matrix* base);
 
@@ -26,9 +26,9 @@ namespace nbd {
 
   void nest_base(Cell* icell, Matrix* base);
 
-  void traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base);
+  void traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p);
 
-  void traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base);
+  void traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p);
 
   void shared_epilogue(Matrices& d);
 

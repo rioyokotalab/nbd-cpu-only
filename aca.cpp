@@ -157,7 +157,7 @@ void nbd::ddspl(int m, int na, const double* a, int lda, int ns, double* s, int 
   std::vector<double> work((size_t)m * ns);
 
   for (auto& i : rnd)
-    i = rand(0, 1);
+    i = rand(-1, 1);
 
   mkl_domatcopy('C', 'N', m, ns, 1., s, lds, &work[0], m);
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, ns, na, 1., a, lda, &rnd[0], na, 1., &work[0], m);
@@ -169,7 +169,7 @@ void nbd::drspl(int m, int na, int r, const double* ua, int ldu, const double* v
   std::vector<double> work((size_t)ns * r);
 
   for (auto& i : rnd)
-    i = rand(0, 1);
+    i = rand(-1, 1);
 
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, ns, r, na, 1., &rnd[0], ns, va, ldv, 0., &work[0], ns);
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, m, ns, r, 1., ua, ldu, &work[0], ns, 1., s, lds);
@@ -183,7 +183,7 @@ void nbd::dorth(int m, int n, double* a, int lda) {
 }
 
 void nbd::dmul_ut(int m, int n, int k, const double* u, int ldu, const double* a, int lda, double* c, int ldc) {
-  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, k, n, m, 1., u, ldu, a, lda, 0., c, ldc);
+  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, m, n, k, 1., u, ldu, a, lda, 0., c, ldc);
 }
 
 void nbd::dmul_s(int m, int n, int k, const double* u, int ldu, const double* v, int ldv, double* s, int lds) {

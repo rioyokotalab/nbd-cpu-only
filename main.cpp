@@ -14,14 +14,14 @@ int main(int argc, char* argv[]) {
 
   using namespace nbd;
 
-  int m = 512;
+  int m = 1024;
   int dim = 2;
-  int leaf = 64;
+  int leaf = 128;
 
   Bodies b1(m);
   auto fun = l2d();
 
-  initRandom(b1, m, dim, 0, 1., 144);
+  initRandom(b1, m, dim, 0, 1., 100);
 
   Cells c1 = buildTree(b1, leaf, dim);
 
@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
   }
 
   printTree(&c1[0]);
-  traverse_i(c1, c1, d, bi);
+  traverse_i(c1, c1, d, bi, 10);
   shared_epilogue(d);
 
   {

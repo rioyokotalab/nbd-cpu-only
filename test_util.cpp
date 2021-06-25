@@ -130,8 +130,6 @@ void nbd::convertH2mat2Dense(const Cells& icells, const Cells& jcells, const Mat
   Matrices ibase_full(icells.size()), jbase_full(jcells.size());
   convertFullBase(&icells[0], &ibase[0], &ibase_full[0]);
   convertFullBase(&jcells[0], &jbase[0], &jbase_full[0]);
-  //ibase_full = ibase;
-  //jbase_full = jbase;
 
   for (auto& i : icells) {
     auto y = &i - icells.data();

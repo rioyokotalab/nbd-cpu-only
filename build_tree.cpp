@@ -162,7 +162,7 @@ void nbd::traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matri
 }
 
 
-void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base) {
+void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p) {
   for (auto& i : icells) {
     auto y = &i - icells.data();
     int r = 0;
@@ -172,7 +172,8 @@ void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
     }
 
     if (r > 0) {
-      base[y] = Matrix(i.NBODY, r, i.NBODY);
+      int osp = std::min(i.NBODY, r + p);
+      base[y] = Matrix(i.NBODY, osp, i.NBODY);
       std::fill(base[y].A.begin(), base[y].A.end(), 0);
     }
 
@@ -184,7 +185,7 @@ void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
   }
 }
 
-void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base) {
+void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p) {
   for (auto& j : jcells) {
     auto x = &j - jcells.data();
     int r = 0;
@@ -194,7 +195,8 @@ void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
     }
 
     if (r > 0) {
-      base[x] = Matrix(j.NBODY, r, j.NBODY);
+      int osp = std::min(j.NBODY, r + p);
+      base[x] = Matrix(j.NBODY, osp, j.NBODY);
       std::fill(base[x].A.begin(), base[x].A.end(), 0);
     }
 
@@ -212,8 +214,10 @@ void nbd::sample_base_recur(Cell* cell, Matrix* base) {
   int c_off = 0;
   for (Cell* c = cell->CHILD; c != cell->CHILD + cell->NCHILD; c++) {
     auto i = c - cell;
-    if (base[i].N == 0 && base->N > 0)
+    if (base[i].N == 0 && base->N > 0) {
       base[i] = Matrix(c->NBODY, base->N, c->NBODY);
+      std::fill(base[i].A.begin(), base[i].A.end(), 0);
+    }
     if (base->N > 0)
       SampleParent(base[i], *base, c_off);
     sample_base_recur(c, base + i);
@@ -221,7 +225,6 @@ void nbd::sample_base_recur(Cell* cell, Matrix* base) {
   }
 
 }
-
 
 void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, bool symm) {
   for (auto& i : icells) {
@@ -272,20 +275,20 @@ void nbd::nest_base(Cell* icell, Matrix* base) {
   }
 }
 
-void nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) {
+void nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
   int ld = (int)icells.size();
   base.resize(icells.size());
-  sample_base_i(icells, jcells, d, ld, base);
+  sample_base_i(icells, jcells, d, ld, base, p);
   sample_base_recur(&icells[0], &base[0]);
 
   shared_base_i(icells, jcells, d, ld, base, &icells == &jcells);
   nest_base(&icells[0], &base[0]);
 }
 
-void nbd::traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) {
+void nbd::traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
   int ld = (int)icells.size();
   base.resize(jcells.size());
-  sample_base_j(icells, jcells, d, ld, base);
+  sample_base_j(icells, jcells, d, ld, base, p);
   sample_base_recur(&jcells[0], &base[0]);
   shared_base_j(icells, jcells, d, ld, base);
   nest_base(&jcells[0], &base[0]);
