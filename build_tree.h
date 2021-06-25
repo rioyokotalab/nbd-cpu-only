@@ -8,15 +8,17 @@ namespace nbd {
 
   Cells buildTree(Bodies& bodies, int ncrit, int dim);
 
-  void getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool write_j);
+  void getList(Cell * Ci, Cell * Cj, int dim, real_t theta);
 
   void evaluate(eval_func_t r2f, Cells& cells, const Cell* jcell_start, int dim, Matrices& d, int rank);
 
   void traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank);
 
-  void sample_base_i(Cell* icell, Matrices& d, int ld, Matrix* base, int rank_p, const Cell* icell_start, const Cell* jcell_start);
+  void sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base);
 
-  void sample_base_j(Cell* icell, Matrices& d, int ld, Matrix* base, int rank_p, const Cell* icell_start, const Cell* jcell_start);
+  void sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base);
+
+  void sample_base_recur(Cell* cell, Matrix* base);
 
   void shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, bool symm);
 

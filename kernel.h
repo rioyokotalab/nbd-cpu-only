@@ -22,15 +22,15 @@ namespace nbd {
 
   void SampleP2Pj(Matrix& s, const Matrix& a);
 
-  void SampleParent(Matrix& s, int rank);
-
-  void CopyParentBasis(Matrix& sc, const Matrix& sp);
+  void SampleParent(Matrix& sc, const Matrix& sp, int c_off);
 
   void BasisOrth(Matrix& s);
 
-  void BasisInvLeft(const Matrix* s, int ls, Matrix& a);
+  void BasisInvLeft(const Matrix& s, Matrix& a);
 
   void BasisInvRight(const Matrix& s, Matrix& a);
+
+  void BasisInvMultipleLeft(const Matrix* s, int ls, Matrix& a);
 
   void MergeS(Matrix& a);
 

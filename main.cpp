@@ -16,12 +16,12 @@ int main(int argc, char* argv[]) {
 
   int m = 512;
   int dim = 2;
-  int leaf = 128;
+  int leaf = 64;
 
   Bodies b1(m);
   auto fun = l2d();
 
-  initRandom(b1, m, dim, 0, 1, 144);
+  initRandom(b1, m, dim, 0, 1., 144);
 
   Cells c1 = buildTree(b1, leaf, dim);
 
@@ -35,6 +35,7 @@ int main(int argc, char* argv[]) {
     printf("%e\n", rel2err(&a_rebuilt[0], &a_ref[0], m, m, m, m));
   }
 
+  printTree(&c1[0]);
   traverse_i(c1, c1, d, bi);
   shared_epilogue(d);
 
@@ -46,7 +47,6 @@ int main(int argc, char* argv[]) {
 
   }
 
-  printTree(&c1[0]);
 
   std::vector<double> x(m), b(m);
   vecRandom(&x[0], m, 1, 0, 1);

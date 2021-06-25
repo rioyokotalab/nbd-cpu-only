@@ -85,26 +85,8 @@ void nbd::SampleP2Pj(Matrix& s, const Matrix& a) {
     drspl(s.M, a.M, a.R, a.B.data(), a.LDB, a.A.data(), a.LDA, s.N, s, s.LDA);
 }
 
-void nbd::SampleParent(Matrix& s, int rank) {
-  std::vector<real_t> p = s.A;
-  if (rank > 0 && rank != s.N)
-    s.A.resize((size_t)s.LDA * rank);
-  if (s.N > 0)
-    ddspl(s.M, s.N, p.data(), s.LDA, rank, s, s.LDA);
-  else
-    std::fill(s.A.begin(), s.A.end(), 0.);
-  s.N = rank;
-}
-
-void nbd::CopyParentBasis(Matrix& sc, const Matrix& sp) {
-  if (sp.N > 0) {
-    sc = Matrix(sp.M, sp.N, sp.M);
-    if (sp.LDA == sp.M)
-      std::copy(sp.A.begin(), sp.A.end(), sc.A.begin());
-    else
-      for(size_t i = 0; i < sp.N; i++)
-        std::copy(sp.A.begin() + i * sp.LDA, sp.A.begin() + i * sp.LDA + sp.LDA, sc.A.begin() + i * sc.LDA);
-  }
+void nbd::SampleParent(Matrix& sc, const Matrix& sp, int c_off) {
+  ddspl(sc.M, sp.N, sp.A.data() + c_off, sp.LDA, sc.N, sc, sc.LDA);
 }
 
 void nbd::BasisOrth(Matrix& s) {
@@ -112,19 +94,13 @@ void nbd::BasisOrth(Matrix& s) {
     dorth(s.M, s.N, s, s.LDA);
 }
 
-void nbd::BasisInvLeft(const Matrix* s, int ls, Matrix& a) {
-  int m = a.M, n = a.R > 0 ? a.R : a.N, k = 0;
-  std::vector<real_t> b = a.A;
-  for (auto p = s; p != s + ls; p++)
-    k += p->N;
-  
-  if (k > 0) {
+void nbd::BasisInvLeft(const Matrix& s, Matrix& a) {
+  if (a.R > 0) {
+    int m = a.M, n = a.R, k = s.N;
+    std::vector<real_t> b = a.A;
+
     a.A.resize((size_t)k * n);
-    int off = 0;
-    for (auto p = s; p != s + ls; p++) {
-      dmul_ut(p->M, n, p->N, p->A.data(), p->LDA, b.data() + off, a.LDA, a + off, k);
-      off += p->N;
-    }
+    dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDA, a.A.data(), k);
     a.LDA = a.M = k;
   }
 }
@@ -138,6 +114,22 @@ void nbd::BasisInvRight(const Matrix& s, Matrix& a) {
     dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDB, a.B.data(), k);
     a.LDB = a.N = k;
   }
+}
+
+void nbd::BasisInvMultipleLeft(const Matrix* s, int ls, Matrix& a) {
+  int m = a.M, n = a.N, k = 0;
+  for (auto p = s; p != s + ls; p++)
+    k += p->N;
+  std::vector<real_t> b = a.A;
+
+  a.A.resize((size_t)k * n);
+  int off_a = 0, off_b = 0;
+  for (auto p = s; p != s + ls; p++) {
+    dmul_ut(p->M, n, p->N, p->A.data(), p->LDA, b.data() + off_b, a.LDA, a + off_a, k);
+    off_a += p->N;
+    off_b += p->M;
+  }
+  a.LDA = a.M = k;
 }
 
 void nbd::MergeS(Matrix& a) {

@@ -74,7 +74,7 @@ void nbd::convertHmat2Dense(const Cells& icells, const Cells& jcells, const Matr
 
 void nbd::convertFullBase(const Cell* cell, const Matrix* base, Matrix* base_full) {
   if (cell->NCHILD == 0) {
-    *base_full = Matrix(base->M, base->N, base->LDA);
+    *base_full = Matrix(base->M, base->N, base->M);
     std::copy(base->A.begin(), base->A.end(), base_full->A.begin());
     return;
   }
@@ -84,19 +84,20 @@ void nbd::convertFullBase(const Cell* cell, const Matrix* base, Matrix* base_ful
     convertFullBase(c, base + i, base_full + i);
   }
 
-  *base_full = Matrix(cell->NBODY, base->N, base->LDA);
-  int y_off = 0;
+  *base_full = Matrix(cell->NBODY, base->N, cell->NBODY);
+  int y_off = 0, k_off = 0;
   for (auto c = cell->CHILD; c != cell->CHILD + cell->NCHILD; c++) {
     auto i = c - cell;
     for (int jj = 0; jj < base->N; jj++)
       for (int ii = 0; ii < c->NBODY; ii++) {
         double e = 0.;
-        for (int k = 0; k < base->M; k++)
-          e += base_full[i].A[ii + (size_t)k * base_full[i].LDA] * base->A[jj + (size_t)k * base->LDA];
-        real_t* bf = &base_full->A[y_off];
+        for (int k = 0; k < base_full[i].N; k++)
+          e += base_full[i].A[ii + (size_t)k * base_full[i].LDA] * base->A[k_off + k + (size_t)jj * base->LDA];
+        real_t* bf = &(base_full->A)[y_off];
         bf[ii + (size_t)jj * base_full->LDA] = e;
       }
-    y_off += base[i].M;
+    k_off += base_full[i].N;
+    y_off += c->NBODY;
   }
 }
 
@@ -129,6 +130,8 @@ void nbd::convertH2mat2Dense(const Cells& icells, const Cells& jcells, const Mat
   Matrices ibase_full(icells.size()), jbase_full(jcells.size());
   convertFullBase(&icells[0], &ibase[0], &ibase_full[0]);
   convertFullBase(&jcells[0], &jbase[0], &jbase_full[0]);
+  //ibase_full = ibase;
+  //jbase_full = jbase;
 
   for (auto& i : icells) {
     auto y = &i - icells.data();
