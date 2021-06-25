@@ -31,6 +31,14 @@ void nbd::initRandom(Bodies& b, int m, int dim, real_t min, real_t max, unsigned
   }
 }
 
+void nbd::vecRandom(real_t* a, int n, int inc, real_t min, real_t max, unsigned int seed) {
+  if (seed)
+    std::srand(seed);
+  for (int i = 0; i < n; i++) {
+    a[i * inc] = (max - min) * ((real_t)std::rand() / RAND_MAX) + min;
+  }
+}
+
 
 void nbd::printTree(const Cell* cell, int level, int offset_c, int offset_b) {
   for (int i = 0; i < level; i++)

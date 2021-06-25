@@ -272,7 +272,7 @@ void nbd::nest_base(Cell* icell, Matrix* base) {
 
 void nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) {
   int ld = (int)icells.size();
-  base.resize(ld);
+  base.resize(icells.size());
   sample_base_i(&icells[0], d, ld, &base[0], 0, &icells[0], &jcells[0]);
   shared_base_i(icells, jcells, d, ld, base);
   if (&icells == &jcells)
@@ -282,7 +282,7 @@ void nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) 
 
 void nbd::traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) {
   int ld = (int)icells.size();
-  base.resize(ld);
+  base.resize(jcells.size());
   sample_base_j(&jcells[0], d, ld, &base[0], 0, &icells[0], &jcells[0]);
   shared_base_j(icells, jcells, d, ld, base, true);
   nest_base(&jcells[0], &base[0]);

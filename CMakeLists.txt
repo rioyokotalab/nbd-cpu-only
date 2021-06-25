@@ -21,6 +21,7 @@ add_library(nbd STATIC
   kernel.cpp kernel.h
   build_tree.cpp build_tree.h 
   aca.cpp aca.h
+  h2mv.cpp h2mv.h
   test_util.cpp test_util.h
 )
 target_include_directories(nbd PRIVATE "./" )

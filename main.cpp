@@ -2,6 +2,7 @@
 #include "build_tree.h"
 #include "kernel.h"
 #include "aca.h"
+#include "h2mv.h"
 #include "test_util.h"
 
 #include <cstdio>
@@ -19,11 +20,7 @@ int main(int argc, char* argv[]) {
   Bodies b1(m);
   auto fun = l2d();
 
-  std::srand(199);
-  for (auto& i : b1) {
-    for (int x = 0; x < dim; x++)
-	    i.X[x] = 1 * ((real_t)std::rand() / RAND_MAX);
-  }
+  initRandom(b1, m, dim, 0, 1, 199);
 
   Cells c1 = buildTree(b1, leaf, dim);
 
@@ -33,6 +30,17 @@ int main(int argc, char* argv[]) {
   shared_epilogue(d);
 
   printTree(&c1[0]);
+
+  std::vector<double> x(m), b(m);
+  vecRandom(&x[0], m, 1, 0, 1);
+
+  h2mv_complete(c1, c1, bi, bi, d, &x[0], &b[0]);
+
+  std::vector<double> b_ref(m);
+
+  mvec_kernel(fun, &c1[0], &c1[0], dim, &x[0], &b_ref[0]);
+
+  printf("%e\n", rel2err(&b[0], &b_ref[0], m, 1, m, m));
 
   return 0;
 }
