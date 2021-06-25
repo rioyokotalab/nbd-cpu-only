@@ -18,9 +18,9 @@ namespace nbd {
 
   void sample_base_j(Cell* icell, Matrices& d, int ld, Matrix* base, int rank_p, const Cell* icell_start, const Cell* jcell_start);
 
-  void shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base);
+  void shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, bool symm);
 
-  void shared_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, bool orth);
+  void shared_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base);
 
   void nest_base(Cell* icell, Matrix* base);
 

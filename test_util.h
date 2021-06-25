@@ -17,6 +17,12 @@ namespace nbd {
 
   void convertHmat2Dense(const Cells& icells, const Cells& jcells, const Matrices& d, real_t* a, int lda);
 
+  void convertFullBase(const Cell* cell, const Matrix* base, Matrix* base_full);
+
+  void mulUSV(const Matrix& u, const Matrix& v, const Matrix& s, real_t* a, int lda);
+
+  void convertH2mat2Dense(const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, const Matrices& d, real_t* a, int lda);
+
   real_t rel2err(const real_t* a, const real_t* ref, int m, int n, int lda, int ldref);
 
 

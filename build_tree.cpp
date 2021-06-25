@@ -233,25 +233,38 @@ void nbd::sample_base_j(Cell* jcell, Matrices& d, int ld, Matrix* base, int rank
 
 }
 
-void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base) {
+#include "test_util.h"
+
+void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, bool symm) {
   for (auto& i : icells) {
     auto y = &i - icells.data();
     BasisOrth(base[y]);
     for (auto& j : i.listFar) {
       auto x = j - jcells.data();
-      BasisInvLeft(base.data() + y, 1, d[y + x * ld]);
+      Matrix& m = d[y + x * ld];
+      BasisInvLeft(base.data() + y, 1, m);
     }
   }
+
+  if (symm)
+    for (auto& i : icells) {
+      auto y = &i - icells.data();
+      for (auto& j : i.listFar) {
+        auto x = j - jcells.data();
+        Matrix& m = d[y + x * ld];
+        BasisInvRight(base[x], m);
+      }
+    }
 }
 
-void nbd::shared_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, bool orth) {
-  for (auto& i : jcells) {
-    auto x = &i - jcells.data();
-    if (orth)
-      BasisOrth(base[x]);
-    for (auto& j : i.listFar) {
-      auto y = j - icells.data();
-      BasisInvRight(base[x], d[y + x * ld]);
+void nbd::shared_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base) {
+  for (auto& j : jcells) {
+    auto x = &j - jcells.data();
+    BasisOrth(base[x]);
+    for (auto& i : j.listFar) {
+      auto y = i - icells.data();
+      Matrix& m = d[y + x * ld];
+      BasisInvRight(base[x], m);
     }
   }
 }
@@ -274,9 +287,7 @@ void nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) 
   int ld = (int)icells.size();
   base.resize(icells.size());
   sample_base_i(&icells[0], d, ld, &base[0], 0, &icells[0], &jcells[0]);
-  shared_base_i(icells, jcells, d, ld, base);
-  if (&icells == &jcells)
-    shared_base_j(icells, jcells, d, ld, base, false);
+  shared_base_i(icells, jcells, d, ld, base, &icells == &jcells);
   nest_base(&icells[0], &base[0]);
 }
 
@@ -284,7 +295,7 @@ void nbd::traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) 
   int ld = (int)icells.size();
   base.resize(jcells.size());
   sample_base_j(&jcells[0], d, ld, &base[0], 0, &icells[0], &jcells[0]);
-  shared_base_j(icells, jcells, d, ld, base, true);
+  shared_base_j(icells, jcells, d, ld, base);
   nest_base(&jcells[0], &base[0]);
 }
 

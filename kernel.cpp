@@ -144,9 +144,9 @@ void nbd::MergeS(Matrix& a) {
   if (a.R > 0) {
     int m = a.M, n = a.N, k = a.R;
     std::vector<real_t> ua = a.A;
-    a.A.resize((size_t)a.LDA * n);
+    if (n != k)
+      a.A.resize((size_t)a.LDA * n);
     dmul_s(m, n, k, ua.data(), a.LDA, a.B.data(), a.LDB, a, a.LDA);
-    a.N = n;
     a.R = a.LDB = 0;
     a.B.clear();
   }
