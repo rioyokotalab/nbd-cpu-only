@@ -35,6 +35,25 @@ Bodies::iterator spart_size_k(Bodies::iterator first, Bodies::iterator last, int
     return first + k;
 }
 
+void spart_sdim(const real_t R[], int dim, int& sdim) {
+  sdim = 0;
+  real_t dmax = 0.;
+  for (int d = 0; d < dim; d++) {
+    if (R[d] > dmax)
+    { dmax = R[d]; sdim = d; }
+  }
+}
+
+void spart_median(real_t med, real_t& C1, real_t& C2, real_t& R1, real_t& R2) {
+  real_t Xmin = C1 - R1;
+  real_t Xmax = C1 + R1;
+  C1 = (Xmin + med) / 2;
+  C2 = (med + Xmax) / 2;
+  R1 = (med - Xmin) / 2;
+  R2 = (Xmax - med) / 2;
+}
+
+
 Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
 
   Cells cells(1);
@@ -43,17 +62,24 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
   cells[0].BODY = bodies.data();
   cells[0].NBODY = (int)bodies.size();
   cells[0].NCHILD = 0;
+
+  real_t Xmin[nbd::dim], Xmax[nbd::dim];
   for (int d = 0; d < dim; d++) 
-    cells[0].Xmin[d] = cells[0].Xmax[d] = bodies[0].X[d];
-  for (int b = 0; b < (int)bodies.size(); b++) {
+    Xmin[d] = Xmax[d] = bodies[0].X[d];
+  for (auto& b : bodies) {
     for (int d = 0; d < dim; d++) 
-      cells[0].Xmin[d] = std::fmin(bodies[b].X[d], cells[0].Xmin[d]);
+      Xmin[d] = std::fmin(b.X[d], Xmin[d]);
     for (int d = 0; d < dim; d++) 
-      cells[0].Xmax[d] = std::fmax(bodies[b].X[d], cells[0].Xmax[d]);
+      Xmax[d] = std::fmax(b.X[d], Xmax[d]);
+  }
+
+
+  for (int d = 0; d < dim; d++) {
+    cells[0].C[d] = (Xmin[d] + Xmax[d]) / 2;
+    cells[0].R[d] = std::fabs(Xmin[d] - Xmax[d]) / 2;
   }
 
   int nlis = ((int)bodies.size() + ncrit - 1) / ncrit, iters = 0;
-  int sdim = 0;
   while (nlis >>= 1) ++iters;
   int last_off = 0, last_len = 1;
 
@@ -64,6 +90,9 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
     for (int j = last_off; j < last_off + last_len; j++) {
       Cell& cell = cells[j];
       Bodies::iterator cell_b = bodies.begin() + std::distance(bodies.data(), cell.BODY);
+
+      int sdim;
+      spart_sdim(cell.R, dim, sdim);
 
 #ifdef PART_EQ_SIZE
       auto p = spart_size_k(cell_b, cell_b + cell.NBODY, sdim, cell.NBODY / 2);
@@ -88,24 +117,22 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
           child->NBODY = size[k];
           child->NCHILD = 0;
           for (int d = 0; d < dim; d++) {
-            child->Xmin[d] = cell.Xmin[d];
-            child->Xmax[d] = cell.Xmax[d];
+            child->C[d] = cell.C[d];
+            child->R[d] = cell.R[d];
           }
-          if ((k & 1) > 0)
-            child->Xmin[sdim] = med;
-          else
-            child->Xmax[sdim] = med;
           child = child + 1;
           offset += size[k];
         }
       }
+
+      if (cell.NCHILD == 2)
+        spart_median(med, cell.CHILD[0].C[sdim], cell.CHILD[1].C[sdim], cell.CHILD[0].R[sdim], cell.CHILD[1].R[sdim]);
 
       len += cell.NCHILD;
     }
 
     last_off += last_len;
     last_len = len;
-    sdim = sdim == dim - 1 ? 0 : sdim + 1;
   }
   return cells;
 }
@@ -114,15 +141,11 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
 void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta) {
   real_t dX = 0., CiR = 0., CjR = 0.;
   for (int d = 0; d < dim; d++) {
-    real_t CiC = (Ci->Xmin[d] + Ci->Xmax[d]) / 2;
-    real_t CjC = (Cj->Xmin[d] + Cj->Xmax[d]) / 2;
-    real_t diff = CiC - CjC;
+    real_t diff = Ci->C[d] - Cj->C[d];
     dX += diff * diff;
 
-    CiR = std::max(CiR, CiC - Ci->Xmin[d]);
-    CiR = std::max(CiR, - CiC + Ci->Xmax[d]);
-    CjR = std::max(CjR, CjC - Cj->Xmin[d]);
-    CjR = std::max(CjR, - CjC + Cj->Xmax[d]);
+    CiR = std::fmax(CiR, Ci->R[d]);
+    CjR = std::fmax(CjR, Cj->R[d]);
   }
   real_t R2 = dX * theta * theta;
 
@@ -215,7 +238,8 @@ void nbd::sample_base_recur(Cell* cell, Matrix* base) {
   for (Cell* c = cell->CHILD; c != cell->CHILD + cell->NCHILD; c++) {
     auto i = c - cell;
     if (base[i].N == 0 && base->N > 0) {
-      base[i] = Matrix(c->NBODY, base->N, c->NBODY);
+      int r = std::min(c->NBODY, base->N);
+      base[i] = Matrix(c->NBODY, r, c->NBODY);
       std::fill(base[i].A.begin(), base[i].A.end(), 0);
     }
     if (base->N > 0)

@@ -23,8 +23,8 @@ namespace nbd {
     int NBODY = 0;
     Cell* CHILD = NULL;
     Body* BODY = NULL;
-    real_t Xmin[dim];
-    real_t Xmax[dim];
+    real_t C[dim];
+    real_t R[dim];
 
     std::vector<Cell*> listFar;
     std::vector<Cell*> listNear;
@@ -52,6 +52,9 @@ namespace nbd {
       { A.resize((size_t)LDA * R); B.resize((size_t)LDB * R); }
 
     operator real_t*()
+      { return A.data(); }
+
+    operator const real_t*() const
       { return A.data(); }
   };
 
