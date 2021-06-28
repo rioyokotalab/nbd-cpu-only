@@ -216,7 +216,7 @@ void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
 
 void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p) {
 #pragma omp parallel for
-  for (int x = 0; x < icells.size(); x++) {
+  for (int x = 0; x < jcells.size(); x++) {
     auto j = jcells[x];
     int r = 0;
     for (auto& i : j.listFar) {
@@ -233,7 +233,7 @@ void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
     for (auto& i : j.listFar) {
       auto y = i - icells.data();
       Matrix& m = d[y + (size_t)x * ld];
-      SampleP2Pi(base[x], m);
+      SampleP2Pj(base[x], m);
     }
   }
 }
@@ -282,7 +282,7 @@ void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
 
 void nbd::shared_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base) {
 #pragma omp parallel for
-  for (int x = 0; x < icells.size(); x++) {
+  for (int x = 0; x < jcells.size(); x++) {
     auto j = jcells[x];
     BasisOrth(base[x]);
     for (auto& i : j.listFar) {

@@ -33,6 +33,12 @@ add_executable(symmh2_example
 target_link_libraries(symmh2_example nbd)
 target_include_directories(symmh2_example PRIVATE "./" )
 
+add_executable(h2_example
+  h2_example.cpp
+)
+target_link_libraries(h2_example nbd)
+target_include_directories(h2_example PRIVATE "./" )
+
 add_executable(lra_example
   lra_example.cpp
 )
