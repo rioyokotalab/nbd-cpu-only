@@ -40,8 +40,9 @@ void nbd::upwardPass(const Cell* jcell, const Matrix* base, const real_t* x, Mat
 void nbd::horizontalPass(const Cells& icells, const Cells& jcells, const Matrices& d, const Matrices& m, Matrices& l) {
   int ld = (int)icells.size();
 
-  for (auto& i : icells) {
-    auto y = &i - icells.data();
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
     double beta = 0.;
     for (auto& j : i.listFar) {
       auto x = j - &jcells[0];
@@ -85,8 +86,9 @@ void nbd::closeQuarter(const Cells& icells, const Cells& jcells, const Matrices&
   auto i_begin = icells[0].BODY;
   int ld = (int)icells.size();
 
-  for (auto& i : icells) {
-    auto y = &i - icells.data();
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
     auto yi = i.BODY - i_begin;
     for (auto& j : i.listNear) {
       auto _x = j - &jcells[0];

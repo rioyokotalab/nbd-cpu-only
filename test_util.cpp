@@ -45,8 +45,9 @@ void nbd::convertHmat2Dense(const Cells& icells, const Cells& jcells, const Matr
   auto i_begin = icells[0].BODY;
   int ld = (int)icells.size();
 
-  for (auto& i : icells) {
-    auto y = &i - icells.data();
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
     auto yi = i.BODY - i_begin;
     for (auto& j : i.listNear) {
       auto _x = j - &jcells[0];
@@ -131,8 +132,9 @@ void nbd::convertH2mat2Dense(const Cells& icells, const Cells& jcells, const Mat
   convertFullBase(&icells[0], &ibase[0], &ibase_full[0]);
   convertFullBase(&jcells[0], &jbase[0], &jbase_full[0]);
 
-  for (auto& i : icells) {
-    auto y = &i - icells.data();
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
     auto yi = i.BODY - i_begin;
     for (auto& j : i.listNear) {
       auto _x = j - &jcells[0];

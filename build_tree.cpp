@@ -138,7 +138,7 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
 }
 
 
-void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta) {
+void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm) {
   real_t dX = 0., CiR = 0., CjR = 0.;
   for (int d = 0; d < dim; d++) {
     real_t diff = Ci->C[d] - Cj->C[d];
@@ -151,22 +151,27 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta) {
 
   if (R2 > (CiR + CjR) * (CiR + CjR)) {
     Ci->listFar.push_back(Cj);
+    if (!symm)
+      Cj->listFar.push_back(Ci);
   } else if (Ci->NCHILD == 0 && Cj->NCHILD == 0) {
     Ci->listNear.push_back(Cj);
+    if (!symm)
+      Cj->listNear.push_back(Ci);
   } else if (Cj->NCHILD == 0 || (CiR >= CjR && Ci->NCHILD != 0)) {
     for (Cell * ci=Ci->CHILD; ci!=Ci->CHILD+Ci->NCHILD; ci++) {
-      getList(ci, Cj, dim, theta);
+      getList(ci, Cj, dim, theta, symm);
     }
   } else {
     for (Cell * cj=Cj->CHILD; cj!=Cj->CHILD+Cj->NCHILD; cj++) {
-      getList(Ci, cj, dim, theta);
+      getList(Ci, cj, dim, theta, symm);
     }
   }
 }
 
 void nbd::evaluate(eval_func_t r2f, Cells& cells, const Cell* jcell_start, int dim, Matrices& d, int rank) {
-  for (auto& i : cells) {
-    auto y = &i - cells.data();
+#pragma omp parallel for
+  for (int y = 0; y < cells.size(); y++) {
+    auto i = cells[y];
     for (auto& j : i.listFar) {
       auto x = j - jcell_start;
       P2Pfar(r2f, &i, j, dim, d[y + x * cells.size()], rank);
@@ -179,15 +184,16 @@ void nbd::evaluate(eval_func_t r2f, Cells& cells, const Cell* jcell_start, int d
 }
 
 void nbd::traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank) {
-  getList(&icells[0], &jcells[0], dim, theta);
+  getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells);
   d.resize(icells.size() * jcells.size());
   evaluate(r2f, icells, &jcells[0], dim, d, rank);
 }
 
 
 void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p) {
-  for (auto& i : icells) {
-    auto y = &i - icells.data();
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
     int r = 0;
     for (auto& j : i.listFar) {
       auto x = j - jcells.data();
@@ -209,12 +215,13 @@ void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
 }
 
 void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p) {
-  for (auto& j : jcells) {
-    auto x = &j - jcells.data();
+#pragma omp parallel for
+  for (int x = 0; x < icells.size(); x++) {
+    auto j = jcells[x];
     int r = 0;
     for (auto& i : j.listFar) {
       auto y = i - icells.data();
-      r = std::max(r, d[y + x * ld].R);
+      r = std::max(r, d[y + (size_t)x * ld].R);
     }
 
     if (r > 0) {
@@ -225,7 +232,7 @@ void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
 
     for (auto& i : j.listFar) {
       auto y = i - icells.data();
-      Matrix& m = d[y + x * ld];
+      Matrix& m = d[y + (size_t)x * ld];
       SampleP2Pi(base[x], m);
     }
   }
@@ -251,8 +258,9 @@ void nbd::sample_base_recur(Cell* cell, Matrix* base) {
 }
 
 void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, bool symm) {
-  for (auto& i : icells) {
-    auto y = &i - icells.data();
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
     BasisOrth(base[y]);
     for (auto& j : i.listFar) {
       auto x = j - jcells.data();
@@ -273,8 +281,9 @@ void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
 }
 
 void nbd::shared_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base) {
-  for (auto& j : jcells) {
-    auto x = &j - jcells.data();
+#pragma omp parallel for
+  for (int x = 0; x < icells.size(); x++) {
+    auto j = jcells[x];
     BasisOrth(base[x]);
     for (auto& i : j.listFar) {
       auto y = i - icells.data();

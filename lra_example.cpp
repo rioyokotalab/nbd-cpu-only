@@ -1,6 +1,5 @@
 
 #include "aca.h"
-#include "kernel.h"
 #include "test_util.h"
 
 #include <cmath>

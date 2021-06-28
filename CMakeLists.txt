@@ -27,11 +27,11 @@ add_library(nbd STATIC
 target_include_directories(nbd PRIVATE "./" )
 target_link_libraries(nbd mkl_intel_lp64 mkl_sequential mkl_core)
 
-add_executable(main
-  main.cpp
+add_executable(symmh2_example
+  symmh2_example.cpp
 )
-target_link_libraries(main nbd)
-target_include_directories(main PRIVATE "./" )
+target_link_libraries(symmh2_example nbd)
+target_include_directories(symmh2_example PRIVATE "./" )
 
 add_executable(lra_example
   lra_example.cpp
