@@ -98,7 +98,7 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
       auto p = spart_size_k(cell_b, cell_b + cell.NBODY, sdim, cell.NBODY / 2);
       real_t med = p->X[sdim];
 #else
-      real_t med = (cell.Xmin[sdim] + cell.Xmax[sdim]) / 2;
+      real_t med = cell.C[sdim];
       auto p = spart(cell_b, cell_b + cell.NBODY, sdim, med);
 #endif
       int size[2];
@@ -269,15 +269,17 @@ void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
     }
   }
 
-  if (symm)
-    for (auto& i : icells) {
-      auto y = &i - icells.data();
+  if (symm) {
+#pragma omp parallel for
+    for (int y = 0; y < icells.size(); y++) {
+      auto i = icells[y];
       for (auto& j : i.listFar) {
         auto x = j - jcells.data();
         Matrix& m = d[y + x * ld];
         BasisInvRight(base[x], m);
       }
     }
+  }
 }
 
 void nbd::shared_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base) {
