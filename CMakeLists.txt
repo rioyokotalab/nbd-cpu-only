@@ -23,6 +23,7 @@ add_library(nbd STATIC
   aca.cpp aca.h
   h2mv.cpp h2mv.h
   test_util.cpp test_util.h
+  timer.cpp timer.h
 )
 target_include_directories(nbd PRIVATE "./" )
 target_link_libraries(nbd mkl_intel_lp64 mkl_sequential mkl_core)
