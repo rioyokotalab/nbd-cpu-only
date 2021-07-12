@@ -13,13 +13,13 @@ namespace nbd {
 
   void vecRandom(real_t* a, int n, int inc, real_t min, real_t max, unsigned int seed = 0);
 
-  void convertHmat2Dense(const Cells& icells, const Cells& jcells, const Matrices& d, real_t* a, int lda);
+  void convertHmat2Dense(eval_func_t r2f, int dim, const Cells& icells, const Cells& jcells, const Matrices& d, real_t* a, int lda);
 
   void convertFullBase(const Cell* cell, const Matrix* base, Matrix* base_full);
 
   void mulUSV(const Matrix& u, const Matrix& v, const Matrix& s, real_t* a, int lda);
 
-  void convertH2mat2Dense(const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, const Matrices& d, real_t* a, int lda);
+  void convertH2mat2Dense(eval_func_t r2f, int dim, const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, const Matrices& d, real_t* a, int lda);
 
   void printMatrixDim(const Matrix& a);
 

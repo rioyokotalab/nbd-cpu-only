@@ -176,10 +176,6 @@ void nbd::evaluate(eval_func_t r2f, Cells& cells, const Cell* jcell_start, int d
       auto x = j - jcell_start;
       P2Pfar(r2f, &i, j, dim, d[y + x * cells.size()], rank);
     }
-    for (auto& j : i.listNear) {
-      auto x = j - jcell_start;
-      P2Pnear(r2f, &i, j, dim, d[y + x * cells.size()]);
-    }
   }
 }
 
@@ -190,7 +186,8 @@ void nbd::traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matri
 }
 
 
-void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p) {
+void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
+  int ld = (int)icells.size();
 #pragma omp parallel for
   for (int y = 0; y < icells.size(); y++) {
     auto i = icells[y];
@@ -208,13 +205,14 @@ void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
 
     for (auto& j : i.listFar) {
       auto x = j - jcells.data();
-      Matrix& m = d[y + x * ld];
+      Matrix& m = d[y + (size_t)x * ld];
       SampleP2Pi(base[y], m);
     }
   }
 }
 
-void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, int p) {
+void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
+  int ld = (int)icells.size();
 #pragma omp parallel for
   for (int x = 0; x < jcells.size(); x++) {
     auto j = jcells[x];
@@ -257,7 +255,8 @@ void nbd::sample_base_recur(Cell* cell, Matrix* base) {
 
 }
 
-void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base, bool symm) {
+void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, bool symm) {
+  int ld = (int)icells.size();
 #pragma omp parallel for
   for (int y = 0; y < icells.size(); y++) {
     auto i = icells[y];
@@ -275,21 +274,22 @@ void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, int ld, Matri
       auto i = icells[y];
       for (auto& j : i.listFar) {
         auto x = j - jcells.data();
-        Matrix& m = d[y + x * ld];
+        Matrix& m = d[y + (size_t)x * ld];
         BasisInvRight(base[x], m);
       }
     }
   }
 }
 
-void nbd::shared_base_j(Cells& icells, Cells& jcells, Matrices& d, int ld, Matrices& base) {
+void nbd::shared_base_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) {
+  int ld = (int)icells.size();
 #pragma omp parallel for
   for (int x = 0; x < jcells.size(); x++) {
     auto j = jcells[x];
     BasisOrth(base[x]);
     for (auto& i : j.listFar) {
       auto y = i - icells.data();
-      Matrix& m = d[y + x * ld];
+      Matrix& m = d[y + (size_t)x * ld];
       BasisInvRight(base[x], m);
     }
   }
@@ -311,21 +311,19 @@ void nbd::nest_base(Cell* icell, Matrix* base) {
 }
 
 void nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
-  int ld = (int)icells.size();
   base.resize(icells.size());
-  sample_base_i(icells, jcells, d, ld, base, p);
+  sample_base_i(icells, jcells, d, base, p);
   sample_base_recur(&icells[0], &base[0]);
 
-  shared_base_i(icells, jcells, d, ld, base, &icells == &jcells);
+  shared_base_i(icells, jcells, d, base, &icells == &jcells);
   nest_base(&icells[0], &base[0]);
 }
 
 void nbd::traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
-  int ld = (int)icells.size();
   base.resize(jcells.size());
-  sample_base_j(icells, jcells, d, ld, base, p);
+  sample_base_j(icells, jcells, d, base, p);
   sample_base_recur(&jcells[0], &base[0]);
-  shared_base_j(icells, jcells, d, ld, base);
+  shared_base_j(icells, jcells, d, base);
   nest_base(&jcells[0], &base[0]);
 }
 

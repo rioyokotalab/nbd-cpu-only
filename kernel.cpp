@@ -35,7 +35,7 @@ void nbd::eval(eval_func_t r2f, const Body* bi, const Body* bj, int dim, real_t*
 }
 
 
-void nbd::mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, const real_t* x_vec, real_t* b_vec) {
+void nbd::mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, real_t alpha, const real_t* x_vec, int incx, real_t beta, real_t* b_vec, int incb) {
   int m = ci->NBODY, n = cj->NBODY;
 
   for (int y = 0; y < m; y++) {
@@ -43,9 +43,9 @@ void nbd::mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, 
     for (int x = 0; x < n; x++) {
       real_t r2;
       eval(r2f, ci->BODY + y, cj->BODY + x, dim, &r2);
-      sum += r2 * x_vec[x];
+      sum += r2 * x_vec[x * incx];
     }
-    b_vec[y] = sum;
+    b_vec[y * incb] = alpha * sum + beta * b_vec[y * incb];
   }
 }
 

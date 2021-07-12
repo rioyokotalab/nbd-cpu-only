@@ -1,5 +1,6 @@
 
 #include "h2mv.h"
+#include "kernel.h"
 
 #include "mkl.h"
 
@@ -81,10 +82,9 @@ void nbd::downwardPass(const Cell* icell, const Matrix* base, Matrix* l, real_t*
   }
 }
 
-void nbd::closeQuarter(const Cells& icells, const Cells& jcells, const Matrices& d, const real_t* x, real_t* b) {
+void nbd::closeQuarter(eval_func_t r2f, const Cells& icells, const Cells& jcells, int dim, const Matrices& d, const real_t* x, real_t* b) {
   auto j_begin = jcells[0].BODY;
   auto i_begin = icells[0].BODY;
-  int ld = (int)icells.size();
 
 #pragma omp parallel for
   for (int y = 0; y < icells.size(); y++) {
@@ -93,14 +93,13 @@ void nbd::closeQuarter(const Cells& icells, const Cells& jcells, const Matrices&
     for (auto& j : i.listNear) {
       auto _x = j - &jcells[0];
       auto xi = j->BODY - j_begin;
-      const Matrix& a = d[y + _x * ld];
-      cblas_dgemv(CblasColMajor, CblasNoTrans, a.M, a.N, 1., a.A.data(), a.LDA, x + xi, 1, 1., b + yi, 1);
+      mvec_kernel(r2f, &icells[y], &jcells[_x], dim, 1., x + xi, 1, 1, b + yi, 1);
     }
   }
 }
 
 
-void nbd::h2mv_complete(const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, const Matrices& d, const real_t* x, real_t* b) {
+void nbd::h2mv_complete(eval_func_t r2f, const Cells& icells, const Cells& jcells, int dim, const Matrices& ibase, const Matrices& jbase, const Matrices& d, const real_t* x, real_t* b) {
 
   Matrices m(jcells.size()), l(icells.size());
 
@@ -108,6 +107,6 @@ void nbd::h2mv_complete(const Cells& icells, const Cells& jcells, const Matrices
   upwardPass(&jcells[0], &jbase[0], x, &m[0]);
   horizontalPass(icells, jcells, d, m, l);
   downwardPass(&icells[0], &ibase[0], &l[0], b);
-  closeQuarter(icells, jcells, d, x, b);
+  closeQuarter(r2f, icells, jcells, dim, d, x, b);
 }
 

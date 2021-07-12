@@ -1,5 +1,6 @@
 
 #include "test_util.h"
+#include "kernel.h"
 
 #include <iostream>
 #include <random>
@@ -40,7 +41,7 @@ void nbd::vecRandom(real_t* a, int n, int inc, real_t min, real_t max, unsigned 
 }
 
 
-void nbd::convertHmat2Dense(const Cells& icells, const Cells& jcells, const Matrices& d, real_t* a, int lda) {
+void nbd::convertHmat2Dense(eval_func_t r2f, int dim, const Cells& icells, const Cells& jcells, const Matrices& d, real_t* a, int lda) {
   auto j_begin = jcells[0].BODY;
   auto i_begin = icells[0].BODY;
   int ld = (int)icells.size();
@@ -52,7 +53,8 @@ void nbd::convertHmat2Dense(const Cells& icells, const Cells& jcells, const Matr
     for (auto& j : i.listNear) {
       auto _x = j - &jcells[0];
       auto xi = j->BODY - j_begin;
-      const Matrix& m = d[y + _x * ld];
+      Matrix m;
+      P2Pnear(r2f, &icells[y], &jcells[_x], dim, m);
       for (int jj = 0; jj < m.N; jj++)
         for (int ii = 0; ii < m.M; ii++)
           a[ii + yi + (jj + xi) * lda] = m.A[ii + (size_t)jj * m.LDA];
@@ -123,7 +125,7 @@ void nbd::mulUSV(const Matrix& u, const Matrix& v, const Matrix& s, real_t* a, i
 }
 
 
-void nbd::convertH2mat2Dense(const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, const Matrices& d, real_t* a, int lda) {
+void nbd::convertH2mat2Dense(eval_func_t r2f, int dim, const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, const Matrices& d, real_t* a, int lda) {
   auto j_begin = jcells[0].BODY;
   auto i_begin = icells[0].BODY;
   int ld = (int)icells.size();
@@ -139,7 +141,8 @@ void nbd::convertH2mat2Dense(const Cells& icells, const Cells& jcells, const Mat
     for (auto& j : i.listNear) {
       auto _x = j - &jcells[0];
       auto xi = j->BODY - j_begin;
-      const Matrix& m = d[y + _x * ld];
+      Matrix m;
+      P2Pnear(r2f, &icells[y], &jcells[_x], dim, m);
       for (int jj = 0; jj < m.N; jj++)
         for (int ii = 0; ii < m.M; ii++)
           a[ii + yi + (jj + xi) * lda] = m.A[ii + (size_t)jj * m.LDA];

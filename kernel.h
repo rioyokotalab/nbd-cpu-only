@@ -12,7 +12,7 @@ namespace nbd {
 
   void eval(eval_func_t r2f, const Body* bi, const Body* bj, int dim, real_t* out);
 
-  void mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, const real_t* x_vec, real_t* b_vec);
+  void mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, real_t alpha, const real_t* x_vec, int incx, real_t beta, real_t* b_vec, int incb);
 
   void P2Pnear(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a);
 
