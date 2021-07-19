@@ -347,21 +347,14 @@ int lvls(Cell* cell, int* lvl) {
   }
 }
 
-std::vector<int> nbd::postorder_bfs(Cells& cells) {
+std::vector<int> nbd::pobfs_reorder(Cells& cells) {
   std::vector<int> lis(cells.size());
   std::vector<int> levels(cells.size());
   std::iota(lis.begin(), lis.end(), 0);
-  lvls(&cells[0], &levels[0]);
+  int max_l = lvls(&cells[0], &levels[0]);
 
   auto l = [levels](const int& i, const int& j) { return levels[i] < levels[j]; };
   std::stable_sort(lis.begin() + 1, lis.end(), l);
-
-  return lis;
-}
-
-
-void nbd::pobfs_reorder(Cells& cells) {
-  std::vector<int> lis = postorder_bfs(cells);
   Cells c = cells;
 
   std::vector<int> loc(cells.size());
@@ -375,4 +368,10 @@ void nbd::pobfs_reorder(Cells& cells) {
       cells[i].CHILD = cells.data() + loc[ci];
     }
   }
+
+  std::vector<int> levels_count((size_t)max_l + 1, 0);
+  for (int i = 0; i < cells.size(); i++)
+    levels_count[levels[i]]++;
+
+  return levels_count;
 }
