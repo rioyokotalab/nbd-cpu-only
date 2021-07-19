@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iterator>
 #include <random>
+#include <numeric>
 #include <cstdio>
 
 using namespace nbd;
@@ -333,3 +334,45 @@ void nbd::shared_epilogue(Matrices& d) {
       MergeS(m);
 }
 
+int lvls(Cell* cell, int* lvl) {
+  if (cell->CHILD == nullptr)
+    return *lvl = 0;
+  else {
+    int max_l = 0;
+    for (Cell* c = cell->CHILD; c != cell->CHILD + cell->NCHILD; c++) {
+      auto i = c - cell;
+      max_l = std::max(max_l, lvls(c, lvl + i));
+    }
+    return *lvl = max_l + 1;
+  }
+}
+
+std::vector<int> nbd::postorder_bfs(Cells& cells) {
+  std::vector<int> lis(cells.size());
+  std::vector<int> levels(cells.size());
+  std::iota(lis.begin(), lis.end(), 0);
+  lvls(&cells[0], &levels[0]);
+
+  auto l = [levels](const int& i, const int& j) { return levels[i] < levels[j]; };
+  std::stable_sort(lis.begin() + 1, lis.end(), l);
+
+  return lis;
+}
+
+
+void nbd::pobfs_reorder(Cells& cells) {
+  std::vector<int> lis = postorder_bfs(cells);
+  Cells c = cells;
+
+  std::vector<int> loc(cells.size());
+  for (int i = 0; i < cells.size(); i++)
+    loc[lis[i]] = i;
+
+  for (int i = 0; i < cells.size(); i++) {
+    cells[i] = c[lis[i]];
+    if (cells[i].CHILD != nullptr) {
+      auto ci = cells[i].CHILD - cells.data();
+      cells[i].CHILD = cells.data() + loc[ci];
+    }
+  }
+}

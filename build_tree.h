@@ -32,5 +32,9 @@ namespace nbd {
 
   void shared_epilogue(Matrices& d);
 
+  std::vector<int> postorder_bfs(Cells& cells);
+
+  void pobfs_reorder(Cells& cells);
+
 }
 

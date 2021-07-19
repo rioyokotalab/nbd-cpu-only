@@ -25,6 +25,7 @@ int main(int argc, char* argv[]) {
   initRandom(b1, m, dim, 0, 1., 0);
 
   Cells c1 = buildTree(b1, leaf, dim);
+  pobfs_reorder(c1);
 
   auto fun = dim == 2 ? l2d() : l3d();
   Matrices d, bi;
