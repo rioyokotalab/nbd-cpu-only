@@ -17,7 +17,7 @@ namespace nbd {
   /* LR random sampling for left side */
   void drspl(int m, int na, int r, const double* ua, int ldu, const double* va, int ldv, int ns, double* s, int lds);
 
-  void dorth(int m, int n, double* a, int lda);
+  void dorth(int m, int n, double* a, int lda, double* r, int ldr);
 
   /* C(k x n) = UT(m x k) * A(m x n) */
   void dmul_ut(int m, int n, int k, const double* u, int ldu, const double* a, int lda, double* c, int ldc);

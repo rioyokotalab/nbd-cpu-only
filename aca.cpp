@@ -155,20 +155,11 @@ inline real_t rand(real_t min, real_t max) {
 
 void nbd::ddspl(int m, int na, const double* a, int lda, int ns, double* s, int lds) {
   std::vector<double> rnd((size_t)na * ns);
-  std::vector<double> work((size_t)m * ns);
 
   for (auto& i : rnd)
     i = rand(-1, 1);
-
-  for (int j = 0; j < ns; j++)
-    for (int i = 0; i < m; i++)
-      work[i + (size_t)j * m] = s[i + (size_t)j * lds];
     
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, ns, na, 1., a, lda, &rnd[0], na, 1., &work[0], m);
-
-  for (int j = 0; j < ns; j++)
-    for (int i = 0; i < m; i++)
-      s[i + (size_t)j * lds] = work[i + (size_t)j * m];
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, ns, na, 1., a, lda, &rnd[0], na, 1., s, lds);
 }
 
 void nbd::drspl(int m, int na, int r, const double* ua, int ldu, const double* va, int ldv, int ns, double* s, int lds) {
@@ -180,12 +171,14 @@ void nbd::drspl(int m, int na, int r, const double* ua, int ldu, const double* v
 
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, ns, r, na, 1., &rnd[0], ns, va, ldv, 0., &work[0], ns);
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, m, ns, r, 1., ua, ldu, &work[0], ns, 1., s, lds);
-
 }
 
-void nbd::dorth(int m, int n, double* a, int lda) {
+void nbd::dorth(int m, int n, double* a, int lda, double* r, int ldr) {
   std::vector<double> tau(std::min(m, n));
   LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, a, lda, &tau[0]);
+  if (r != nullptr)
+    for (int i = 0; i < n; i++)
+      cblas_dcopy(std::min(i + 1, m), a + i * lda, 1, r + i * ldr, 1);
   LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, n, n, a, lda, &tau[0]);
 }
 

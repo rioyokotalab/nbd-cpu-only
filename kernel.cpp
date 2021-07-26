@@ -90,8 +90,11 @@ void nbd::SampleParent(Matrix& sc, const Matrix& sp, int c_off) {
 }
 
 void nbd::BasisOrth(Matrix& s) {
-  if (s.M && s.N)
-    dorth(s.M, s.N, s, s.LDA);
+  if (s.M && s.N) {
+    s.LDB = std::min(s.M, s.N);
+    s.B.resize(s.LDB * s.N, 0);
+    dorth(s.M, s.N, s, s.LDA, s.B.data(), s.LDB);
+  }
 }
 
 void nbd::BasisInvLeft(const Matrix& s, Matrix& a) {
