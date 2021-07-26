@@ -2,7 +2,8 @@
 #include "aca.h"
 #include "kernel.h"
 
-#include "mkl.h"
+#include <lapacke.h>
+#include <cblas.h>
 #include <cmath>
 #include <random>
 
@@ -159,9 +160,15 @@ void nbd::ddspl(int m, int na, const double* a, int lda, int ns, double* s, int 
   for (auto& i : rnd)
     i = rand(-1, 1);
 
-  mkl_domatcopy('C', 'N', m, ns, 1., s, lds, &work[0], m);
+  for (int j = 0; j < ns; j++)
+    for (int i = 0; i < m; i++)
+      work[i + (size_t)j * m] = s[i + (size_t)j * lds];
+    
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, ns, na, 1., a, lda, &rnd[0], na, 1., &work[0], m);
-  mkl_domatcopy('C', 'N', m, ns, 1., &work[0], m, s, lds);
+
+  for (int j = 0; j < ns; j++)
+    for (int i = 0; i < m; i++)
+      s[i + (size_t)j * lds] = work[i + (size_t)j * m];
 }
 
 void nbd::drspl(int m, int na, int r, const double* ua, int ldu, const double* va, int ldv, int ns, double* s, int lds) {

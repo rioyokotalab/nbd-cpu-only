@@ -23,6 +23,7 @@ x86/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
 bld/
+build/
 [Bb]in/
 [Oo]bj/
 [Ll]og/
@@ -340,7 +341,9 @@ ASALocalRun/
 healthchecksdb
 
 # Linux Build files
-*.o *.a a.out
+*.o
+*.a 
+a.out
 
 # CMake files
 CMakeFiles/
@@ -348,3 +351,4 @@ CMakeCache.txt
 cmake_install.cmake
 *.sln
 *.vcxproj*
+*/Makefile

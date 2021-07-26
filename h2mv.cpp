@@ -2,7 +2,7 @@
 #include "h2mv.h"
 #include "kernel.h"
 
-#include "mkl.h"
+#include <cblas.h>
 
 using namespace nbd;
 

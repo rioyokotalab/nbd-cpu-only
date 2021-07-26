@@ -8,13 +8,8 @@ if(OpenMP_FOUND)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 endif()
 
-if(MSVC)
-  include_directories($ENV{MKL_PATH}/include)
-  link_directories($ENV{MKL_PATH}/lib/intel64)
-elseif(LINUX)
-  include_directories($ENV{MKLROOT}/include)
-  link_directories($ENV{MKLROOT}/lib/intel64)
-endif()
+find_package(BLAS)
+find_package(LAPACK)
 
 add_library(nbd STATIC 
   nbd.h
@@ -26,7 +21,7 @@ add_library(nbd STATIC
   timer.cpp timer.h
 )
 target_include_directories(nbd PRIVATE "./" )
-target_link_libraries(nbd mkl_intel_lp64 mkl_sequential mkl_core)
+target_link_libraries(nbd blas lapacke)
 
 add_executable(symmh2_example
   symmh2_example.cpp
