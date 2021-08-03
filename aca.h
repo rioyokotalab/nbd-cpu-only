@@ -4,7 +4,7 @@
 
 namespace nbd {
 
-#define ACA_USE_NORM
+  constexpr bool ACA_USE_NORM = false;
   constexpr double ACA_EPI = 1.e-13;
 
   void daca_cells(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info = nullptr);

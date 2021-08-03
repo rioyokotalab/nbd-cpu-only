@@ -65,16 +65,14 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
   p_u.push_back(0);
   p_v.push_back(x);
 
-#ifdef ACA_USE_NORM
   double my_norm_u = cblas_ddot(m, u, 1, u, 1);
   double my_norm_v = cblas_ddot(n, v, 1, v, 1);
   double norm = my_norm_u * my_norm_v;
   double epi2 = ACA_EPI * ACA_EPI;
-
   double n2 = norm;
-  if (n2 <= epi2 * n2)
+
+  if (ACA_USE_NORM && n2 <= epi2 * n2)
     piv_i = -1;
-#endif
 
   while (piv_i != -1 && iter < max_iters) {
     double* curr_u = u + (size_t)iter * ldu;
@@ -117,20 +115,20 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
       { piv_i = i; piv = ui; }
     }
 
-#ifdef ACA_USE_NORM
-    for (int j = 0; j < iter; j++) {
-      my_norm_u = cblas_ddot(m, u + (size_t)j * ldu, 1, curr_u, 1);
-      my_norm_v = cblas_ddot(n, v + (size_t)j * ldv, 1, curr_v, 1);
+    if (ACA_USE_NORM) {
+      for (int j = 0; j < iter; j++) {
+        my_norm_u = cblas_ddot(m, u + (size_t)j * ldu, 1, curr_u, 1);
+        my_norm_v = cblas_ddot(n, v + (size_t)j * ldv, 1, curr_v, 1);
 
-      norm += 2. * my_norm_u * my_norm_v;
+        norm += 2. * my_norm_u * my_norm_v;
+      }
+      my_norm_u = cblas_ddot(m, curr_u, 1, curr_u, 1);
+      my_norm_v = cblas_ddot(n, curr_v, 1, curr_v, 1);
+
+      n2 = my_norm_u * my_norm_v;
+      if (n2 <= epi2 * (norm += n2))
+        piv_i = -1;
     }
-    my_norm_u = cblas_ddot(m, curr_u, 1, curr_u, 1);
-    my_norm_v = cblas_ddot(n, curr_v, 1, curr_v, 1);
-
-    n2 = my_norm_u * my_norm_v;
-    if (n2 <= epi2 * (norm += n2))
-      piv_i = -1;
-#endif
     iter++;
   }
 
