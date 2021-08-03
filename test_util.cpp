@@ -22,6 +22,15 @@ void nbd::printMat(real_t* a, int m, int n, int lda) {
   }
 }
 
+void nbd::printBodies(const Cell& c, int dim) {
+  for (int i = 0; i < c.NBODY; i++) {
+    std::cout << i << ": <";
+    for (int j = 0; j < dim; j++)
+      std::cout << c.BODY[i].X[j] << " ";
+    std::cout << ">" << std::endl;
+  }
+}
+
 
 void nbd::initRandom(Bodies& b, int m, int dim, real_t min, real_t max, unsigned int seed) {
   if (seed)

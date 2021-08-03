@@ -9,6 +9,8 @@ namespace nbd {
 
   void printMat(real_t* a, int m, int n, int lda);
 
+  void printBodies(const Cell& c, int dim);
+
   void initRandom(Bodies& b, int m, int dim, real_t min, real_t max, unsigned int seed = 0);
 
   void vecRandom(real_t* a, int n, int inc, real_t min, real_t max, unsigned int seed = 0);

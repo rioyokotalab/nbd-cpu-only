@@ -17,23 +17,12 @@ Bodies::iterator spart(Bodies::iterator first, Bodies::iterator last, int sdim, 
 }
 
 Bodies::iterator spart_size_k(Bodies::iterator first, Bodies::iterator last, int sdim, int k) {
-
-  if (last == first)
-    return first;
-  real_t pivot = std::next(first, std::distance(first, last) / 2)->X[sdim];
-
-  Bodies::iterator i1 = std::partition(first, last,
-    [pivot, sdim](const Body& element) { return element.X[sdim] < pivot; });
-  Bodies::iterator i2 = std::partition(i1, last,
-    [pivot, sdim](const Body& element) { return !(pivot < element.X[sdim]); });
-  auto d1 = i1 - first, d2 = i2 - first;
   
-  if (d1 > k)
-    return spart_size_k(first, i1, sdim, k);
-  else if (d2 < k)
-    return spart_size_k(i2, last, sdim, (int)(k - d2));
-  else
-    return first + k;
+  Bodies::iterator i = first + k;
+  std::partial_sort(first, i + 1, last, 
+    [sdim](const Body& e1, const Body& e2) { return e1.X[sdim] < e2.X[sdim]; });
+
+  return i;
 }
 
 void spart_sdim(const real_t R[], int dim, int& sdim) {
