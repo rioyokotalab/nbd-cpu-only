@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "factorize.h"
+#include "qs.h"
 
 namespace qs {
 

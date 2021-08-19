@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
   int leaf = 128;
   int rank = 30;
   int p = 10;
-  double theta = 0.9;
+  double theta = 1.01;
 
   Bodies b1(m);
   initRandom(b1, m, dim, 0, 1., 0);
@@ -80,6 +80,10 @@ int main(int argc, char* argv[]) {
       if (h2.D[i + j * h2.N].M > 0 && h2.D[i + j * h2.N].N > 0)
         printf("%d %d: %d %d \n", i, j, h2.D[i + j * h2.N].M, h2.D[i + j * h2.N].N);
     }
+
+  qs::Matrices base = convert(bi);
+  
+  elim(eo[0], h2, base);
 
   return 0;
 }

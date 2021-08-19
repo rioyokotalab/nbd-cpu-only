@@ -3,8 +3,8 @@
 
 #include "../kernel.h"
 #include "../build_tree.h"
+#include "factorize.h"
 #include <cstddef>
-#include <cstdio>
 
 using namespace qs;
 
@@ -39,9 +39,7 @@ H2Matrix qs::build(nbd::eval_func_t r2f, int dim, const nbd::Cells& cells, const
       auto _x = j - &cells[0];
       nbd::Matrix m;
       nbd::P2Pnear(r2f, &cells[y], &cells[_x], dim, m);
-      //printf("%d %d\n", m.M, m.N);
       matcpy(m, b.D[y + _x * b.N]);
-      //printf("%d %d\n", b.D[y + _x * b.N].M, b.D[y + _x * b.N].N);
     }
   }
 
@@ -69,5 +67,29 @@ ElimOrder qs::order(const nbd::Cells& cells) {
   }
 
   return eo;
+
+}
+
+
+void qs::elim(const Level& lvl, H2Matrix& h2, Matrices& base) {
+  
+  for (int i : lvl.IND) {
+    eux(base[i]);
+    plu(base[i], h2.D[i + (size_t)i * h2.N]);
+
+    for (int j : lvl.IND)
+      if (j != i)
+        ptrsmr(base[i], h2.D[i + (size_t)i * h2.N], h2.D[i + (size_t)j * h2.N]);
+
+    for (int k : lvl.IND)
+      if (k != i)
+        ptrsmc(base[i], h2.D[i + (size_t)i * h2.N], h2.D[k + (size_t)i * h2.N]);
+
+    for (int k : lvl.IND)
+      if (k != i)
+        for (int j : lvl.IND)
+          if (j != i)
+            pgemm(h2.D[k + (size_t)i * h2.N], h2.D[i + (size_t)j * h2.N], h2.D[k + (size_t)j * h2.N]);
+  }
 
 }

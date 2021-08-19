@@ -1,18 +1,9 @@
 
 #pragma once
 
-#include <vector>
+#include "qs.h"
 
 namespace qs {
-
-  struct Matrix {
-    std::vector<double> A;
-    int M;
-    int N;
-    int LDA;
-    int LMO;
-    int LNO;
-  };
 
   void eux(Matrix& U);
 

@@ -12,10 +12,10 @@ void qs::eux(Matrix& U) {
   if (U.M > U.N) {
     std::vector<double> tau(U.N);
     U.A.resize((size_t)U.LDA * U.M);
-    U.N = U.M;
 
     LAPACKE_dgeqrf(LAPACK_COL_MAJOR, U.M, U.N, U.A.data(), U.LDA, tau.data());
     LAPACKE_dorgqr(LAPACK_COL_MAJOR, U.M, U.M, U.N, U.A.data(), U.LDA, tau.data());
+    U.N = U.M;
   }
 }
 
@@ -51,7 +51,7 @@ void qs::plu(const Matrix& UX, Matrix& A) {
 
 void qs::ptrsmr(const Matrix& UX, const Matrix& A, Matrix& B) {
 
-  if (B.M == A.LMO) {
+  if (B.M <= A.LMO) {
     B.LMO = A.LMO;
     return;
   }
@@ -87,7 +87,7 @@ void qs::ptrsmr(const Matrix& UX, const Matrix& A, Matrix& B) {
 
 void qs::ptrsmc(const Matrix& UX, const Matrix& A, Matrix& B) {
   
-  if (B.N == A.LMO) {
+  if (B.N <= A.LMO) {
     B.LNO = A.LMO;
     return;
   }
@@ -123,7 +123,7 @@ void qs::ptrsmc(const Matrix& UX, const Matrix& A, Matrix& B) {
 
 void qs::pgemm(const Matrix& A, const Matrix& B, Matrix& C) {
 
-  if (A.M == C.LMO || B.N == C.LNO)
+  if (A.N <= A.LNO || B.M <= B.LMO)
     return;
   
   int m = C.LMO > 0 ? C.LMO : C.M;
