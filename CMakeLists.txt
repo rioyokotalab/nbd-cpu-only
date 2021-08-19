@@ -23,6 +23,8 @@ add_library(nbd STATIC
 target_include_directories(nbd PRIVATE "./" )
 target_link_libraries(nbd blas lapacke)
 
+add_subdirectory("./qs")
+
 add_executable(symmh2_example
   symmh2_example.cpp
 )
@@ -40,3 +42,9 @@ add_executable(lra_example
 )
 target_link_libraries(lra_example nbd)
 target_include_directories(lra_example PRIVATE "./" )
+
+add_executable(qs_example
+  qs_example.cpp
+)
+target_link_libraries(qs_example nbd qs)
+target_include_directories(qs_example PRIVATE "./" )

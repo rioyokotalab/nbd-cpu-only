@@ -346,7 +346,7 @@ void nbd::shared_epilogue(Matrices& d) {
       MergeS(m);
 }
 
-int lvls(Cell* cell, int* lvl) {
+int nbd::lvls(const Cell* cell, int* lvl) {
   if (cell->CHILD == nullptr)
     return *lvl = 0;
   else {

@@ -32,6 +32,8 @@ namespace nbd {
 
   void shared_epilogue(Matrices& d);
 
+  int lvls(const Cell* cell, int* lvl);
+
   std::vector<int> pobfs_reorder(Cells& cells);
 
 }
