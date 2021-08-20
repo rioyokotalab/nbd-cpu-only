@@ -24,6 +24,9 @@ namespace qs {
     std::vector<int> IND;
     std::vector<int> CHILD_IND;
     std::vector<int> NCHILD;
+
+    std::vector<int> LI;
+    std::vector<int> LIO;
   };
 
   typedef std::vector<Level> ElimOrder;

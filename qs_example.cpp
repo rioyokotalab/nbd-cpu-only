@@ -64,26 +64,25 @@ int main(int argc, char* argv[]) {
 
   using namespace qs;
 
-  ElimOrder eo = order(c1);
-  for (int l = 0; l < eo.size(); l++) {
-    printf("%d: \n", l);
-    for (int i : eo[l].IND)
-      printf("%d ", i);
-    printf("\n");
-  }
+  ElimOrder eo = order(c1, bi);
 
   H2Matrix h2 = build(fun, dim, c1, d);
   printf("%d\n", h2.N);
+
+  qs::Matrices base = convert(bi);
+  
+  for (int i = 0; i < eo.size(); i++) {
+    if (i > 0)
+      pnm(eo[i], h2);
+    if (i < eo.size() - 1)
+      elim(eo[i], h2, base);
+  }
 
   for (int i = 0; i < h2.N; i++)
     for (int j = 0; j < h2.N; j++) {
       if (h2.D[i + j * h2.N].M > 0 && h2.D[i + j * h2.N].N > 0)
         printf("%d %d: %d %d \n", i, j, h2.D[i + j * h2.N].M, h2.D[i + j * h2.N].N);
     }
-
-  qs::Matrices base = convert(bi);
-  
-  elim(eo[0], h2, base);
 
   return 0;
 }

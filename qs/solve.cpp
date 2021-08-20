@@ -57,9 +57,11 @@ void qs::schcc(const Matrix& A, const double* X, double* Y) {
   int n = A.N - A.LNO;
   int lda = A.LDA;
   const double* a_cc = A.A.data() + (size_t)A.LNO * lda + A.LMO;
+  const double* X_c = X + A.LNO;
+  double* Y_c = Y + A.LMO;
 
   if (m > 0 && n > 0)
-    cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, -1., a_cc, lda, X, 1, 1., Y, 1);
+    cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, -1., a_cc, lda, X_c, 1, 1., Y_c, 1);
 }
 
 
@@ -68,9 +70,10 @@ void qs::schco(const Matrix& A, const double* X, double* Y) {
   int n = A.LNO;
   int lda = A.LDA;
   const double* a_co = A.A.data() + A.LMO;
+  double* Y_c = Y + A.LMO;
 
   if (m > 0 && n > 0)
-    cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, -1., a_co, lda, X, 1, 1., Y, 1);
+    cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, -1., a_co, lda, X, 1, 1., Y_c, 1);
 }
 
 
@@ -79,9 +82,10 @@ void qs::schoc(const Matrix& A, const double* X, double* Y) {
   int n = A.N - A.LNO;
   int lda = A.LDA;
   const double* a_oc = A.A.data() + (size_t)A.LNO * lda;
+  const double* X_c = X + A.LNO;
 
   if (m > 0 && n > 0)
-    cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, -1., a_oc, lda, X, 1, 1., Y, 1);
+    cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, -1., a_oc, lda, X_c, 1, 1., Y, 1);
 }
 
 
