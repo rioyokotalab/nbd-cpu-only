@@ -4,16 +4,22 @@
 #include "lapacke.h"
 #include "cblas.h"
 #include <cstddef>
+#include <algorithm>
 
 using namespace qs;
 
-void qs::eux(Matrix& U) {
+void qs::eux(Matrix& U, Matrix& R) {
   U.LNO = U.N;
   if (U.M > U.N) {
     std::vector<double> tau(U.N);
     U.A.resize((size_t)U.LDA * U.M);
 
+    R.M = R.N = R.LDA = U.N;
+    R.A.resize((size_t)U.N * U.N);
+
     LAPACKE_dgeqrf(LAPACK_COL_MAJOR, U.M, U.N, U.A.data(), U.LDA, tau.data());
+    for (int i = 0; i < U.N; i++)
+      cblas_dcopy(std::min(i + 1, U.M), &U.A[i * U.LDA], 1, &R.A[i * R.LDA], 1);
     LAPACKE_dorgqr(LAPACK_COL_MAJOR, U.M, U.M, U.N, U.A.data(), U.LDA, tau.data());
     U.N = U.M;
   }
@@ -45,7 +51,7 @@ void qs::plu(const Matrix& UX, Matrix& A) {
 
   cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasUnit, LAC, LAO, 1., a_cc, lda, a_co, lda);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, LAO, LAC, 1., a_cc, lda, a_oc, lda);
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, LAO, LAO, LAC, -1., a_oc, lda, a_co, lda, 1., a_oc, lda);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, LAO, LAO, LAC, -1., a_oc, lda, a_co, lda, 1., a, lda);
   
 }
 
@@ -140,7 +146,7 @@ void qs::pgemm(const Matrix& A, const Matrix& B, Matrix& C) {
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, n, k, -1., a_xc, lda, b_cx, ldb, 1., c, ldc);
 }
 
-void dlu(Matrix& A) {
+void qs::dlu(Matrix& A) {
   int m = A.M;
   double* a = A.A.data();
   int lda = A.LDA;

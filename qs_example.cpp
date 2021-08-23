@@ -5,6 +5,8 @@
 #include "h2mv.h"
 #include "test_util.h"
 #include "qs/block_matrix.h"
+#include "qs/factorize.h"
+#include "qs/solve.h"
 
 #include <cstdio>
 #include <random>
@@ -16,10 +18,10 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 1;
-  int m = 2048;
-  int leaf = 128;
-  int rank = 30;
-  int p = 10;
+  int m = 128;
+  int leaf = 64;
+  int rank = 16;
+  int p = 0;
   double theta = 1.01;
 
   Bodies b1(m);
@@ -67,7 +69,6 @@ int main(int argc, char* argv[]) {
   ElimOrder eo = order(c1, bi);
 
   H2Matrix h2 = build(fun, dim, c1, d);
-  printf("%d\n", h2.N);
 
   qs::Matrices base = convert(bi);
   
@@ -78,11 +79,20 @@ int main(int argc, char* argv[]) {
       elim(eo[i], h2, base);
   }
 
-  for (int i = 0; i < h2.N; i++)
-    for (int j = 0; j < h2.N; j++) {
-      if (h2.D[i + j * h2.N].M > 0 && h2.D[i + j * h2.N].N > 0)
-        printf("%d %d: %d %d \n", i, j, h2.D[i + j * h2.N].M, h2.D[i + j * h2.N].N);
-    }
+  dlu(h2.D[0]);
+
+  for (int i = 0; i < eo.size() - 1; i++) {
+    fwd_solution(eo[i], h2, base, &b[0]);
+  }
+
+  dgetrsnp(h2.D[0], &b[0]);
+
+  for (int i = eo.size() - 2; i >= 0; i--) {
+    bkwd_solution(eo[i], h2, base, &b[0]);
+  }
+
+  printf("H2-vec vs direct m-vec err %e\n", rel2err(&b[0], &x[0], m, 1, m, m));
+
 
   return 0;
 }

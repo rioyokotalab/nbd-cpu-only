@@ -5,7 +5,7 @@
 
 namespace qs {
 
-  void eux(Matrix& U);
+  void eux(Matrix& U, Matrix& R);
 
   void plu(const Matrix& UX, Matrix& M);
 

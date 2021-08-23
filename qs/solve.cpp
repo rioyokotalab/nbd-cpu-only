@@ -4,11 +4,14 @@
 #include "lapacke.h"
 #include "cblas.h"
 #include <cstddef>
+#include <cstdio>
 
 using namespace qs;
 
 void qs::uxmv(char transu, const Matrix& UX, double* X) {
-  int n = UX.M; 
+  int n = UX.M;
+  if (n == 0)
+    return;
   std::vector<double> work(n);
   auto c_transu = transu == 'N' ? CblasNoTrans : CblasTrans;
   const double* ux = UX.A.data();

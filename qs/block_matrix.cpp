@@ -76,11 +76,11 @@ ElimOrder qs::order(const nbd::Cells& cells, const nbd::Matrices& base) {
 
 }
 
-
 void qs::elim(const Level& lvl, H2Matrix& h2, Matrices& base) {
   
   for (int i : lvl.IND) {
-    eux(base[i]);
+    Matrix R;
+    eux(base[i], R);
     plu(base[i], h2.D[i + (size_t)i * h2.N]);
 
     for (int j : lvl.IND)
@@ -149,42 +149,50 @@ void qs::pnm(const Level& lvl, H2Matrix& h2) {
     }
 }
 
+
 void qs::fwd_solution(const Level& lvl, const H2Matrix& h2, const Matrices& base, double* X) {
 
   std::vector<int> offsets(lvl.IND.size() + 1, 0);
-  for (int i = 1; i < offsets.size(); i++)
+  for (int i = 1; i <= offsets.size(); i++)
     offsets[i] = offsets[i - 1] + lvl.LI[i - 1];
 
   for (int i = 0; i < lvl.IND.size(); i++) {
     int li = lvl.IND[i];
     uxmv('T', base[li], X + offsets[i]);
     fwsvcc(h2.D[li + (size_t)li * h2.N], X + offsets[i]);
-    
   }
 
   std::vector<double> p(offsets.back());
   auto iter = p.begin();
-  for (int i = 0; i < lvl.IND.size(); i++)
-    iter = std::copy(X + offsets[i], X + offsets[i] + lvl.LIO[i], iter);
-  for (int i = 0; i < lvl.IND.size(); i++)
-    iter = std::copy(X + offsets[i] + lvl.LIO[i], X + offsets[i + 1], iter);
+  for (int i = 0; i < lvl.IND.size(); i++) {
+    std::copy(X + offsets[i], X + offsets[i] + lvl.LIO[i], iter);
+    iter = iter + lvl.LIO[i];
+  }
+  for (int i = 0; i < lvl.IND.size(); i++) {
+    std::copy(X + offsets[i] + lvl.LIO[i], X + offsets[i + 1], iter);
+    iter = iter + lvl.LI[i] - lvl.LIO[i];
+  }
 
   std::copy(p.begin(), p.end(), X);
 
 }
-
+#include "cstdio"
 void qs::bkwd_solution(const Level& lvl, const H2Matrix& h2, const Matrices& base, double* X) {
 
-  std::vector<int> offsets(lvl.IND.size(), 0);
-  for (int i = 1; i < lvl.IND.size(); i++)
-    offsets[i] = offsets[i - 1] + lvl.LI[i];
+  std::vector<int> offsets(lvl.IND.size() + 1, 0);
+  for (int i = 1; i <= lvl.IND.size(); i++)
+    offsets[i] = offsets[i - 1] + lvl.LI[i - 1];
 
   std::vector<double> p(offsets.back());
-  double* iter = X;
-  for (int i = 0; i < lvl.IND.size(); i++)
-    std::copy(iter, iter += lvl.LIO[i], p.begin() + offsets[i]);
-  for (int i = 0; i < lvl.IND.size(); i++)
-    std::copy(iter, iter += lvl.LI[i] - lvl.LIO[i], p.begin() + offsets[i] + lvl.LIO[i]);
+  const double* iter = X;
+  for (int i = 0; i < lvl.IND.size(); i++) {
+    std::copy(iter, iter + lvl.LIO[i], p.begin() + offsets[i]);
+    iter = iter + lvl.LIO[i];
+  }
+  for (int i = 0; i < lvl.IND.size(); i++) {
+    std::copy(iter, iter + (lvl.LI[i] - lvl.LIO[i]), p.begin() + offsets[i] + lvl.LIO[i]);
+    iter = iter + (lvl.LI[i] - lvl.LIO[i]);
+  }
 
   std::copy(p.begin(), p.end(), X);
 

@@ -8,13 +8,13 @@
 
 using namespace nbd;
 
-void nbd::printVec(real_t* a, int n, int inc) {
+void nbd::printVec(const real_t* a, int n, int inc) {
   for (int i = 0; i < n; i++)
     std::cout << a[i * inc] << " ";
   std::cout << std::endl;
 }
 
-void nbd::printMat(real_t* a, int m, int n, int lda) {
+void nbd::printMat(const real_t* a, int m, int n, int lda) {
   for (int i = 0; i < m; i++) {
     for (int j = 0; j < n; j++)
       std::cout << a[i + j * lda] << " ";

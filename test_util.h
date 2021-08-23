@@ -5,9 +5,9 @@
 
 namespace nbd {
 
-  void printVec(real_t* a, int n, int inc);
+  void printVec(const real_t* a, int n, int inc);
 
-  void printMat(real_t* a, int m, int n, int lda);
+  void printMat(const real_t* a, int m, int n, int lda);
 
   void printBodies(const Cell& c, int dim);
 
