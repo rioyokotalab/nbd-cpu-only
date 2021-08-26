@@ -8,6 +8,22 @@
 
 using namespace qs;
 
+void qs::dgetrfnp(int m, int n, double* a, int lda) {
+  int k = std::min(m, n);
+  for (int i = 0; i < k; i++) {
+    double p = 1. / a[i + (size_t)i * lda];
+    int mi = m - i - 1;
+    int ni = n - i - 1;
+
+    double* ax = a + i + (size_t)i * lda + 1;
+    double* ay = a + i + (size_t)i * lda + lda;
+    double* an = ay + 1;
+
+    cblas_dscal(mi, p, ax, 1);
+    cblas_dger(CblasColMajor, mi, ni, -1., ax, 1, ay, lda, an, lda);
+  }
+}
+
 void qs::eux(Matrix& U, Matrix& R) {
   U.LNO = U.N;
   if (U.M > U.N) {
@@ -45,9 +61,7 @@ void qs::plu(const Matrix& UX, Matrix& A) {
 
   int LAO = A.LMO;
   int LAC = m - LAO;
-
-  std::vector<int> ipiv(LAC);
-  LAPACKE_dgetrf(LAPACK_COL_MAJOR, LAC, LAC, a_cc, lda, ipiv.data());
+  dgetrfnp(LAC, LAC, a_cc, lda);
 
   cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasUnit, LAC, LAO, 1., a_cc, lda, a_co, lda);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, LAO, LAC, 1., a_cc, lda, a_oc, lda);
@@ -151,7 +165,32 @@ void qs::dlu(Matrix& A) {
   double* a = A.A.data();
   int lda = A.LDA;
 
-  std::vector<int> ipiv(m);
-  LAPACKE_dgetrf(LAPACK_COL_MAJOR, m, m, a, lda, ipiv.data());
+  dgetrfnp(m, m, a, lda);
 }
 
+
+void qs::mulrleft(const Matrix& R, Matrix& A) {
+  if (A.M == R.N) {
+    int m = A.M;
+    int n = A.N;
+    int lda = A.LDA;
+    double* a = A.A.data();
+    int ldr = R.LDA;
+    const double* r = R.A.data();
+
+    cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, m, n, 1., r, ldr, a, lda);
+  }
+}
+
+void qs::mulrright(const Matrix& R, Matrix& A) {
+  if (A.N == R.M) {
+    int m = A.M;
+    int n = A.N;
+    int lda = A.LDA;
+    double* a = A.A.data();
+    int ldr = R.LDA;
+    const double* r = R.A.data();
+
+    cblas_dtrmm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, m, n, 1., r, ldr, a, lda);
+  }
+}

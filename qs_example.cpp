@@ -18,8 +18,8 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 1;
-  int m = 128;
-  int leaf = 64;
+  int m = 256;
+  int leaf = 128;
   int rank = 16;
   int p = 0;
   double theta = 1.01;

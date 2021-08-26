@@ -84,12 +84,16 @@ void qs::elim(const Level& lvl, H2Matrix& h2, Matrices& base) {
     plu(base[i], h2.D[i + (size_t)i * h2.N]);
 
     for (int j : lvl.IND)
-      if (j != i)
+      if (j != i) {
         ptrsmr(base[i], h2.D[i + (size_t)i * h2.N], h2.D[i + (size_t)j * h2.N]);
+        mulrleft(R, h2.D[i + (size_t)j * h2.N]);
+      }
 
     for (int k : lvl.IND)
-      if (k != i)
+      if (k != i) {
         ptrsmc(base[i], h2.D[i + (size_t)i * h2.N], h2.D[k + (size_t)i * h2.N]);
+        mulrright(R, h2.D[k + (size_t)i * h2.N]);
+      }
 
     for (int k : lvl.IND)
       if (k != i)
@@ -176,7 +180,8 @@ void qs::fwd_solution(const Level& lvl, const H2Matrix& h2, const Matrices& base
   std::copy(p.begin(), p.end(), X);
 
 }
-#include "cstdio"
+
+
 void qs::bkwd_solution(const Level& lvl, const H2Matrix& h2, const Matrices& base, double* X) {
 
   std::vector<int> offsets(lvl.IND.size() + 1, 0);
