@@ -4,9 +4,7 @@
 #include "aca.h"
 #include "h2mv.h"
 #include "test_util.h"
-#include "qs/block_matrix.h"
-#include "qs/factorize.h"
-#include "qs/solve.h"
+#include "nd-irs/block_matrix.h"
 
 #include <cstdio>
 #include <random>
@@ -18,11 +16,11 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 1;
-  int m = 256;
+  int m = 1024;
   int leaf = 128;
-  int rank = 16;
+  int rank = 32;
   int p = 0;
-  double theta = 1.01;
+  double theta = 1.0;
 
   Bodies b1(m);
   initRandom(b1, m, dim, 0, 1., 0);
@@ -38,6 +36,7 @@ int main(int argc, char* argv[]) {
     convertHmat2Dense(fun, dim, c1, c1, d, a_rebuilt, a_rebuilt.LDA);
     P2Pnear(fun, &c1[0], &c1[0], dim, a_ref);
     printf("H-mat compress err %e\n", rel2err(&a_rebuilt[0], &a_ref[0], m, m, m, m));
+    //printMat(a_ref.A.data(), m, m, m);
   }
 
   traverse_i(c1, c1, d, bi, p);
@@ -64,35 +63,14 @@ int main(int argc, char* argv[]) {
 
   printTree(&c1[0], dim);
 
-  using namespace qs;
+  using namespace irs;
 
-  ElimOrder eo = order(c1, bi);
+  BlockMatrix bm = build(fun, dim, c1, theta);
 
-  H2Matrix h2 = build(fun, dim, c1, d);
+  elim(bm);
+  solve(bm, &b[0]);
 
-  qs::Matrices base = convert(bi);
-  
-  for (int i = 0; i < eo.size(); i++) {
-    if (i > 0)
-      pnm(eo[i], h2);
-    if (i < eo.size() - 1)
-      elim(eo[i], h2, base);
-  }
-
-  dlu(h2.D[0]);
-
-  for (int i = 0; i < eo.size() - 1; i++) {
-    fwd_solution(eo[i], h2, base, &b[0]);
-  }
-
-  dgetrsnp(h2.D[0], &b[0]);
-
-  for (int i = eo.size() - 2; i >= 0; i--) {
-    bkwd_solution(eo[i], h2, base, &b[0]);
-  }
-
-  printf("H2-vec vs direct m-vec err %e\n", rel2err(&b[0], &x[0], m, 1, m, m));
-
+  printf("solve err %e\n", rel2err(&b[0], &x[0], m, 1, m, m));
 
   return 0;
 }

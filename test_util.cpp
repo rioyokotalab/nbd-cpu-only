@@ -20,6 +20,7 @@ void nbd::printMat(const real_t* a, int m, int n, int lda) {
       std::cout << a[i + j * lda] << " ";
     std::cout << std::endl;
   }
+  std::cout << std::endl;
 }
 
 void nbd::printBodies(const Cell& c, int dim) {

@@ -34,7 +34,7 @@ namespace nbd {
 
   int lvls(const Cell* cell, int* lvl);
 
-  std::vector<int> pobfs_reorder(Cells& cells);
+  Cells getLeaves(const Cells& cells);
 
 }
 
