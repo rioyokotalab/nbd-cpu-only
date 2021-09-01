@@ -10,9 +10,9 @@ namespace nbd {
 
   void getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm);
 
-  void evaluate(eval_func_t r2f, Cells& cells, const Cell* jcell_start, int dim, Matrices& d, int rank);
+  void evaluate(EvalFunc ef, Cells& cells, const Cell* jcell_start, int dim, Matrices& d, int rank);
 
-  void traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank);
+  void traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank);
 
   void sample_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p);
 

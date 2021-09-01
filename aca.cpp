@@ -15,7 +15,7 @@ struct InputMat {
   const double* a;
   int lda;
 
-  eval_func_t r2f;
+  EvalFunc ef;
   const Cell* ci;
   const Cell* cj; 
   int dim;
@@ -25,7 +25,7 @@ inline void _eval(const InputMat* M, int y, int x, real_t* out) {
   if (M->a != NULL)
     *out = M->a[y + (size_t)M->lda * x];
   else
-    eval(M->r2f, M->ci->BODY + y, M->cj->BODY + x, M->dim, out);
+    eval(M->ef, M->ci->BODY + y, M->cj->BODY + x, M->dim, out);
 }
 
 void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int ldv, int* info) {
@@ -136,8 +136,8 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
     *info = (int)iter;
 }
 
-void nbd::daca_cells(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info) {
-  InputMat M{ ci->NBODY, cj->NBODY, NULL, 0, r2f, ci, cj, dim };
+void nbd::daca_cells(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info) {
+  InputMat M{ ci->NBODY, cj->NBODY, NULL, 0, ef, ci, cj, dim };
   _daca(&M, max_iters, u, ldu, v, ldv, info);
 }
 

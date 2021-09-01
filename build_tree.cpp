@@ -181,21 +181,21 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm) {
   }
 }
 
-void nbd::evaluate(eval_func_t r2f, Cells& cells, const Cell* jcell_start, int dim, Matrices& d, int rank) {
+void nbd::evaluate(EvalFunc ef, Cells& cells, const Cell* jcell_start, int dim, Matrices& d, int rank) {
 #pragma omp parallel for
   for (int y = 0; y < cells.size(); y++) {
     auto i = cells[y];
     for (auto& j : i.listFar) {
       auto x = j - jcell_start;
-      P2Pfar(r2f, &i, j, dim, d[y + x * cells.size()], rank);
+      P2Pfar(ef, &i, j, dim, d[y + x * cells.size()], rank);
     }
   }
 }
 
-void nbd::traverse(eval_func_t r2f, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank) {
+void nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank) {
   getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells);
   d.resize(icells.size() * jcells.size());
-  evaluate(r2f, icells, &jcells[0], dim, d, rank);
+  evaluate(ef, icells, &jcells[0], dim, d, rank);
 }
 
 

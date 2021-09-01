@@ -4,19 +4,19 @@
 
 namespace nbd {
 
-  eval_func_t r2();
+  EvalFunc r2();
 
-  eval_func_t l2d();
+  EvalFunc l2d();
 
-  eval_func_t l3d();
+  EvalFunc l3d();
 
-  void eval(eval_func_t r2f, const Body* bi, const Body* bj, int dim, real_t* out);
+  void eval(EvalFunc ef, const Body* bi, const Body* bj, int dim, real_t* out);
 
-  void mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, real_t alpha, const real_t* x_vec, int incx, real_t beta, real_t* b_vec, int incb);
+  void mvec_kernel(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, real_t alpha, const real_t* x_vec, int incx, real_t beta, real_t* b_vec, int incb);
 
-  void P2Pnear(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a);
+  void P2Pnear(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, Matrix& a);
 
-  void P2Pfar(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a, int rank);
+  void P2Pfar(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, Matrix& a, int rank);
 
   void SampleP2Pi(Matrix& s, const Matrix& a);
 

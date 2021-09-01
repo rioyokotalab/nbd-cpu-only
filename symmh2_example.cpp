@@ -15,9 +15,9 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 2;
-  int m = 2048;
-  int leaf = 128;
-  int rank = 64;
+  int m = 4096;
+  int leaf = 256;
+  int rank = 80;
   int p = 20;
   double theta = 0.9;
 

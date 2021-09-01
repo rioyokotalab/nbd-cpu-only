@@ -74,7 +74,7 @@ void nbd::downwardPass(const Cell* icell, const Matrix* base, Matrix* l, real_t*
         l[i] = Matrix(base[i].N, 1, base[i].N);
         beta = 0.;
       }
-      cblas_dgemv(CblasColMajor, CblasNoTrans, l[i].M, base->N, 1., base->A.data() + u_off, base->LDA, l->A.data(), 1, 1., l[i].A.data(), 1);
+      cblas_dgemv(CblasColMajor, CblasNoTrans, l[i].M, base->N, 1., base->A.data() + u_off, base->LDA, l->A.data(), 1, beta, l[i].A.data(), 1);
     }
     downwardPass(c, base + i, l + i, b + b_off);
     u_off += l[i].M;
@@ -82,7 +82,7 @@ void nbd::downwardPass(const Cell* icell, const Matrix* base, Matrix* l, real_t*
   }
 }
 
-void nbd::closeQuarter(eval_func_t r2f, const Cells& icells, const Cells& jcells, int dim, const Matrices& d, const real_t* x, real_t* b) {
+void nbd::closeQuarter(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, const Matrices& d, const real_t* x, real_t* b) {
   auto j_begin = jcells[0].BODY;
   auto i_begin = icells[0].BODY;
 
@@ -93,20 +93,20 @@ void nbd::closeQuarter(eval_func_t r2f, const Cells& icells, const Cells& jcells
     for (auto& j : i.listNear) {
       auto _x = j - &jcells[0];
       auto xi = j->BODY - j_begin;
-      mvec_kernel(r2f, &icells[y], &jcells[_x], dim, 1., x + xi, 1, 1, b + yi, 1);
+      mvec_kernel(ef, &icells[y], &jcells[_x], dim, 1., x + xi, 1, 1, b + yi, 1);
     }
   }
 }
 
 
-void nbd::h2mv_complete(eval_func_t r2f, const Cells& icells, const Cells& jcells, int dim, const Matrices& ibase, const Matrices& jbase, const Matrices& d, const real_t* x, real_t* b) {
+void nbd::h2mv_complete(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, const Matrices& ibase, const Matrices& jbase, const Matrices& d, const real_t* x, real_t* b) {
 
   Matrices m(jcells.size()), l(icells.size());
 
-  std::fill(b, b + icells.size(), 0);
+  std::fill(b, b + icells[0].NBODY, 0.);
   upwardPass(&jcells[0], &jbase[0], x, &m[0]);
   horizontalPass(icells, jcells, d, m, l);
   downwardPass(&icells[0], &ibase[0], &l[0], b);
-  closeQuarter(r2f, icells, jcells, dim, d, x, b);
+  closeQuarter(ef, icells, jcells, dim, d, x, b);
 }
 

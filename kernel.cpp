@@ -7,42 +7,54 @@
 
 using namespace nbd;
 
-eval_func_t nbd::r2() {
-  return [](real_t& r2) -> void {};
+EvalFunc nbd::r2() {
+  EvalFunc ef;
+  ef.r2f = [](real_t& r2, real_t singularity, real_t alpha) -> void {};
+  ef.singularity = 0.;
+  ef.alpha = 1.;
+  return ef;
 }
 
-eval_func_t nbd::l2d() {
-  return [](real_t& r2) -> void {
-    r2 = r2 == 0 ? 1.e5 : std::log(std::sqrt(r2));
+EvalFunc nbd::l2d() {
+  EvalFunc ef;
+  ef.r2f = [](real_t& r2, real_t singularity, real_t alpha) -> void {
+    r2 = r2 == 0 ? singularity : std::log(std::sqrt(r2));
   };
+  ef.singularity = 1.e5;
+  ef.alpha = 1.;
+  return ef;
 }
 
-eval_func_t nbd::l3d() {
-  return [](real_t& r2) -> void {
-    r2 = r2 == 0 ? 1.e5 : 1. / std::sqrt(r2);
+EvalFunc nbd::l3d() {
+  EvalFunc ef;
+  ef.r2f = [](real_t& r2, real_t singularity, real_t alpha) -> void {
+    r2 = r2 == 0 ? singularity : 1. / std::sqrt(r2);
   };
+  ef.singularity = 1.e5;
+  ef.alpha = 1.;
+  return ef;
 }
 
 
-void nbd::eval(eval_func_t r2f, const Body* bi, const Body* bj, int dim, real_t* out) {
+void nbd::eval(EvalFunc ef, const Body* bi, const Body* bj, int dim, real_t* out) {
   real_t& r2 = *out;
   r2 = 0.;
   for (int i = 0; i < dim; i++) {
     real_t dX = bi->X[i] - bj->X[i];
     r2 += dX * dX;
   }
-  r2f(r2);
+  ef.r2f(r2, ef.singularity, ef.alpha);
 }
 
 
-void nbd::mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, real_t alpha, const real_t* x_vec, int incx, real_t beta, real_t* b_vec, int incb) {
+void nbd::mvec_kernel(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, real_t alpha, const real_t* x_vec, int incx, real_t beta, real_t* b_vec, int incb) {
   int m = ci->NBODY, n = cj->NBODY;
 
   for (int y = 0; y < m; y++) {
     real_t sum = 0.;
     for (int x = 0; x < n; x++) {
       real_t r2;
-      eval(r2f, ci->BODY + y, cj->BODY + x, dim, &r2);
+      eval(ef, ci->BODY + y, cj->BODY + x, dim, &r2);
       sum += r2 * x_vec[x * incx];
     }
     b_vec[y * incb] = alpha * sum + beta * b_vec[y * incb];
@@ -50,24 +62,24 @@ void nbd::mvec_kernel(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, 
 }
 
 
-void nbd::P2Pnear(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a) {
+void nbd::P2Pnear(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, Matrix& a) {
   int m = ci->NBODY, n = cj->NBODY;
   a = Matrix(m, n, m);
 
   for (int i = 0; i < m * n; i++) {
     int x = i / m, y = i - x * m;
     real_t r2;
-    eval(r2f, ci->BODY + y, cj->BODY + x, dim, &r2);
+    eval(ef, ci->BODY + y, cj->BODY + x, dim, &r2);
     a[(size_t)x * a.LDA + y] = r2;
   }
 }
 
-void nbd::P2Pfar(eval_func_t r2f, const Cell* ci, const Cell* cj, int dim, Matrix& a, int rank) {
+void nbd::P2Pfar(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, Matrix& a, int rank) {
   int m = ci->NBODY, n = cj->NBODY;
   a = Matrix(m, n, rank, m, n);
 
   int iters;
-  daca_cells(r2f, ci, cj, dim, rank, a, a.LDA, a.B.data(), a.LDB, &iters);
+  daca_cells(ef, ci, cj, dim, rank, a, a.LDA, a.B.data(), a.LDB, &iters);
   if (iters != rank) {
     a.A.resize((size_t)m * iters);
     a.B.resize((size_t)n * iters);

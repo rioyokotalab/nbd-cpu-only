@@ -10,7 +10,13 @@ namespace nbd {
   typedef double real_t;
   constexpr int dim = 4;
 
-  typedef void (*eval_func_t) (real_t&);
+  typedef void (*eval_func_t) (real_t&, real_t, real_t);
+
+  struct EvalFunc {
+    eval_func_t r2f;
+    real_t singularity;
+    real_t alpha;
+  };
 
   struct Body {
     real_t X[dim];

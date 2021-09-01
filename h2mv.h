@@ -10,8 +10,8 @@ namespace nbd {
 
   void downwardPass(const Cell* icell, const Matrix* base, Matrix* l, real_t* b);
 
-  void closeQuarter(eval_func_t r2f, const Cells& icells, const Cells& jcells, int dim, const Matrices& d, const real_t* x, real_t* b);
+  void closeQuarter(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, const Matrices& d, const real_t* x, real_t* b);
 
-  void h2mv_complete(eval_func_t r2f, const Cells& icells, const Cells& jcells, int dim, const Matrices& ibase, const Matrices& jbase, const Matrices& d, const real_t* x, real_t* b);
+  void h2mv_complete(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, const Matrices& ibase, const Matrices& jbase, const Matrices& d, const real_t* x, real_t* b);
 
 }

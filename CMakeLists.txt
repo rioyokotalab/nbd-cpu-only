@@ -17,13 +17,12 @@ add_library(nbd STATIC
   build_tree.cpp build_tree.h 
   aca.cpp aca.h
   h2mv.cpp h2mv.h
+  jacobi.cpp jacobi.h
   test_util.cpp test_util.h
   timer.cpp timer.h
 )
 target_include_directories(nbd PRIVATE "./" )
 target_link_libraries(nbd blas lapacke)
-
-add_subdirectory("./nd-irs")
 
 add_executable(symmh2_example
   symmh2_example.cpp
@@ -46,5 +45,5 @@ target_include_directories(lra_example PRIVATE "./" )
 add_executable(irs_example
   irs_example.cpp
 )
-target_link_libraries(irs_example nbd nd-irs)
+target_link_libraries(irs_example nbd)
 target_include_directories(irs_example PRIVATE "./" )
