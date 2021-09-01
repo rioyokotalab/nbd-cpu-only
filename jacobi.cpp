@@ -10,19 +10,19 @@
 
 using namespace nbd;
 
-int nbd::h2solve(int max_iters, double epi, EvalFunc ef, const Cells& cells, int dim, const Matrices& base, const Matrices& d, double* x) {
+int nbd::h2solve(int max_iters, real_t epi, EvalFunc ef, const Cells& cells, int dim, const Matrices& base, const Matrices& d, real_t* x) {
 
   int N = cells[0].NBODY;
-  double singularity = ef.singularity;
-  double ins = 1. / singularity;
+  real_t singularity = ef.singularity;
+  real_t ins = 1. / singularity;
   ef.singularity = 0.;
-  std::vector<double> x0(N), work(N);
+  std::vector<real_t> x0(N), work(N);
 
   cblas_dcopy(N, x, 1, x0.data(), 1);
   cblas_dscal(N, ins, x0.data(), 1);
 
-  double nrm = cblas_dnrm2(N, x0.data(), 1);
-  double nrm_diff = 1.;
+  real_t nrm = cblas_dnrm2(N, x0.data(), 1);
+  real_t nrm_diff = 1.;
 
   int iters = 0;
   while (nrm_diff > epi && iters < max_iters) {
@@ -31,7 +31,7 @@ int nbd::h2solve(int max_iters, double epi, EvalFunc ef, const Cells& cells, int
     cblas_daxpy(N, -1., work.data(), 1, x0.data(), 1);
     cblas_dscal(N, ins, x0.data(), 1);
     
-    double nrm_i = cblas_dnrm2(N, x0.data(), 1);
+    real_t nrm_i = cblas_dnrm2(N, x0.data(), 1);
     iters += 1;
 
     nrm_diff = std::abs(nrm_i - nrm) / nrm;
