@@ -30,13 +30,13 @@ int main(int argc, char* argv[]) {
 
   start("build tree");
   Cells c1 = buildTree(b1, leaf, dim);
-  start("build tree");
+  stop("build tree");
 
   start("build H");
   auto fun = dim == 2 ? l2d() : l3d();
   Matrices d, bi;
   traverse(fun, c1, c1, dim, d, theta, rank);
-  start("build H");
+  stop("build H");
 
   start("build H2");
   traverse_i(c1, c1, d, bi, p);
