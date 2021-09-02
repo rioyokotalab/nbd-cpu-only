@@ -142,7 +142,8 @@ void nbd::daca_cells(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, int m
 }
 
 void nbd::daca(int m, int n, int max_iters, const double* a, int lda, double* u, int ldu, double* v, int ldv, int* info) {
-  InputMat M{ m, n, a, lda, NULL, NULL, NULL, 0 };
+  EvalFunc ef{ NULL, 0., 0. };
+  InputMat M{ m, n, a, lda, ef, NULL, NULL, 0 };
   _daca(&M, max_iters, u, ldu, v, ldv, info);
 }
 
