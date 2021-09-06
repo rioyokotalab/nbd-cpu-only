@@ -1,7 +1,7 @@
 
 #include "build_tree.h"
 #include "kernel.h"
-#include "aca.h"
+#include "lra.h"
 #include "h2mv.h"
 #include "test_util.h"
 #include "jacobi.h"
@@ -16,9 +16,9 @@ int main(int argc, char* argv[]) {
 
   using namespace nbd;
 
-  int dim = 2;
-  int m = 80000;
-  int leaf = 1000;
+  int dim = 3;
+  int m = 4000;
+  int leaf = 400;
   int rank = 80;
   int p = 20;
   double theta = 1.01;

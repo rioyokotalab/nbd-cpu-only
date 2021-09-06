@@ -15,7 +15,7 @@ add_library(nbd STATIC
   nbd.h
   kernel.cpp kernel.h
   build_tree.cpp build_tree.h 
-  aca.cpp aca.h
+  lra.cpp lra.h
   h2mv.cpp h2mv.h
   jacobi.cpp jacobi.h
   test_util.cpp test_util.h

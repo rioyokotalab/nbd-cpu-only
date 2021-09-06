@@ -4,12 +4,14 @@
 
 namespace nbd {
 
-  constexpr bool ACA_USE_NORM = false;
-  constexpr double ACA_EPI = 1.e-13;
+  constexpr bool ACA_USE_NORM = true;
+  constexpr double ACA_EPI = 1.e-7;
 
   void daca_cells(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info = nullptr);
 
   void daca(int m, int n, int max_iters, const double* a, int lda, double* u, int ldu, double* v, int ldv, int* info = nullptr);
+
+  void did(int m, int n, int max_iters, const double* a, int lda, int* aj, double* x, int ldx, int* info = nullptr);
 
   /* Dense random sampling for left side */
   void ddspl(int m, int na, const double* a, int lda, int ns, double* s, int lds);

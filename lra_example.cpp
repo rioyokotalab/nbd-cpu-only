@@ -1,5 +1,5 @@
 
-#include "aca.h"
+#include "lra.h"
 #include "test_util.h"
 
 #include <cmath>
@@ -10,7 +10,9 @@
 
 using namespace nbd;
 
-void compress_using_aca(int m, int n, int r, double* a, int lda);
+void compress_using_aca(int m, int n, int r, const double* a, int lda);
+
+void compress_using_id(int m, int n, int r, const double* a, int lda);
 
 int main(int argc, char* argv[]) {
 
@@ -42,11 +44,13 @@ int main(int argc, char* argv[]) {
 
   compress_using_aca(m, n, r, a.data(), m);
 
+  compress_using_id(m, n, r, a.data(), m);
+
   return 0;
 }
 
 
-void compress_using_aca(int m, int n, int r, double* a, int lda) {
+void compress_using_aca(int m, int n, int r, const double* a, int lda) {
   int rp = r + 8;
   std::vector<double> u(m * rp), v(n * rp), b(m * n);
 
@@ -62,6 +66,32 @@ void compress_using_aca(int m, int n, int r, double* a, int lda) {
     }
   }
 
-  printf("aca rel err: %e, aca iters %d\n", rel2err(b.data(), a, m, n, m, m), iters);
+  printf("aca rel err: %e, aca iters %d\n", rel2err(b.data(), a, m, n, m, lda), iters);
 }
 
+void compress_using_id(int m, int n, int r, const double* a, int lda) {
+  int rp = r + 8;
+  std::vector<double> u(m * rp), v(n * rp), b(m * n);
+  std::vector<int> pv(rp);
+
+  int iters;
+  did(m, n, rp, a, lda, pv.data(), v.data(), n, &iters);
+  
+  for (int j = 0; j < iters; j++) {
+    int col = pv[j];
+    for (int i = 0; i < m; i++) {
+      u[i + j * m] = a[i + col * lda];
+    }
+  }
+
+  for (int j = 0; j < n; j++) {
+    for (int i = 0; i < m; i++) {
+      double e = 0.;
+      for (int k = 0; k < iters; k++)
+        e += u[i + k * m] * v[j + k * n];
+      b[i + j * lda] = e;
+    }
+  }
+
+  printf("id rel err: %e, aca iters %d\n", rel2err(b.data(), a, m, n, m, lda), iters);
+}
