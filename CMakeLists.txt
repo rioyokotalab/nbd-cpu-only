@@ -24,6 +24,8 @@ add_library(nbd STATIC
 target_include_directories(nbd PRIVATE "./" )
 target_link_libraries(nbd blas lapacke)
 
+add_subdirectory(ldu)
+
 add_executable(symmh2_example
   symmh2_example.cpp
 )

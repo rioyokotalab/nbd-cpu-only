@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
   start("build H");
   auto fun = dim == 2 ? l2d() : l3d();
   Matrices d, bi, bj;
-  traverse(fun, c1, c2, dim, d, theta, rank);
+  d = traverse(fun, c1, c2, dim, theta, rank);
   stop("build H");
 
   {
@@ -46,8 +46,8 @@ int main(int argc, char* argv[]) {
   }
 
   start("build H2");
-  traverse_i(c1, c2, d, bi, p);
-  traverse_j(c1, c2, d, bj, p);
+  bi = traverse_i(c1, c2, d, p);
+  bj = traverse_j(c1, c2, d, p);
   shared_epilogue(d);
   stop("build H2");
 

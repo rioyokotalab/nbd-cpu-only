@@ -10,25 +10,27 @@ namespace nbd {
 
   void getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm);
 
-  void evaluate(EvalFunc ef, Cells& cells, const Cell* jcell_start, int dim, Matrices& d, int rank);
+  Matrices evaluate_near(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim);
 
-  void traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank);
+  Matrices evaluate_far(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, int rank);
 
-  void sample_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p);
+  Matrices traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank);
 
-  void sample_base_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p);
+  Matrices sample_base_i(const Cells& icells, const Cells& jcells, Matrices& d, int p);
+
+  Matrices sample_base_j(const Cells& icells, const Cells& jcells, Matrices& d, int p);
 
   void sample_base_recur(Cell* cell, Matrix* base);
 
-  void shared_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, bool symm);
+  void shared_base_i(const Cells& icells, const Cells& jcells, Matrices& d, Matrices& base, bool symm);
 
-  void shared_base_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base);
+  void shared_base_j(const Cells& icells, const Cells& jcells, Matrices& d, Matrices& base);
 
   void nest_base(Cell* icell, Matrix* base);
 
-  void traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p);
+  Matrices traverse_i(Cells& icells, Cells& jcells, Matrices& d, int p);
 
-  void traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p);
+  Matrices traverse_j(Cells& icells, Cells& jcells, Matrices& d, int p);
 
   void shared_epilogue(Matrices& d);
 

@@ -181,25 +181,40 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm) {
   }
 }
 
-void nbd::evaluate(EvalFunc ef, Cells& cells, const Cell* jcell_start, int dim, Matrices& d, int rank) {
+Matrices nbd::evaluate_near(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim) {
+  Matrices d(icells.size() * jcells.size());
 #pragma omp parallel for
-  for (int y = 0; y < cells.size(); y++) {
-    auto i = cells[y];
-    for (auto& j : i.listFar) {
-      auto x = j - jcell_start;
-      P2Pfar(ef, &i, j, dim, d[y + x * cells.size()], rank);
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
+    for (auto& j : i.listNear) {
+      auto x = j - &jcells[0];
+      P2Pnear(ef, &i, j, dim, d[y + x * icells.size()]);
     }
   }
+  return d;
 }
 
-void nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, Matrices& d, real_t theta, int rank) {
+Matrices nbd::evaluate_far(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, int rank) {
+  Matrices d(icells.size() * jcells.size());
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
+    for (auto& j : i.listFar) {
+      auto x = j - &jcells[0];
+      P2Pfar(ef, &i, j, dim, d[y + x * icells.size()], rank);
+    }
+  }
+  return d;
+}
+
+Matrices nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank) {
   getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells);
-  d.resize(icells.size() * jcells.size());
-  evaluate(ef, icells, &jcells[0], dim, d, rank);
+  return evaluate_far(ef, icells, jcells, dim, rank);
 }
 
 
-void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
+Matrices nbd::sample_base_i(const Cells& icells, const Cells& jcells, Matrices& d, int p) {
+  Matrices base(icells.size());
   int ld = (int)icells.size();
 #pragma omp parallel for
   for (int y = 0; y < icells.size(); y++) {
@@ -222,9 +237,12 @@ void nbd::sample_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& bas
       SampleP2Pi(base[y], m);
     }
   }
+
+  return base;
 }
 
-void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
+Matrices nbd::sample_base_j(const Cells& icells, const Cells& jcells, Matrices& d, int p) {
+  Matrices base(jcells.size());
   int ld = (int)icells.size();
 #pragma omp parallel for
   for (int x = 0; x < jcells.size(); x++) {
@@ -247,6 +265,8 @@ void nbd::sample_base_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& bas
       SampleP2Pj(base[x], m);
     }
   }
+
+  return base;
 }
 
 
@@ -268,7 +288,7 @@ void nbd::sample_base_recur(Cell* cell, Matrix* base) {
 
 }
 
-void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, bool symm) {
+void nbd::shared_base_i(const Cells& icells, const Cells& jcells, Matrices& d, Matrices& base, bool symm) {
   int ld = (int)icells.size();
 #pragma omp parallel for
   for (int y = 0; y < icells.size(); y++) {
@@ -294,7 +314,7 @@ void nbd::shared_base_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& bas
   }
 }
 
-void nbd::shared_base_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base) {
+void nbd::shared_base_j(const Cells& icells, const Cells& jcells, Matrices& d, Matrices& base) {
   int ld = (int)icells.size();
 #pragma omp parallel for
   for (int x = 0; x < jcells.size(); x++) {
@@ -323,21 +343,21 @@ void nbd::nest_base(Cell* icell, Matrix* base) {
   }
 }
 
-void nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
-  base.resize(icells.size());
-  sample_base_i(icells, jcells, d, base, p);
+Matrices nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, int p) {
+  Matrices base = sample_base_i(icells, jcells, d, p);
   sample_base_recur(&icells[0], &base[0]);
 
   shared_base_i(icells, jcells, d, base, &icells == &jcells);
   nest_base(&icells[0], &base[0]);
+  return base;
 }
 
-void nbd::traverse_j(Cells& icells, Cells& jcells, Matrices& d, Matrices& base, int p) {
-  base.resize(jcells.size());
-  sample_base_j(icells, jcells, d, base, p);
+Matrices nbd::traverse_j(Cells& icells, Cells& jcells, Matrices& d, int p) {
+  Matrices base = sample_base_j(icells, jcells, d, p);
   sample_base_recur(&jcells[0], &base[0]);
   shared_base_j(icells, jcells, d, base);
   nest_base(&jcells[0], &base[0]);
+  return base;
 }
 
 void nbd::shared_epilogue(Matrices& d) {
