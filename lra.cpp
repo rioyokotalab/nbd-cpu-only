@@ -222,3 +222,30 @@ void nbd::dmul_ut(int m, int n, int k, const double* u, int ldu, const double* a
 void nbd::dmul_s(int m, int n, int k, const double* u, int ldu, const double* v, int ldv, double* s, int lds) {
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, m, n, k, 1., u, ldu, v, ldv, 0., s, lds);
 }
+
+void nbd::dmatcpy(int m, int n, const double* a, int lda, double* b, int ldb) {
+  for (int i = 0; i < n; i++)
+    cblas_dcopy(m, &a[i * lda], 1, &b[i * ldb], 1);
+}
+
+void nbd::dmul2_pinv(int m, int n, int k, int l, const double* a, int lda, const double* u, int ldu, const double* v, int ldv, double* b, int ldb) {
+  std::vector<double> u_((size_t)m * k);
+  std::vector<double> v_((size_t)n * l);
+
+  dmatcpy(m, k, u, ldu, &u_[0], m);
+  dmatcpy(n, l, v, ldv, &v_[0], n);
+
+  std::vector<double> ru((size_t)k * k);
+  std::vector<double> rv((size_t)l * l);
+  
+  dorth(m, k, &u_[0], m, &ru[0], k);
+  dorth(n, l, &v_[0], n, &rv[0], l);
+
+  std::vector<double> work((size_t)m * l);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, l, n, 1., a, lda, &v_[0], n, 0., &work[0], m);
+  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, k, l, m, 1., &u_[0], m, &work[0], m, 0., b, ldb);
+
+  cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, k, l, 1., &ru[0], k, b, ldb);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, k, l, 1., &rv[0], l, b, ldb);
+}
+

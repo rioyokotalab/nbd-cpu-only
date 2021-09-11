@@ -34,4 +34,8 @@ namespace nbd {
 
   void MergeS(Matrix& a);
 
+  void M2Lnear(const Matrix& u, const Matrix& v, const Matrix& d, real_t* a, int lda);
+
+  void M2Lnear_super(int m, int n, const Matrix* u, const Matrix* v, const Matrix* d_nnf, int ld, Matrix& a);
+
 }

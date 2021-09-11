@@ -10,9 +10,7 @@ namespace nbd {
 
   void getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm);
 
-  Matrices evaluate_near(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim);
-
-  Matrices evaluate_far(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, int rank);
+  Matrices evaluate(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, int rank, bool eval_near);
 
   Matrices traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank);
 

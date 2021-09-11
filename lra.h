@@ -27,4 +27,9 @@ namespace nbd {
   /* S(m x n) = U(m x k) * VT(n x k) */
   void dmul_s(int m, int n, int k, const double* u, int ldu, const double* v, int ldv, double* s, int lds);
 
+  void dmatcpy(int m, int n, const double* a, int lda, double* b, int ldb);
+
+  /* B(k x l) = U^-1(m x k) * A(m x n) * VT^-1(n x l) */
+  void dmul2_pinv(int m, int n, int k, int l, const double* a, int lda, const double* u, int ldu, const double* v, int ldv, double* b, int ldb);
+
 }

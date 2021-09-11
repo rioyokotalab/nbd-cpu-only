@@ -181,35 +181,28 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm) {
   }
 }
 
-Matrices nbd::evaluate_near(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim) {
+Matrices nbd::evaluate(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, int rank, bool eval_near) {
   Matrices d(icells.size() * jcells.size());
 #pragma omp parallel for
   for (int y = 0; y < icells.size(); y++) {
     auto i = icells[y];
-    for (auto& j : i.listNear) {
-      auto x = j - &jcells[0];
-      P2Pnear(ef, &i, j, dim, d[y + x * icells.size()]);
-    }
-  }
-  return d;
-}
-
-Matrices nbd::evaluate_far(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, int rank) {
-  Matrices d(icells.size() * jcells.size());
-#pragma omp parallel for
-  for (int y = 0; y < icells.size(); y++) {
-    auto i = icells[y];
-    for (auto& j : i.listFar) {
-      auto x = j - &jcells[0];
-      P2Pfar(ef, &i, j, dim, d[y + x * icells.size()], rank);
-    }
+    if (rank > 0)
+      for (auto& j : i.listFar) {
+        auto x = j - &jcells[0];
+        P2Pfar(ef, &i, j, dim, d[y + x * icells.size()], rank);
+      }
+    if (eval_near)
+      for (auto& j : i.listNear) {
+        auto x = j - &jcells[0];
+        P2Pnear(ef, &i, j, dim, d[y + x * icells.size()]);
+      }
   }
   return d;
 }
 
 Matrices nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank) {
   getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells);
-  return evaluate_far(ef, icells, jcells, dim, rank);
+  return evaluate(ef, icells, jcells, dim, rank, false);
 }
 
 

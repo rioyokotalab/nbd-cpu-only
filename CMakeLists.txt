@@ -17,14 +17,13 @@ add_library(nbd STATIC
   build_tree.cpp build_tree.h 
   lra.cpp lra.h
   h2mv.cpp h2mv.h
+  close_invert.cpp close_invert.h
   jacobi.cpp jacobi.h
   test_util.cpp test_util.h
   timer.cpp timer.h
 )
 target_include_directories(nbd PRIVATE "./" )
 target_link_libraries(nbd blas lapacke)
-
-add_subdirectory(ldu)
 
 add_executable(symmh2_example
   symmh2_example.cpp
