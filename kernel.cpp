@@ -162,7 +162,7 @@ void nbd::MergeS(Matrix& a) {
 void nbd::M2Lnear(const Matrix& u, const Matrix& v, const Matrix& d, real_t* a, int lda) {
   if (d.M == u.N && d.N == v.N)
     dmatcpy(d.M, d.N, d, d.LDA, a, lda);
-  else if (d.M > u.N && d.N > v.N)
+  else if (d.M == u.M && d.N == v.M)
     dmul2_pinv(d.M, d.N, u.N, v.N, d, d.LDA, u, u.LDA, v, v.LDA, a, lda);
 }
 

@@ -32,8 +32,6 @@ namespace nbd {
 
   void shared_epilogue(Matrices& d);
 
-  int lvls(const Cell* cell, int* lvl);
-
   Cells getLeaves(const Cells& cells);
 
 }

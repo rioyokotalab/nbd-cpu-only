@@ -359,19 +359,6 @@ void nbd::shared_epilogue(Matrices& d) {
       MergeS(m);
 }
 
-int nbd::lvls(const Cell* cell, int* lvl) {
-  if (cell->CHILD == nullptr)
-    return *lvl = 0;
-  else {
-    int max_l = 0;
-    for (Cell* c = cell->CHILD; c != cell->CHILD + cell->NCHILD; c++) {
-      auto i = c - cell;
-      max_l = std::max(max_l, lvls(c, lvl + i));
-    }
-    return *lvl = max_l + 1;
-  }
-}
-
 Cells nbd::getLeaves(const Cells& cells) {
   Cells l;
   l.emplace_back(cells[0]);

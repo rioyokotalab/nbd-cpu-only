@@ -15,9 +15,9 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 2;
-  int m = 4096;
-  int leaf = 256;
-  int rank = 80;
+  int m = 2048;
+  int leaf = 128;
+  int rank = 60;
   int p = 20;
   double theta = 0.9;
 
@@ -60,7 +60,6 @@ int main(int argc, char* argv[]) {
   printf("H2-vec vs direct m-vec err %e\n", rel2err(&b[0], &b_ref[0], m, 1, m, m));
 
   printTree(&c1[0], dim);
-
-
+  
   return 0;
 }
