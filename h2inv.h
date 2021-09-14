@@ -22,5 +22,6 @@ namespace nbd {
 
   void near_solve(const Matrix& d, const double* b, double* x);
 
+  void h2inv_complete(const Cells& cells, const Matrices& base, const Matrices& d, const real_t* b, real_t* x);
 
 };

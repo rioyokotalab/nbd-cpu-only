@@ -167,10 +167,10 @@ void nbd::convertH2mat2Dense(EvalFunc ef, int dim, const Cells& icells, const Ce
 }
 
 
-void nbd::printTree(const Cell* cell, int dim, int level, int offset_c, int offset_b) {
-  for (int i = 0; i < level; i++)
+void nbd::printTree(const Cell* cell, int dim, int offset_c, int offset_b) {
+  for (int i = 0; i < cell->LEVEL; i++)
     printf("  ");
-  printf("%d: <%d, %d> C:<", offset_c, offset_b, offset_b + cell->NBODY);
+  printf("%d: <%d, %d> L: %d, C:<", offset_c, offset_b, offset_b + cell->NBODY, cell->LEVEL);
   for (int d = 0; d < dim; d++)
     printf("%.3f ", cell->C[d]);
   printf("> R:<");
@@ -182,9 +182,12 @@ void nbd::printTree(const Cell* cell, int dim, int level, int offset_c, int offs
   printf("> <Near: ");
   for (auto& c : cell->listNear)
     printf("%d ", offset_c + (int)(c - cell));
+  printf("> <Hier: ");
+  for (auto& c : cell->listHier)
+    printf("%d ", offset_c + (int)(c - cell));
   printf(">\n");
   for (auto c = cell->CHILD; c != cell->CHILD + cell->NCHILD; c++)
-    printTree(c, dim, level + 1, offset_c + (int)(c - cell), offset_b + (int)(c->BODY - cell->BODY));
+    printTree(c, dim, offset_c + (int)(c - cell), offset_b + (int)(c->BODY - cell->BODY));
 }
 
 void nbd::printMatrixDim(const Matrix& a) {

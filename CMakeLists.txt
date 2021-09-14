@@ -17,7 +17,7 @@ add_library(nbd STATIC
   build_tree.cpp build_tree.h 
   lra.cpp lra.h
   h2mv.cpp h2mv.h
-  close_invert.cpp close_invert.h
+  h2inv.cpp h2inv.h
   jacobi.cpp jacobi.h
   test_util.cpp test_util.h
   timer.cpp timer.h
@@ -48,3 +48,9 @@ add_executable(irs_example
 )
 target_link_libraries(irs_example nbd)
 target_include_directories(irs_example PRIVATE "./" )
+
+add_executable(blr2inv_example
+  blr2inv_example.cpp
+)
+target_link_libraries(blr2inv_example nbd)
+target_include_directories(blr2inv_example PRIVATE "./" )

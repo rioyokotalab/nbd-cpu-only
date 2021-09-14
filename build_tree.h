@@ -8,7 +8,9 @@ namespace nbd {
 
   Cells buildTree(Bodies& bodies, int ncrit, int dim);
 
-  void getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm);
+  void getLevel(Cell* cell);
+
+  void getList(Cell* Ci, Cell* Cj, int dim, real_t theta, bool symm, bool x_level);
 
   Matrices evaluate(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, int rank, bool eval_near);
 

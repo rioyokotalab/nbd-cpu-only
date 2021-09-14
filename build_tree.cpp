@@ -147,11 +147,27 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
     last_off += last_len;
     last_len = len;
   }
+
+  getLevel(&cells[0]);
   return cells;
 }
 
 
-void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm) {
+void nbd::getLevel(Cell* cell) {
+  if (cell->NCHILD > 0) {
+    int max_l = 0;
+    for (Cell * ci=cell->CHILD; ci!=cell->CHILD+cell->NCHILD; ci++) {
+      getLevel(ci);
+      max_l = std::max(max_l, ci->LEVEL);
+    }
+    cell->LEVEL = max_l + 1;
+  }
+  else
+    cell->LEVEL = 0;
+}
+
+
+void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm, bool x_level) {
   real_t dX = 0., CiR = 0., CjR = 0.;
   for (int d = 0; d < dim; d++) {
     real_t diff = Ci->C[d] - Cj->C[d];
@@ -161,8 +177,9 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm) {
     CjR = std::fmax(CjR, Cj->R[d]);
   }
   real_t R2 = dX * theta * theta;
+  bool lcheck = x_level || (Ci->LEVEL == Cj->LEVEL);
 
-  if (R2 > (CiR + CjR) * (CiR + CjR)) {
+  if (R2 > (CiR + CjR) * (CiR + CjR) && lcheck) {
     Ci->listFar.push_back(Cj);
     if (!symm)
       Cj->listFar.push_back(Ci);
@@ -170,13 +187,17 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm) {
     Ci->listNear.push_back(Cj);
     if (!symm)
       Cj->listNear.push_back(Ci);
-  } else if (Cj->NCHILD == 0 || (CiR >= CjR && Ci->NCHILD != 0)) {
-    for (Cell * ci=Ci->CHILD; ci!=Ci->CHILD+Ci->NCHILD; ci++) {
-      getList(ci, Cj, dim, theta, symm);
-    }
-  } else {
-    for (Cell * cj=Cj->CHILD; cj!=Cj->CHILD+Cj->NCHILD; cj++) {
-      getList(Ci, cj, dim, theta, symm);
+  } else { 
+    if (Cj->NCHILD == 0 || (CiR >= CjR && Ci->NCHILD != 0))
+      for (Cell * ci=Ci->CHILD; ci!=Ci->CHILD+Ci->NCHILD; ci++)
+        getList(ci, Cj, dim, theta, symm, x_level);
+    else
+      for (Cell * cj=Cj->CHILD; cj!=Cj->CHILD+Cj->NCHILD; cj++)
+        getList(Ci, cj, dim, theta, symm, x_level);
+    if (Ci->LEVEL == Cj->LEVEL) {
+      Ci->listHier.push_back(Cj);
+      if (!symm)
+        Cj->listHier.push_back(Ci);
     }
   }
 }
@@ -201,7 +222,7 @@ Matrices nbd::evaluate(EvalFunc ef, const Cells& icells, const Cells& jcells, in
 }
 
 Matrices nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank) {
-  getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells);
+  getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells, false);
   return evaluate(ef, icells, jcells, dim, rank, false);
 }
 
@@ -372,7 +393,8 @@ Cells nbd::getLeaves(const Cells& cells) {
     }
 
   l[0].NCHILD = l.size() - 1;
-  l[0].CHILD = l[0].NCHILD > 0 ? &l[1] : nullptr;
+  l[0].LEVEL = (int)l[0].NCHILD > 0;
+  l[0].CHILD = l[0].LEVEL ? &l[1] : nullptr;
 
   return l;
 }

@@ -32,8 +32,10 @@ namespace nbd {
     real_t C[dim];
     real_t R[dim];
 
+    int LEVEL = 0;
     std::vector<Cell*> listFar;
     std::vector<Cell*> listNear;
+    std::vector<Cell*> listHier;
   };
 
   typedef std::vector<Cell> Cells;

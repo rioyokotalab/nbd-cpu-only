@@ -36,6 +36,9 @@ int nbd::h2solve(int max_iters, real_t epi, EvalFunc ef, const Cells& cells, int
 
     nrm_diff = std::abs(nrm_i - nrm) / nrm;
     nrm = nrm_i;
+
+    if (nrm_diff > 1.)
+      return -1;
   }
 
   cblas_dcopy(N, x0.data(), 1, x, 1);

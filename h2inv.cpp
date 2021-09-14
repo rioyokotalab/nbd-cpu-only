@@ -1,5 +1,5 @@
 
-#include "close_invert.h"
+#include "h2inv.h"
 
 #include "kernel.h"
 #include "build_tree.h"
@@ -86,7 +86,6 @@ Matrix nbd::near(const Cells& icells, const Cells& jcells, const Matrices& d) {
     }
   }
 
-  dgetf2np(A.M, A.N, a, lda);
   return A;
 }
 
@@ -97,3 +96,4 @@ void near_solve(const Matrix& d, const double* b, double* x) {
   dtrsvf(d.M, d, x);
   dtrsvb(d.M, d, x);
 }
+

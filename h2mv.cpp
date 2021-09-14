@@ -65,6 +65,27 @@ void nbd::upwardPass(const Cells& jcells, const Matrices& jbase, const real_t* x
   }
 }
 
+void nbd::upwardPassOne(const Matrices& jbase, const real_t* x, real_t* m) {
+  std::vector<UpwardMap> map(jbase.size());
+  int m_off = 0;
+  int x_off = 0;
+  for (int i = 0; i < jbase.size(); i++) {
+    map[i].base = &jbase[i];
+    map[i].m = m + m_off;
+    m_off += jbase[i].N;
+    map[i].x = x + x_off;
+    x_off += jbase[i].M;
+  }
+
+  for (int i = 0; i < jbase.size(); i++) {
+    const Matrix* base = map[i].base;
+    const real_t* x = map[i].x;
+    real_t* m = map[i].m;
+    if (base->N > 0)
+      cblas_dgemv(CblasColMajor, CblasTrans, base->M, base->N, 1., &(base->A)[0], base->LDA, x, 1, 0., m, 1);
+  }
+}
+
 
 void nbd::horizontalPass(const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, const Matrices& d, const real_t* m, real_t* l) {
   std::vector<const real_t*> mo(jcells.size());
@@ -135,6 +156,27 @@ void nbd::downwardPass(const Cells& icells, const Matrices& ibase, real_t* l, re
 
 }
 
+void downwardPassOne(const Matrices& ibase, real_t* l, real_t* b) {
+  std::vector<DownwardMap> map(ibase.size());
+  int l_off = 0;
+  int b_off = 0;
+  for (int i = 0; i < ibase.size(); i++) {
+    map[i].base = &ibase[i];
+    map[i].l = l + l_off;
+    l_off += ibase[i].N;
+    map[i].b = b + b_off;
+    b_off += ibase[i].M;
+  }
+
+  for (int i = 0; i < ibase.size(); i++) {
+    const Matrix* base = map[i].base;
+    real_t* l = map[i].l;
+    real_t* b = map[i].b;
+    if (base->N > 0)
+      cblas_dgemv(CblasColMajor, CblasNoTrans, base->M, base->N, 1., &(base->A)[0], base->LDA, l, 1, 1., b, 1);
+  }
+}
+
 void nbd::closeQuarter(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, const real_t* x, real_t* b) {
   auto j_begin = jcells[0].BODY;
   auto i_begin = icells[0].BODY;
@@ -172,4 +214,6 @@ void nbd::h2mv_complete(EvalFunc ef, const Cells& icells, const Cells& jcells, i
   downwardPass(icells, ibase, &l[0], b);
   closeQuarter(ef, icells, jcells, dim, x, b);
 }
+
+
 

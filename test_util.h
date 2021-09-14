@@ -25,7 +25,7 @@ namespace nbd {
 
   void printMatrixDim(const Matrix& a);
 
-  void printTree(const Cell* cell, int dim, int level = 0, int offset_c = 0, int offset_b = 0);
+  void printTree(const Cell* cell, int dim, int offset_c = 0, int offset_b = 0);
 
   real_t rel2err(const real_t* a, const real_t* ref, int m, int n, int lda, int ldref);
 
