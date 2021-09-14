@@ -221,9 +221,9 @@ Matrices nbd::evaluate(EvalFunc ef, const Cells& icells, const Cells& jcells, in
   return d;
 }
 
-Matrices nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank) {
-  getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells, false);
-  return evaluate(ef, icells, jcells, dim, rank, false);
+Matrices nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank, bool x_level, bool eval_near) {
+  getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells, x_level);
+  return evaluate(ef, icells, jcells, dim, rank, eval_near);
 }
 
 
@@ -378,6 +378,45 @@ void nbd::shared_epilogue(Matrices& d) {
   for (auto& m : d)
     if (m.R > 0)
       MergeS(m);
+}
+
+Matrices nbd::traverse_oo(const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, Matrices& d) {
+  Matrices d_oo(icells.size() * jcells.size());
+  int ld = (int)icells.size();
+
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
+    for (auto& j : i.listNear) {
+      auto x = j - &jcells[0];
+      M2Lnear(ibase[y], jbase[x], d[y + (size_t)x * ld], d_oo[y + (size_t)x * ld]);
+    }
+  }
+
+  std::vector<int> ma(ibase.size()), na(jbase.size());
+  for (int i = 0; i < ibase.size(); i++)
+    ma[i] = ibase[i].N;
+  for (int i = 0; i < jbase.size(); i++)
+    na[i] = jbase[i].N;
+
+  for (int l = 1; l <= icells[0].LEVEL; l++) {
+#pragma omp parallel for
+    for (int y = 0; y < icells.size(); y++) {
+      auto i = icells[y];
+      if (i.LEVEL == l) {
+        auto yc = i.CHILD - &icells[0];
+        for (auto& j : i.listHier) {
+          auto x = j - &jcells[0];
+          auto xc = j->CHILD - &jcells[0];
+          M2Lsuper(i.NCHILD, j->NCHILD, &d[yc + xc * ld], ld, &ma[yc], &na[xc], d[y + (size_t)x * ld]);
+          M2Lsuper(i.NCHILD, j->NCHILD, &d_oo[yc + xc * ld], ld, &ma[yc], &na[xc], d[y + (size_t)x * ld]);
+          M2Lnear(ibase[y], jbase[x], d[y + (size_t)x * ld], d_oo[y + (size_t)x * ld]);
+        }
+      }
+    }
+  }
+
+  return d_oo;
 }
 
 Cells nbd::getLeaves(const Cells& cells) {

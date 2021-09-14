@@ -14,7 +14,7 @@ namespace nbd {
 
   Matrices evaluate(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, int rank, bool eval_near);
 
-  Matrices traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank);
+  Matrices traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank, bool x_level = false, bool eval_near = false);
 
   Matrices sample_base_i(const Cells& icells, const Cells& jcells, Matrices& d, int p);
 
@@ -33,6 +33,8 @@ namespace nbd {
   Matrices traverse_j(Cells& icells, Cells& jcells, Matrices& d, int p);
 
   void shared_epilogue(Matrices& d);
+
+  Matrices traverse_oo(const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, Matrices& d);
 
   Cells getLeaves(const Cells& cells);
 

@@ -159,39 +159,36 @@ void nbd::MergeS(Matrix& a) {
   }
 }
 
-void nbd::M2Lnear(const Matrix& u, const Matrix& v, const Matrix& d, real_t* a, int lda) {
-  if (d.M == u.N && d.N == v.N)
-    dmatcpy(d.M, d.N, d, d.LDA, a, lda);
-  else if (d.M == u.M && d.N == v.M)
-    dmul2_pinv(d.M, d.N, u.N, v.N, d, d.LDA, u, u.LDA, v, v.LDA, a, lda);
+void nbd::M2Lnear(const Matrix& u, const Matrix& v, const Matrix& d, Matrix& a) {
+  if (d.M == u.M && d.N == v.M && u.N > 0 && v.N > 0) {
+    a = Matrix(u.N, v.N, u.N);
+    dmul2_pinv(d.M, d.N, u.N, v.N, d, d.LDA, u, u.LDA, v, v.LDA, a, a.LDA);
+  }
 }
 
-void nbd::M2Lnear_super(int m, int n, const Matrix* u, const Matrix* v, const Matrix* d_nnf, int ld, Matrix& a) {
+void nbd::M2Lsuper(int m, int n, const Matrix* d, int ld, int* ma, int* na, Matrix& a) {
   std::vector<int> off_m(m + 1), off_n(n + 1);
 
   off_m[0] = 0;
   for (int i = 1; i <= m; i++)
-    off_m[i] = off_m[i - 1] + u[i - 1].N;
+    off_m[i] = off_m[i - 1] + ma[i - 1];
 
   off_n[0] = 0;
   for (int i = 1; i <= n; i++)
-    off_n[i] = off_n[i - 1] + v[i - 1].N;
+    off_n[i] = off_n[i - 1] + na[i - 1];
   
-  int ma = off_m[m];
-  int na = off_n[n];
-  a = Matrix(ma, na, ma);
+  if (!(a.M == off_m[m] && a.N == off_n[n]))
+    a = Matrix(off_m[m], off_n[n], off_m[m]);
   int lda = a.LDA;
 
   for (int x = 0; x < n; x++) {
-    const Matrix& vx = v[x];
     int xa = off_n[x];
-
     for (int y = 0; y < m; y++) {
-      const Matrix& uy = u[y];
       int ya = off_m[y];
 
-      const Matrix& b = d_nnf[y + (size_t)x * ld];
-      M2Lnear(uy, vx, b, a.A.data() + ya + (size_t)xa * lda, lda);
+      const Matrix& b = d[y + (size_t)x * ld];
+      if (b.M == ma[y] && b.N == na[x])
+        dmatcpy(b.M, b.N, b, b.LDA, &(a.A)[ya + (size_t)xa * lda], lda);
     }
   }
 }

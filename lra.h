@@ -4,9 +4,6 @@
 
 namespace nbd {
 
-  constexpr bool ACA_USE_NORM = true;
-  constexpr double ACA_EPI = 1.e-12;
-
   void daca_cells(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info = nullptr);
 
   void daca(int m, int n, int max_iters, const double* a, int lda, double* u, int ldu, double* v, int ldv, int* info = nullptr);

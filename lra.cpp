@@ -28,7 +28,7 @@ inline void _eval(const InputMat* M, int y, int x, real_t* out) {
     eval(M->ef, M->ci->BODY + y, M->cj->BODY + x, M->dim, out);
 }
 
-void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int ldv, int* info, int* pv_out) {
+void _daca(const InputMat* M, int max_iters, double aca_epi, double* u, int ldu, double* v, int ldv, int* info, int* pv_out) {
 
   int y = 0, x, iter = 1, m = M->m, n = M->n, piv_i = 0;
   double piv = 0;
@@ -68,10 +68,11 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
   double my_norm_u = cblas_ddot(m, u, 1, u, 1);
   double my_norm_v = cblas_ddot(n, v, 1, v, 1);
   double norm = my_norm_u * my_norm_v;
-  double epi2 = ACA_EPI * ACA_EPI;
+  double epi2 = aca_epi * aca_epi;
   double n2 = norm;
+  bool aca_use_norm = aca_epi > 0;
 
-  if (ACA_USE_NORM && n2 <= epi2 * n2)
+  if (aca_use_norm && n2 <= epi2 * n2)
     piv_i = -1;
 
   while (piv_i != -1 && iter < max_iters) {
@@ -115,7 +116,7 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
       { piv_i = i; piv = ui; }
     }
 
-    if (ACA_USE_NORM) {
+    if (aca_use_norm) {
       for (int j = 0; j < iter; j++) {
         my_norm_u = cblas_ddot(m, u + (size_t)j * ldu, 1, curr_u, 1);
         my_norm_v = cblas_ddot(n, v + (size_t)j * ldv, 1, curr_v, 1);
@@ -142,23 +143,23 @@ void _daca(const InputMat* M, int max_iters, double* u, int ldu, double* v, int 
 
 void nbd::daca_cells(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, int max_iters, double* u, int ldu, double* v, int ldv, int* info) {
   InputMat M{ ci->NBODY, cj->NBODY, NULL, 0, ef, ci, cj, dim };
-  _daca(&M, max_iters, u, ldu, v, ldv, info, nullptr);
+  _daca(&M, max_iters, 1.e-13, u, ldu, v, ldv, info, nullptr);
 }
 
 void nbd::daca(int m, int n, int max_iters, const double* a, int lda, double* u, int ldu, double* v, int ldv, int* info) {
   EvalFunc ef{ NULL, 0., 0. };
   InputMat M{ m, n, a, lda, ef, NULL, NULL, 0 };
-  _daca(&M, max_iters, u, ldu, v, ldv, info, nullptr);
+  _daca(&M, max_iters, 1.e-13, u, ldu, v, ldv, info, nullptr);
 }
 
 
-void _did(const InputMat* M, int max_iters, int* aj, double* x, int ldx, int* info) {
+void _did(const InputMat* M, int max_iters, double aca_epi, int* aj, double* x, int ldx, int* info) {
   int m = M->m, n = M->n;
   std::vector<double> u((size_t)m * max_iters);
   std::vector<double> v((size_t)n * max_iters);
 
   int iters = 0;
-  _daca(M, max_iters, &u[0], m, &v[0], n, &iters, aj);
+  _daca(M, max_iters, aca_epi, &u[0], m, &v[0], n, &iters, aj);
 
   std::vector<double> r((size_t)iters * iters);
   for (int i = 0; i < iters; i++)
@@ -178,7 +179,7 @@ void nbd::did(int m, int n, int max_iters, const double* a, int lda, int* aj, do
 
   EvalFunc ef{ NULL, 0., 0. };
   InputMat M{ m, n, a, lda, ef, NULL, NULL, 0 };
-  _did(&M, max_iters, aj, x, ldx, info);
+  _did(&M, max_iters, 1.e-13, aj, x, ldx, info);
 }
 
 

@@ -39,10 +39,6 @@ int main(int argc, char* argv[]) {
 
   mvec_kernel(fun, &c1[0], &c1[0], dim, 1., &x[0], 1, 0., &b[0], 1);
 
-  Matrix C;
-  M2Lnear_super(m / leaf, m / leaf, &bi[1], &bi[1], &d[1 + c1.size()], c1.size(), C);
-  dgetf2np(C.M, C.N, C, C.LDA);
-
   Matrix dA;
   near(c1, c1, d);
 
