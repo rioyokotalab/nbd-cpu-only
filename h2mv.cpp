@@ -117,7 +117,7 @@ void nbd::horizontalPass(const Cells& icells, const Cells& jcells, const Matrice
 
 struct DownwardMap {
   const Matrix* base;
-  real_t* l;
+  const real_t* l;
   real_t* b;
 };
 
@@ -148,7 +148,7 @@ void nbd::downwardPass(const Cells& icells, const Matrices& ibase, real_t* l, re
   for (int i = 0; i < icells.size(); i++) {
     int ii = order[i];
     const Matrix* base = map[ii].base;
-    real_t* l = map[ii].l;
+    const real_t* l = map[ii].l;
     real_t* b = map[ii].b;
     if (base->N > 0)
       cblas_dgemv(CblasColMajor, CblasNoTrans, base->M, base->N, 1., &(base->A)[0], base->LDA, l, 1, 1., b, 1);
@@ -156,7 +156,7 @@ void nbd::downwardPass(const Cells& icells, const Matrices& ibase, real_t* l, re
 
 }
 
-void downwardPassOne(const Matrices& ibase, real_t* l, real_t* b) {
+void nbd::downwardPassOne(const Matrices& ibase, const real_t* l, real_t* b) {
   std::vector<DownwardMap> map(ibase.size());
   int l_off = 0;
   int b_off = 0;
@@ -170,7 +170,7 @@ void downwardPassOne(const Matrices& ibase, real_t* l, real_t* b) {
 
   for (int i = 0; i < ibase.size(); i++) {
     const Matrix* base = map[i].base;
-    real_t* l = map[i].l;
+    const real_t* l = map[i].l;
     real_t* b = map[i].b;
     if (base->N > 0)
       cblas_dgemv(CblasColMajor, CblasNoTrans, base->M, base->N, 1., &(base->A)[0], base->LDA, l, 1, 1., b, 1);
@@ -215,5 +215,27 @@ void nbd::h2mv_complete(EvalFunc ef, const Cells& icells, const Cells& jcells, i
   closeQuarter(ef, icells, jcells, dim, x, b);
 }
 
+
+void nbd::spmv(int m, int n, const Matrix* d, int ld, int* ma, int* na, const real_t* x, real_t* b) {
+  std::vector<int> off_m(m + 1), off_n(n + 1);
+  off_m[0] = 0;
+  for (int i = 1; i <= m; i++)
+    off_m[i] = off_m[i - 1] + ma[i - 1];
+
+  off_n[0] = 0;
+  for (int i = 1; i <= n; i++)
+    off_n[i] = off_n[i - 1] + na[i - 1];
+
+#pragma omp parallel for
+  for (int y = 0; y < m; y++) {
+    int yi = off_m[y];
+    for (int _x = 0; _x < n; _x++) {
+      int xi = off_n[_x];
+      const Matrix& a = d[y + (size_t)_x * ld];
+      if (a.M == ma[y] && a.N == na[_x])
+        cblas_dgemv(CblasColMajor, CblasNoTrans, a.M, a.N, 1., &(a.A)[0], a.LDA, x + xi, 1, 1., b + yi, 1);
+    }
+  }
+}
 
 

@@ -18,10 +18,8 @@ namespace nbd {
 
   void dschurv(int m, int n, const double* a, const double* x, double* y);
 
-  Matrix near(const Cells& icells, const Cells& jcells, const Matrices& d);
+  void near(const Cells& icells, const Cells& jcells, const Matrices& d, Matrix& A);
 
   void near_solve(const Matrix& d, const double* b, double* x);
-
-  void h2inv_complete(const Cells& cells, const Matrices& base, const Matrices& d, const real_t* b, real_t* x);
 
 };

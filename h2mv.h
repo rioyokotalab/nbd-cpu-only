@@ -14,11 +14,12 @@ namespace nbd {
 
   void downwardPass(const Cells& icells, const Matrices& ibase, real_t* l, real_t* b);
 
-  void downwardPassOne(const Matrices& ibase, real_t* l, real_t* b);
+  void downwardPassOne(const Matrices& ibase, const real_t* l, real_t* b);
 
   void closeQuarter(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, const real_t* x, real_t* b);
 
   void h2mv_complete(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, const Matrices& ibase, const Matrices& jbase, const Matrices& d, const real_t* x, real_t* b);
 
+  void spmv(int m, int n, const Matrix* d, int ld, int* ma, int* na, const real_t* x, real_t* b);
 
 }

@@ -61,8 +61,8 @@ void nbd::dschurv(int m, int n, const double* a, const double* x, double* y) {
 }
 
 
-Matrix nbd::near(const Cells& icells, const Cells& jcells, const Matrices& d) {
-  Matrix A(icells[0].NBODY, jcells[0].NBODY, icells[0].NBODY);
+void nbd::near(const Cells& icells, const Cells& jcells, const Matrices& d, Matrix& A) {
+  A = Matrix(icells[0].NBODY, jcells[0].NBODY, icells[0].NBODY);
 
   double* a = A.A.data();
   int lda = A.LDA;
@@ -86,11 +86,11 @@ Matrix nbd::near(const Cells& icells, const Cells& jcells, const Matrices& d) {
     }
   }
 
-  return A;
+  dgetf2np(A.M, A.N, A, A.LDA);
 }
 
 
-void near_solve(const Matrix& d, const double* b, double* x) {
+void nbd::near_solve(const Matrix& d, const double* b, double* x) {
   if (b != x)
     cblas_dcopy(d.M, b, 1, x, 1);
   dtrsvf(d.M, d, x);
