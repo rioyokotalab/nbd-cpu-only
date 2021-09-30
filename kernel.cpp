@@ -4,16 +4,9 @@
 #include "lra.h"
 
 #include <cmath>
+#include <cstdio>
 
 using namespace nbd;
-
-EvalFunc nbd::r2() {
-  EvalFunc ef;
-  ef.r2f = [](real_t& r2, real_t singularity, real_t alpha) -> void {};
-  ef.singularity = 0.;
-  ef.alpha = 1.;
-  return ef;
-}
 
 EvalFunc nbd::l2d() {
   EvalFunc ef;
@@ -64,131 +57,127 @@ void nbd::mvec_kernel(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, real
 
 void nbd::P2Pnear(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, Matrix& a) {
   int m = ci->NBODY, n = cj->NBODY;
-  a = Matrix(m, n, m);
+  a.A.resize((size_t)m * n);
+  a.M = m;
+  a.N = n;
 
-  for (int i = 0; i < m * n; i++) {
+  for (int i = 0; i < (size_t)m * n; i++) {
     int x = i / m, y = i - x * m;
     real_t r2;
     eval(ef, ci->BODY + y, cj->BODY + x, dim, &r2);
-    a[(size_t)x * a.LDA + y] = r2;
+    a.A[(size_t)x * a.M + y] = r2;
   }
 }
 
 void nbd::P2Pfar(EvalFunc ef, const Cell* ci, const Cell* cj, int dim, Matrix& a, int rank) {
   int m = ci->NBODY, n = cj->NBODY;
-  a = Matrix(m, n, rank, m, n);
+  a.M = m;
+  a.N = n;
+  a.A.reserve(((size_t)m + n) * rank);
+  a.A.resize((size_t)m * rank);
+
+  std::vector<real_t> v((size_t)n * rank);
 
   int iters;
-  daca_cells(ef, ci, cj, dim, rank, a, a.LDA, a.B.data(), a.LDB, &iters);
-  if (iters != rank) {
-    a.A.resize((size_t)m * iters);
-    a.B.resize((size_t)n * iters);
-    a.R = iters;
-  }
+  daca_cells(ef, ci, cj, dim, rank, a.A.data(), m, v.data(), n, &iters);
+  a.A.resize(((size_t)m + n) * iters);
+  std::copy(v.begin(), v.begin() + ((size_t)n * iters), a.A.begin() + ((size_t)m * iters));
 }
 
 void nbd::SampleP2Pi(Matrix& s, const Matrix& a) {
-  if (a.R > 0)
-    drspl(s.M, a.N, a.R, a.A.data(), a.LDA, a.B.data(), a.LDB, s.N, s, s.LDA);
+  if (a.A.size() < a.M * a.N) {
+    int r = (int)a.A.size() / (a.M + a.N);
+    drspl(s.M, a.N, r, a.A.data(), a.M, a.A.data() + ((size_t)a.M * r), a.N, s.N, s.A.data(), s.M);
+  }
 }
 
 void nbd::SampleP2Pj(Matrix& s, const Matrix& a) {
-  if (a.R > 0)
-    drspl(s.M, a.M, a.R, a.B.data(), a.LDB, a.A.data(), a.LDA, s.N, s, s.LDA);
+  if (a.A.size() < a.M * a.N) {
+    int r = (int)a.A.size() / (a.M + a.N);
+    drspl(s.M, a.M, r, a.A.data() + ((size_t)a.M * r), a.N, a.A.data(), a.M, s.N, s.A.data(), s.M);
+  }
 }
 
 void nbd::SampleParent(Matrix& sc, const Matrix& sp, int c_off) {
-  ddspl(sc.M, sp.N, sp.A.data() + c_off, sp.LDA, sc.N, sc, sc.LDA);
+  ddspl(sc.M, sp.N, sp.A.data() + c_off, sp.M, sc.N, sc.A.data(), sc.M);
 }
 
-void nbd::BasisOrth(Matrix& s) {
-  if (s.M && s.N) {
-    s.LDB = std::min(s.M, s.N);
-    s.B.resize(s.LDB * s.N, 0);
-    dorth(s.M, s.N, s, s.LDA, s.B.data(), s.LDB);
+void nbd::BasisOrth(Matrix& s, Matrix& r) {
+  if (s.M * s.N > 0) {
+    r.M = std::min(s.M, s.N);
+    r.N = s.N;
+    r.A.resize((size_t)r.M * r.N, 0);
+    dorth(s.M, s.N, s.A.data(), s.M, r.A.data(), r.M);
+  }
+}
+
+void atbc(int m, int n, int k, const real_t* a, int lda, const real_t* b, int ldb, real_t* c, int ldc) {
+  for (int i = 0; i < (size_t)m * n; i++) {
+    int x = i / m, y = i - x * m;
+    real_t e = 0.;
+    for (int j = 0; j < k; j++)
+      e = e + a[(size_t)y * lda + j] * b[(size_t)x * ldb + j];
+    c[(size_t)x * ldc + y] = e;
+  }
+}
+
+void nbd::BasisInvRightAndMerge(const Matrix& s, Matrix& a) {
+  if (a.A.size() < a.M * a.N && s.M == a.N) {
+    int r = (int)a.A.size() / (a.M + a.N);
+
+    // vxs = v * s;
+    std::vector<real_t> vxs((size_t)r * s.N);
+    real_t* vt = a.A.data() + ((size_t)a.M * r);
+    atbc(r, s.N, a.N, vt, a.N, s.A.data(), s.M, vxs.data(), r);
+
+    // b = u * vxs;
+    std::vector<real_t> b((size_t)a.M * s.N);
+    for (int i = 0; i < (size_t)a.M * s.N; i++) {
+      int x = i / a.M, y = i - x * a.M;
+      real_t e = 0.;
+      for (int k = 0; k < r; k++)
+        e = e + a.A[(size_t)k * a.M + y] * vxs[(size_t)x * r + k];
+      b[(size_t)x * a.M + y] = e;
+    }
+
+    a.N = s.N;
+    a.A.resize((size_t)a.M * a.N);
+    std::copy(b.begin(), b.end(), a.A.begin());
   }
 }
 
 void nbd::BasisInvLeft(const Matrix& s, Matrix& a) {
-  if (a.R > 0) {
-    int m = s.N, n = a.R, k = s.M;
-    std::vector<real_t> b = a.A;
+  if (s.M == a.M && a.M * a.N > 0) {
+    // b = st * a;
+    std::vector<real_t> b((size_t)s.N * a.N);
+    atbc(s.N, a.N, s.M, s.A.data(), s.M, a.A.data(), a.M, b.data(), s.N);
 
-    a.A.resize((size_t)m * n);
-    dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDA, a.A.data(), m);
-    a.LDA = a.M = m;
+    a.M = s.N;
+    a.A.resize((size_t)a.M * a.N);
+    std::copy(b.begin(), b.end(), a.A.begin());
   }
 }
 
-void nbd::BasisInvRight(const Matrix& s, Matrix& a) {
-  if (a.R > 0) {
-    int m = s.N, n = a.R, k = s.M;
-    std::vector<real_t> b = a.B;
-
-    a.B.resize((size_t)m * n);
-    dmul_ut(m, n, k, s.A.data(), s.LDA, b.data(), a.LDB, a.B.data(), m);
-    a.LDB = a.N = m;
-  }
-}
 
 void nbd::BasisInvMultipleLeft(const Matrix* s, int ls, Matrix& a) {
-  int m = 0, n = a.N, k = a.M;
-  for (auto p = s; p != s + ls; p++)
-    m += p->N;
-  std::vector<real_t> b = a.A;
+  if (a.M * a.N > 0) {
+    int m = 0;
+    for (const Matrix* si = s; si != s + ls; si++)
+      m += si->N;
+    std::vector<real_t> b((size_t)m * a.N);
 
-  a.A.resize((size_t)m * n);
-  int off_a = 0, off_b = 0;
-  for (auto p = s; p != s + ls; p++) {
-    dmul_ut(p->N, n, p->M, p->A.data(), p->LDA, b.data() + off_b, a.LDA, a + off_a, m);
-    off_a += p->N;
-    off_b += p->M;
-  }
-  a.LDA = a.M = m;
-}
-
-void nbd::MergeS(Matrix& a) {
-  if (a.R > 0) {
-    int m = a.M, n = a.N, k = a.R;
-    std::vector<real_t> ua = a.A;
-    if (n != k)
-      a.A.resize((size_t)a.LDA * n);
-    dmul_s(m, n, k, ua.data(), a.LDA, a.B.data(), a.LDB, a, a.LDA);
-    a.R = a.LDB = 0;
-    a.B.clear();
-  }
-}
-
-void nbd::M2Lnear(const Matrix& u, const Matrix& v, const Matrix& d, Matrix& a) {
-  if (d.M == u.M && d.N == v.M && u.N > 0 && v.N > 0) {
-    a = Matrix(u.N, v.N, u.N);
-    dmul2_pinv(d.M, d.N, u.N, v.N, d, d.LDA, u, u.LDA, v, v.LDA, a, a.LDA);
-  }
-}
-
-void nbd::M2Lsuper(int m, int n, const Matrix* d, int ld, int* ma, int* na, Matrix& a) {
-  std::vector<int> off_m(m + 1), off_n(n + 1);
-
-  off_m[0] = 0;
-  for (int i = 1; i <= m; i++)
-    off_m[i] = off_m[i - 1] + ma[i - 1];
-
-  off_n[0] = 0;
-  for (int i = 1; i <= n; i++)
-    off_n[i] = off_n[i - 1] + na[i - 1];
-  
-  if (!(a.M == off_m[m] && a.N == off_n[n]))
-    a = Matrix(off_m[m], off_n[n], off_m[m]);
-  int lda = a.LDA;
-
-  for (int x = 0; x < n; x++) {
-    int xa = off_n[x];
-    for (int y = 0; y < m; y++) {
-      int ya = off_m[y];
-
-      const Matrix& b = d[y + (size_t)x * ld];
-      if (b.M == ma[y] && b.N == na[x])
-        dmatcpy(b.M, b.N, b, b.LDA, &(a.A)[ya + (size_t)xa * lda], lda);
+    real_t* ai = a.A.data();
+    real_t* bi = b.data();
+    for (const Matrix* si = s; si != s + ls; si++) {
+      int mi = si->N, ki = si->M;
+      atbc(mi, a.N, ki, si->A.data(), si->M, ai, a.M, bi, m);
+      ai = &ai[ki];
+      bi = &bi[mi];
     }
+
+    a.M = m;
+    a.A.resize((size_t)a.M * a.N);
+    std::copy(b.begin(), b.end(), a.A.begin());
   }
+
 }

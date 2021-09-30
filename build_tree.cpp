@@ -148,26 +148,11 @@ Cells nbd::buildTree(Bodies& bodies, int ncrit, int dim) {
     last_len = len;
   }
 
-  getLevel(&cells[0]);
   return cells;
 }
 
 
-void nbd::getLevel(Cell* cell) {
-  if (cell->NCHILD > 0) {
-    int max_l = 0;
-    for (Cell * ci=cell->CHILD; ci!=cell->CHILD+cell->NCHILD; ci++) {
-      getLevel(ci);
-      max_l = std::max(max_l, ci->LEVEL);
-    }
-    cell->LEVEL = max_l + 1;
-  }
-  else
-    cell->LEVEL = 0;
-}
-
-
-void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm, bool x_level) {
+void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm) {
   real_t dX = 0., CiR = 0., CjR = 0.;
   for (int d = 0; d < dim; d++) {
     real_t diff = Ci->C[d] - Cj->C[d];
@@ -177,9 +162,8 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm, bool x
     CjR = std::fmax(CjR, Cj->R[d]);
   }
   real_t R2 = dX * theta * theta;
-  bool lcheck = x_level || (Ci->LEVEL == Cj->LEVEL);
 
-  if (R2 > (CiR + CjR) * (CiR + CjR) && lcheck) {
+  if (R2 > (CiR + CjR) * (CiR + CjR)) {
     Ci->listFar.push_back(Cj);
     if (!symm)
       Cj->listFar.push_back(Ci);
@@ -190,15 +174,10 @@ void nbd::getList(Cell * Ci, Cell * Cj, int dim, real_t theta, bool symm, bool x
   } else { 
     if (Cj->NCHILD == 0 || (CiR >= CjR && Ci->NCHILD != 0))
       for (Cell * ci=Ci->CHILD; ci!=Ci->CHILD+Ci->NCHILD; ci++)
-        getList(ci, Cj, dim, theta, symm, x_level);
+        getList(ci, Cj, dim, theta, symm);
     else
       for (Cell * cj=Cj->CHILD; cj!=Cj->CHILD+Cj->NCHILD; cj++)
-        getList(Ci, cj, dim, theta, symm, x_level);
-    if (Ci->LEVEL == Cj->LEVEL) {
-      Ci->listHier.push_back(Cj);
-      if (!symm)
-        Cj->listHier.push_back(Ci);
-    }
+        getList(Ci, cj, dim, theta, symm);
   }
 }
 
@@ -221,8 +200,8 @@ Matrices nbd::evaluate(EvalFunc ef, const Cells& icells, const Cells& jcells, in
   return d;
 }
 
-Matrices nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank, bool x_level, bool eval_near) {
-  getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells, x_level);
+Matrices nbd::traverse(EvalFunc ef, Cells& icells, Cells& jcells, int dim, real_t theta, int rank, bool eval_near) {
+  getList(&icells[0], &jcells[0], dim, theta, &icells == &jcells);
   return evaluate(ef, icells, jcells, dim, rank, eval_near);
 }
 
@@ -236,12 +215,16 @@ Matrices nbd::sample_base_i(const Cells& icells, const Cells& jcells, Matrices& 
     int r = 0;
     for (auto& j : i.listFar) {
       auto x = j - jcells.data();
-      r = std::max(r, d[y + x * ld].R);
+      Matrix& m = d[y + (size_t)x * ld];
+      int rm = m.A.size() / (m.M + m.N);
+      r = std::max(r, rm);
     }
 
     if (r > 0) {
       int osp = std::min(i.NBODY, r + p);
-      base[y] = Matrix(i.NBODY, osp, i.NBODY);
+      base[y].M = i.NBODY;
+      base[y].N = osp;
+      base[y].A.resize((size_t)i.NBODY * osp);
       std::fill(base[y].A.begin(), base[y].A.end(), 0);
     }
 
@@ -264,12 +247,16 @@ Matrices nbd::sample_base_j(const Cells& icells, const Cells& jcells, Matrices& 
     int r = 0;
     for (auto& i : j.listFar) {
       auto y = i - icells.data();
-      r = std::max(r, d[y + (size_t)x * ld].R);
+      Matrix& m = d[y + (size_t)x * ld];
+      int rm = m.A.size() / (m.M + m.N);
+      r = std::max(r, rm);
     }
 
     if (r > 0) {
       int osp = std::min(j.NBODY, r + p);
-      base[x] = Matrix(j.NBODY, osp, j.NBODY);
+      base[x].M = j.NBODY;
+      base[x].N = osp;
+      base[x].A.resize((size_t)j.NBODY * osp);
       std::fill(base[x].A.begin(), base[x].A.end(), 0);
     }
 
@@ -291,7 +278,9 @@ void nbd::sample_base_recur(Cell* cell, Matrix* base) {
     auto i = c - cell;
     if (base[i].N == 0 && base->N > 0) {
       int r = std::min(c->NBODY, base->N);
-      base[i] = Matrix(c->NBODY, r, c->NBODY);
+      base[i].M = c->NBODY;
+      base[i].N = r;
+      base[i].A.resize((size_t)c->NBODY * r);
       std::fill(base[i].A.begin(), base[i].A.end(), 0);
     }
     if (base->N > 0)
@@ -302,30 +291,38 @@ void nbd::sample_base_recur(Cell* cell, Matrix* base) {
 
 }
 
-void nbd::shared_base_i(const Cells& icells, const Cells& jcells, Matrices& d, Matrices& base, bool symm) {
-  int ld = (int)icells.size();
+void nbd::orth_base(Matrices& base) {
 #pragma omp parallel for
-  for (int y = 0; y < icells.size(); y++) {
-    auto i = icells[y];
-    BasisOrth(base[y]);
-    for (auto& j : i.listFar) {
-      auto x = j - jcells.data();
-      Matrix& m = d[y + x * ld];
-      BasisInvLeft(base[y], m);
-    }
+  for (int x = 0; x < base.size(); x++) {
+    Matrix r;
+    BasisOrth(base[x], r);
   }
+}
 
-  if (symm) {
+void nbd::shared_base_i(const Cells& icells, const Cells& jcells, Matrices& d, Matrices& base) {
+  int ld = (int)icells.size();
+  
+  if (&icells == &jcells)
 #pragma omp parallel for
     for (int y = 0; y < icells.size(); y++) {
       auto i = icells[y];
       for (auto& j : i.listFar) {
         auto x = j - jcells.data();
         Matrix& m = d[y + (size_t)x * ld];
-        BasisInvRight(base[x], m);
+        BasisInvRightAndMerge(base[x], m);
       }
     }
+
+#pragma omp parallel for
+  for (int y = 0; y < icells.size(); y++) {
+    auto i = icells[y];
+    for (auto& j : i.listFar) {
+      auto x = j - jcells.data();
+      Matrix& m = d[y + (size_t)x * ld];
+      BasisInvLeft(base[y], m);
+    }
   }
+
 }
 
 void nbd::shared_base_j(const Cells& icells, const Cells& jcells, Matrices& d, Matrices& base) {
@@ -333,16 +330,15 @@ void nbd::shared_base_j(const Cells& icells, const Cells& jcells, Matrices& d, M
 #pragma omp parallel for
   for (int x = 0; x < jcells.size(); x++) {
     auto j = jcells[x];
-    BasisOrth(base[x]);
     for (auto& i : j.listFar) {
       auto y = i - icells.data();
       Matrix& m = d[y + (size_t)x * ld];
-      BasisInvRight(base[x], m);
+      BasisInvRightAndMerge(base[x], m);
     }
   }
 }
 
-void nbd::nest_base(Cell* icell, Matrix* base) {
+void nbd::nest_base(const Cell* icell, Matrix* base) {
   if (icell->NCHILD == 0)
     return;
 
@@ -360,64 +356,26 @@ void nbd::nest_base(Cell* icell, Matrix* base) {
 Matrices nbd::traverse_i(Cells& icells, Cells& jcells, Matrices& d, int p) {
   Matrices base = sample_base_i(icells, jcells, d, p);
   sample_base_recur(&icells[0], &base[0]);
-
-  shared_base_i(icells, jcells, d, base, &icells == &jcells);
-  nest_base(&icells[0], &base[0]);
+  orth_base(base);
   return base;
 }
 
 Matrices nbd::traverse_j(Cells& icells, Cells& jcells, Matrices& d, int p) {
   Matrices base = sample_base_j(icells, jcells, d, p);
   sample_base_recur(&jcells[0], &base[0]);
-  shared_base_j(icells, jcells, d, base);
-  nest_base(&jcells[0], &base[0]);
+  orth_base(base);
   return base;
 }
 
-void nbd::shared_epilogue(Matrices& d) {
-  for (auto& m : d)
-    if (m.R > 0)
-      MergeS(m);
+void nbd::traverse_b(const Cells& icells, const Cells& jcells, Matrices& ibase, Matrices& jbase, Matrices& d) {
+  if (&icells != &jcells) {
+    shared_base_j(icells, jcells, d, jbase);
+    nest_base(&jcells[0], &jbase[0]);
+  }
+  shared_base_i(icells, jcells, d, ibase);
+  nest_base(&icells[0], &ibase[0]);
 }
 
-Matrices nbd::traverse_oo(const Cells& icells, const Cells& jcells, const Matrices& ibase, const Matrices& jbase, Matrices& d) {
-  Matrices d_oo(icells.size() * jcells.size());
-  int ld = (int)icells.size();
-
-#pragma omp parallel for
-  for (int y = 0; y < icells.size(); y++) {
-    auto i = icells[y];
-    for (auto& j : i.listNear) {
-      auto x = j - &jcells[0];
-      M2Lnear(ibase[y], jbase[x], d[y + (size_t)x * ld], d_oo[y + (size_t)x * ld]);
-    }
-  }
-
-  std::vector<int> ma(ibase.size()), na(jbase.size());
-  for (int i = 0; i < ibase.size(); i++)
-    ma[i] = ibase[i].N;
-  for (int i = 0; i < jbase.size(); i++)
-    na[i] = jbase[i].N;
-
-  for (int l = 1; l <= icells[0].LEVEL; l++) {
-#pragma omp parallel for
-    for (int y = 0; y < icells.size(); y++) {
-      auto i = icells[y];
-      if (i.LEVEL == l) {
-        auto yc = i.CHILD - &icells[0];
-        for (auto& j : i.listHier) {
-          auto x = j - &jcells[0];
-          auto xc = j->CHILD - &jcells[0];
-          M2Lsuper(i.NCHILD, j->NCHILD, &d[yc + xc * ld], ld, &ma[yc], &na[xc], d[y + (size_t)x * ld]);
-          M2Lsuper(i.NCHILD, j->NCHILD, &d_oo[yc + xc * ld], ld, &ma[yc], &na[xc], d[y + (size_t)x * ld]);
-          M2Lnear(ibase[y], jbase[x], d[y + (size_t)x * ld], d_oo[y + (size_t)x * ld]);
-        }
-      }
-    }
-  }
-
-  return d_oo;
-}
 
 Cells nbd::getLeaves(const Cells& cells) {
   Cells l;
@@ -432,8 +390,6 @@ Cells nbd::getLeaves(const Cells& cells) {
     }
 
   l[0].NCHILD = l.size() - 1;
-  l[0].LEVEL = (int)l[0].NCHILD > 0;
-  l[0].CHILD = l[0].LEVEL ? &l[1] : nullptr;
-
+  l[0].CHILD = l[0].NCHILD ? &l[1] : nullptr;
   return l;
 }

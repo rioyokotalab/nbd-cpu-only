@@ -16,12 +16,12 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 2;
-  int m = 1900;
-  int n = 1800;
+  int m = 2000;
+  int n = 2000;
   int leaf = 150;
   int rank = 80;
   int p = 20;
-  double theta = 0.9;
+  double theta = 0.7;
 
   Bodies b1(m), b2(n);
   initRandom(b1, m, dim, 0, 1., 100);
@@ -38,25 +38,25 @@ int main(int argc, char* argv[]) {
 
   {
     start("verify H");
-    Matrix a_ref(m, n, m), a_rebuilt(m, n, m);
-    convertHmat2Dense(fun, dim, c1, c2, d, a_rebuilt, a_rebuilt.LDA);
+    Matrix a_ref, a_rebuilt = mat(m, n);
+    convertHmat2Dense(fun, dim, c1, c2, d, a_rebuilt.A.data(), a_rebuilt.M);
     P2Pnear(fun, &c1[0], &c2[0], dim, a_ref);
-    printf("H-mat compress err %e\n", rel2err(&a_rebuilt[0], &a_ref[0], m, n, m, m));
+    printf("H-mat compress err %e\n", rel2err(&a_rebuilt.A[0], &a_ref.A[0], m, n, m, m));
     stop("verify H");
   }
 
   start("build H2");
-  bi = traverse_i(c1, c2, d, p);
   bj = traverse_j(c1, c2, d, p);
-  shared_epilogue(d);
+  bi = traverse_i(c1, c2, d, p);
+  traverse_b(c1, c2, bi, bj, d);
   stop("build H2");
 
   {
     start("verify H2");
-    Matrix a_ref(m, n, m), a_rebuilt(m, n, m);
-    convertH2mat2Dense(fun, dim, c1, c2, bi, bj, d, a_rebuilt, a_rebuilt.LDA);
+    Matrix a_ref, a_rebuilt = mat(m, n);
+    convertH2mat2Dense(fun, dim, c1, c2, bi, bj, d, a_rebuilt.A.data(), a_rebuilt.M);
     P2Pnear(fun, &c1[0], &c2[0], dim, a_ref);
-    printf("H2-mat compress err %e\n", rel2err(&a_rebuilt[0], &a_ref[0], m, n, m, m));
+    printf("H2-mat compress err %e\n", rel2err(&a_rebuilt.A[0], &a_ref.A[0], m, n, m, m));
     stop("verify H2");
   }
 
@@ -73,9 +73,6 @@ int main(int argc, char* argv[]) {
   mvec_kernel(fun, &c1[0], &c2[0], dim, 1., &x[0], 1, 0., &b_ref[0], 1);
 
   printf("H2-vec vs direct m-vec err %e\n", rel2err(&b[0], &b_ref[0], m, 1, m, m));
-
-  //printTree(&c1[0], dim);
-  //printTree(&c2[0], dim);
 
   return 0;
 }

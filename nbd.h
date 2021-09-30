@@ -32,10 +32,8 @@ namespace nbd {
     real_t C[dim];
     real_t R[dim];
 
-    int LEVEL = 0;
     std::vector<Cell*> listFar;
     std::vector<Cell*> listNear;
-    std::vector<Cell*> listHier;
   };
 
   typedef std::vector<Cell> Cells;
@@ -44,26 +42,6 @@ namespace nbd {
     std::vector<real_t> A;
     int M;
     int N;
-    int LDA;
-
-    std::vector<real_t> B;
-    int R;
-    int LDB;
-
-    Matrix() : M(0), N(0), LDA(0), R(0), LDB(0)
-      { }
-
-    Matrix(int m, int n, int lda) : M(m), N(n), LDA(std::max(lda, m)), R(0), LDB(0)
-      { A.resize((size_t)LDA * N); }
-
-    Matrix(int m, int n, int r, int lda, int ldb) : M(m), N(n), LDA(std::max(lda, m)), R(r), LDB(std::max(ldb, n))
-      { A.resize((size_t)LDA * R); B.resize((size_t)LDB * R); }
-
-    operator real_t*()
-      { return A.data(); }
-
-    operator const real_t*() const
-      { return A.data(); }
   };
 
   typedef std::vector<Matrix> Matrices;

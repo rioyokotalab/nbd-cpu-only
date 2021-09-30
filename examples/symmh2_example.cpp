@@ -31,22 +31,21 @@ int main(int argc, char* argv[]) {
   d = traverse(fun, c1, c1, dim, theta, rank);
 
   {
-    Matrix a_ref(m, m, m), a_rebuilt(m, m, m);
-    convertHmat2Dense(fun, dim, c1, c1, d, a_rebuilt, a_rebuilt.LDA);
+    Matrix a_ref, a_rebuilt = mat(m, m);
+    convertHmat2Dense(fun, dim, c1, c1, d, a_rebuilt.A.data(), a_rebuilt.M);
     P2Pnear(fun, &c1[0], &c1[0], dim, a_ref);
-    printf("H-mat compress err %e\n", rel2err(&a_rebuilt[0], &a_ref[0], m, m, m, m));
+    printf("H-mat compress err %e\n", rel2err(&a_rebuilt.A[0], &a_ref.A[0], m, m, m, m));
   }
 
   bi = traverse_i(c1, c1, d, p);
-  shared_epilogue(d);
+  traverse_b(c1, c1, bi, bi, d);
 
   {
-    Matrix a_ref(m, m, m), a_rebuilt(m, m, m);
-    convertH2mat2Dense(fun, dim, c1, c1, bi, bi, d, a_rebuilt, a_rebuilt.LDA);
+    Matrix a_ref, a_rebuilt = mat(m, m);
+    convertH2mat2Dense(fun, dim, c1, c1, bi, bi, d, a_rebuilt.A.data(), a_rebuilt.M);
     P2Pnear(fun, &c1[0], &c1[0], dim, a_ref);
-    printf("H2-mat compress err %e\n", rel2err(&a_rebuilt[0], &a_ref[0], m, m, m, m));
+    printf("H2-mat compress err %e\n", rel2err(&a_rebuilt.A[0], &a_ref.A[0], m, m, m, m));
   }
-
 
   std::vector<double> x(m), b(m);
   vecRandom(&x[0], m, 1, 0, 1);
@@ -58,8 +57,6 @@ int main(int argc, char* argv[]) {
   mvec_kernel(fun, &c1[0], &c1[0], dim, 1., &x[0], 1, 0., &b_ref[0], 1);
 
   printf("H2-vec vs direct m-vec err %e\n", rel2err(&b[0], &b_ref[0], m, 1, m, m));
-
-  printTree(&c1[0], dim);
   
   return 0;
 }

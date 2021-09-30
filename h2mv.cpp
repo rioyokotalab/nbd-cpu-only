@@ -25,19 +25,18 @@ std::vector<int> nbd::dfs(const Cell* cell, bool pre_order, int i) {
   }
 }
 
-struct UpwardMap {
-  const Matrix* base;
-  const real_t* x;
-  real_t* m;
+struct MatVecMap {
+  const Matrix* A;
+  const real_t* X;
+  real_t* B;
 };
 
-
 void nbd::upwardPass(const Cells& jcells, const Matrices& jbase, const real_t* x, real_t* m) {
-  std::vector<UpwardMap> map(jcells.size());
+  std::vector<MatVecMap> map(jcells.size());
   int m_off = 0;
   for (int i = 0; i < jcells.size(); i++) {
-    map[i].base = &jbase[i];
-    map[i].m = m + m_off;
+    map[i].A = &jbase[i];
+    map[i].B = m + m_off;
     m_off += jbase[i].N;
   }
 
@@ -45,11 +44,11 @@ void nbd::upwardPass(const Cells& jcells, const Matrices& jbase, const real_t* x
   for (int i = 0; i < jcells.size(); i++) {
     if (jcells[i].NCHILD == 0) {
       auto x_off = jcells[i].BODY - j_begin;
-      map[i].x = x + x_off;
+      map[i].X = x + x_off;
     }
     else {
       auto c = jcells[i].CHILD - &jcells[0];
-      map[i].x = m + (map[c].m - m);
+      map[i].X = m + (map[c].B - m);
     }
   }
 
@@ -57,32 +56,11 @@ void nbd::upwardPass(const Cells& jcells, const Matrices& jbase, const real_t* x
 
   for (int i = 0; i < jcells.size(); i++) {
     int ii = order[i];
-    const Matrix* base = map[ii].base;
-    const real_t* x = map[ii].x;
-    real_t* m = map[ii].m;
+    const Matrix* base = map[ii].A;
+    const real_t* x = map[ii].X;
+    real_t* m = map[ii].B;
     if (base->N > 0)
-      cblas_dgemv(CblasColMajor, CblasTrans, base->M, base->N, 1., &(base->A)[0], base->LDA, x, 1, 0., m, 1);
-  }
-}
-
-void nbd::upwardPassOne(const Matrices& jbase, const real_t* x, real_t* m) {
-  std::vector<UpwardMap> map(jbase.size());
-  int m_off = 0;
-  int x_off = 0;
-  for (int i = 0; i < jbase.size(); i++) {
-    map[i].base = &jbase[i];
-    map[i].m = m + m_off;
-    m_off += jbase[i].N;
-    map[i].x = x + x_off;
-    x_off += jbase[i].M;
-  }
-
-  for (int i = 0; i < jbase.size(); i++) {
-    const Matrix* base = map[i].base;
-    const real_t* x = map[i].x;
-    real_t* m = map[i].m;
-    if (base->N > 0)
-      cblas_dgemv(CblasColMajor, CblasTrans, base->M, base->N, 1., &(base->A)[0], base->LDA, x, 1, 0., m, 1);
+      cblas_dgemv(CblasColMajor, CblasTrans, base->M, base->N, 1., &(base->A)[0], base->M, x, 1, 0., m, 1);
   }
 }
 
@@ -110,24 +88,19 @@ void nbd::horizontalPass(const Cells& icells, const Cells& jcells, const Matrice
     for (auto& j : i.listFar) {
       auto x = j - &jcells[0];
       const Matrix& s = d[y + x * ld];
-      cblas_dgemv(CblasColMajor, CblasNoTrans, s.M, s.N, 1., &s.A[0], s.LDA, mo[x], 1, 1., lo[y], 1);
+      cblas_dgemv(CblasColMajor, CblasNoTrans, s.M, s.N, 1., &s.A[0], s.M, mo[x], 1, 1., lo[y], 1);
     }
   }
 }
 
-struct DownwardMap {
-  const Matrix* base;
-  const real_t* l;
-  real_t* b;
-};
 
 void nbd::downwardPass(const Cells& icells, const Matrices& ibase, real_t* l, real_t* b) {
 
-  std::vector<DownwardMap> map(icells.size());
+  std::vector<MatVecMap> map(icells.size());
   int l_off = 0;
   for (int i = 0; i < icells.size(); i++) {
-    map[i].base = &ibase[i];
-    map[i].l = l + l_off;
+    map[i].A = &ibase[i];
+    map[i].X = l + l_off;
     l_off += ibase[i].N;
   }
 
@@ -135,11 +108,11 @@ void nbd::downwardPass(const Cells& icells, const Matrices& ibase, real_t* l, re
   for (int i = 0; i < icells.size(); i++) {
     if (icells[i].NCHILD == 0) {
       auto b_off = icells[i].BODY - i_begin;
-      map[i].b = b + b_off;
+      map[i].B = b + b_off;
     }
     else {
       auto c = icells[i].CHILD - &icells[0];
-      map[i].b = l + (map[c].l - l);
+      map[i].B = l + (map[c].X - l);
     }
   }
 
@@ -147,34 +120,13 @@ void nbd::downwardPass(const Cells& icells, const Matrices& ibase, real_t* l, re
 
   for (int i = 0; i < icells.size(); i++) {
     int ii = order[i];
-    const Matrix* base = map[ii].base;
-    const real_t* l = map[ii].l;
-    real_t* b = map[ii].b;
+    const Matrix* base = map[ii].A;
+    const real_t* l = map[ii].X;
+    real_t* b = map[ii].B;
     if (base->N > 0)
-      cblas_dgemv(CblasColMajor, CblasNoTrans, base->M, base->N, 1., &(base->A)[0], base->LDA, l, 1, 1., b, 1);
+      cblas_dgemv(CblasColMajor, CblasNoTrans, base->M, base->N, 1., &(base->A)[0], base->M, l, 1, 1., b, 1);
   }
 
-}
-
-void nbd::downwardPassOne(const Matrices& ibase, const real_t* l, real_t* b) {
-  std::vector<DownwardMap> map(ibase.size());
-  int l_off = 0;
-  int b_off = 0;
-  for (int i = 0; i < ibase.size(); i++) {
-    map[i].base = &ibase[i];
-    map[i].l = l + l_off;
-    l_off += ibase[i].N;
-    map[i].b = b + b_off;
-    b_off += ibase[i].M;
-  }
-
-  for (int i = 0; i < ibase.size(); i++) {
-    const Matrix* base = map[i].base;
-    const real_t* l = map[i].l;
-    real_t* b = map[i].b;
-    if (base->N > 0)
-      cblas_dgemv(CblasColMajor, CblasNoTrans, base->M, base->N, 1., &(base->A)[0], base->LDA, l, 1, 1., b, 1);
-  }
 }
 
 void nbd::closeQuarter(EvalFunc ef, const Cells& icells, const Cells& jcells, int dim, const real_t* x, real_t* b) {
@@ -214,28 +166,3 @@ void nbd::h2mv_complete(EvalFunc ef, const Cells& icells, const Cells& jcells, i
   downwardPass(icells, ibase, &l[0], b);
   closeQuarter(ef, icells, jcells, dim, x, b);
 }
-
-
-void nbd::spmv(int m, int n, const Matrix* d, int ld, int* ma, int* na, const real_t* x, real_t* b) {
-  std::vector<int> off_m(m + 1), off_n(n + 1);
-  off_m[0] = 0;
-  for (int i = 1; i <= m; i++)
-    off_m[i] = off_m[i - 1] + ma[i - 1];
-
-  off_n[0] = 0;
-  for (int i = 1; i <= n; i++)
-    off_n[i] = off_n[i - 1] + na[i - 1];
-
-#pragma omp parallel for
-  for (int y = 0; y < m; y++) {
-    int yi = off_m[y];
-    for (int _x = 0; _x < n; _x++) {
-      int xi = off_n[_x];
-      const Matrix& a = d[y + (size_t)_x * ld];
-      if (a.M == ma[y] && a.N == na[_x])
-        cblas_dgemv(CblasColMajor, CblasNoTrans, a.M, a.N, 1., &(a.A)[0], a.LDA, x + xi, 1, 1., b + yi, 1);
-    }
-  }
-}
-
-

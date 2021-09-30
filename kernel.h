@@ -4,8 +4,6 @@
 
 namespace nbd {
 
-  EvalFunc r2();
-
   EvalFunc l2d();
 
   EvalFunc l3d();
@@ -24,18 +22,12 @@ namespace nbd {
 
   void SampleParent(Matrix& sc, const Matrix& sp, int c_off);
 
-  void BasisOrth(Matrix& s);
+  void BasisOrth(Matrix& s, Matrix& r);
 
   void BasisInvLeft(const Matrix& s, Matrix& a);
 
-  void BasisInvRight(const Matrix& s, Matrix& a);
+  void BasisInvRightAndMerge(const Matrix& s, Matrix& a);
 
   void BasisInvMultipleLeft(const Matrix* s, int ls, Matrix& a);
-
-  void MergeS(Matrix& a);
-
-  void M2Lnear(const Matrix& u, const Matrix& v, const Matrix& d, Matrix& a);
-
-  void M2Lsuper(int m, int n, const Matrix* d, int ld, int* ma, int* na, Matrix& a);
 
 }
