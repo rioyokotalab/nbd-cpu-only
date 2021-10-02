@@ -40,8 +40,8 @@ namespace nbd {
 
   struct Matrix {
     std::vector<real_t> A;
-    int M;
-    int N;
+    int M = 0;
+    int N = 0;
   };
 
   typedef std::vector<Matrix> Matrices;
