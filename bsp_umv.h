@@ -27,7 +27,7 @@ namespace nbd {
 
   void orth_base(Matrix& Us, Matrix& Uc);
 
-  Base base_i(real_t repi, int p, const Node& H);
+  Base base_i(real_t repi, real_t p, const Node& H);
 
   // C = UT * A * VT;
   void utav(const Matrix& U, const Matrix& A, const Matrix& VT, Matrix& C);
@@ -44,9 +44,13 @@ namespace nbd {
 
   void A_bk(const Node& H, std::vector<real_t*>& x);
 
+  Node merge_H(const Node& H);
+
   Matrix merge_D(const Node& H);
 
   void solve_D(Matrix& D, real_t* x);
+
+  void h2_solve_complete(real_t repi, real_t p, Node& H, real_t* x);
 
 
 };

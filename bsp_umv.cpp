@@ -1,5 +1,5 @@
 
-#include "blr2.h"
+#include "bsp_umv.h"
 #include "kernel.h"
 
 #include <lapacke.h>
@@ -83,7 +83,7 @@ void nbd::orth_base(Matrix& Us, Matrix& Uc) {
   std::copy(work.begin() + Us.A.size(), work.end(), Uc.A.begin());
 }
 
-Base nbd::base_i(real_t repi, int p, const Node& H) {
+Base nbd::base_i(real_t repi, real_t p, const Node& H) {
   Base base;
   base.Uo.resize(H.M);
   base.Uc.resize(H.M);
@@ -117,7 +117,7 @@ Base nbd::base_i(real_t repi, int p, const Node& H) {
     }
 
     int ym = H.A[y + (size_t)y * H.M].M;
-    rank = std::min(rank + p, ym);
+    rank = std::min((int)(rank * (1. + p)), ym);
     Matrix& uy = base.Uo[y];
     uy.M = ym;
     uy.N = rank;
@@ -348,6 +348,62 @@ void nbd::A_bk(const Node& H, std::vector<real_t*>& x) {
   }
 }
 
+void merge4(int m0, int m1, int n0, int n1, const Matrix& A00, const Matrix& A10, const Matrix& A01, const Matrix& A11, Matrix& C) {
+  if (A00.M * A00.N > 0 || A10.M * A10.N > 0 || A01.M * A01.N > 0 || A11.M * A11.N > 0) {
+    C.M = m0 + m1;
+    C.N = n0 + n1;
+    C.A.resize((size_t)C.M * C.N);
+    std::fill(C.A.begin(), C.A.end(), 0);
+
+    if (A00.M * A00.N > 0)
+      for (int i = 0; i < A00.M * A00.N; i++) {
+        int x = i / A00.M, y = i - x * A00.M;
+        C.A[y + (size_t)x * C.M] = A00.A[y + (size_t)x * A00.M];
+      }
+
+    if (A10.M * A10.N > 0)
+      for (int i = 0; i < A10.M * A10.N; i++) {
+        int x = i / A10.M, y = i - x * A10.M;
+        C.A[m0 + y + (size_t)x * C.M] = A10.A[y + (size_t)x * A10.M];
+      }
+
+    if (A01.M * A01.N > 0)
+      for (int i = 0; i < A01.M * A01.N; i++) {
+        int x = i / A01.M, y = i - x * A01.M;
+        C.A[y + ((size_t)x + n0) * C.M] = A01.A[y + (size_t)x * A01.M];
+      }
+    
+    if (A11.M * A11.N > 0)
+      for (int i = 0; i < A11.M * A11.N; i++) {
+        int x = i / A11.M, y = i - x * A11.M;
+        C.A[m0 + y + ((size_t)x + n0) * C.M] = A11.A[y + (size_t)x * A11.M];
+      }
+  }
+}
+
+Node nbd::merge_H(const Node& H) {
+  Node n;
+  n.M = H.M / 2;
+  n.N = H.N / 2;
+  n.A.resize((size_t)n.M * n.N);
+
+  std::vector<int> len(H.M);
+  for (int i = 0; i < H.M; i++)
+    len[i] = H.A_oo[i + (size_t)i * H.M].M;
+
+  if(n.M * n.N > 0)
+#pragma omp parallel for
+    for (int i = 0; i < n.M * n.N; i++) {
+      int x = i / n.M, y = i - x * n.M;
+      merge4(len[y*2], len[y*2+1], len[x*2], len[x*2+1], H.A_oo[y*2 + (size_t)x*2 * H.M], 
+        H.A_oo[y*2+1 + (size_t)(x*2) * H.M], 
+        H.A_oo[y*2 + (size_t)(x*2+1) * H.M], 
+        H.A_oo[y*2+1 + (size_t)(x*2+1) * H.M], n.A[y + (size_t)x * n.M]);
+    }
+  
+  return n;
+}
+
 
 Matrix nbd::merge_D(const Node& H) {
   int n = H.M, l = 0;
@@ -381,4 +437,25 @@ Matrix nbd::merge_D(const Node& H) {
 void nbd::solve_D(Matrix& D, real_t* x) {
   std::vector<int> ipiv(D.M);
   LAPACKE_dgesv(LAPACK_COL_MAJOR, D.M, 1, D.A.data(), D.M, ipiv.data(), x, D.M);
+}
+
+void nbd::h2_solve_complete(real_t repi, real_t p, Node& H, real_t* x) {
+  Base bi = base_i(repi, p, H);
+  split_A(H, bi, bi);
+  factor_A(H);
+
+  auto xi = base_fw(bi, x);
+  A_fw(H, xi);
+
+  if (H.M > 2) {
+    Node H2 = merge_H(H);
+    h2_solve_complete(repi, p, H2, xi[H.M]);
+  }
+  else {
+    Matrix last = merge_D(H);
+    solve_D(last, xi[H.M]);
+  }
+
+  A_bk(H, xi);
+  base_bk(bi, x);
 }

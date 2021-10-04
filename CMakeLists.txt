@@ -17,7 +17,7 @@ add_library(nbd STATIC
   build_tree.cpp build_tree.h 
   lra.cpp lra.h
   h2mv.cpp h2mv.h
-  blr2.cpp blr2.h
+  bsp_umv.cpp bsp_umv.h
 )
 target_include_directories(nbd PRIVATE "./" )
 target_link_libraries(nbd blas lapacke)
