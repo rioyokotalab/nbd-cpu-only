@@ -23,11 +23,15 @@ namespace nbd {
   Node node(EvalFunc ef, int dim, const Cell* i, const Cell* j);
 
   // C = A * B^-1;
-  int a_inv_b(real_t repi, const Matrix& A, const Matrix& B, Matrix& C);
+  void a_inv_b(const Matrix& A, const Matrix& B, Matrix& C);
 
-  void orth_base(Matrix& Us, Matrix& Uc);
+  int get_rank(real_t repi, const Matrix& A);
 
-  Base base_i(real_t repi, real_t p, const Node& H);
+  void F_ABBA(const Matrix& A, const Matrix& B, Matrix& F);
+
+  int orth_base(real_t repi, const Matrix& A, Matrix& Us, Matrix& Uc);
+
+  Base base_i(real_t repi, const Node& H);
 
   // C = UT * A * VT;
   void utav(const Matrix& U, const Matrix& A, const Matrix& VT, Matrix& C);
@@ -50,7 +54,7 @@ namespace nbd {
 
   void solve_D(Matrix& D, real_t* x);
 
-  void h2_solve_complete(real_t repi, real_t p, Node& H, real_t* x);
+  void h2_solve_complete(real_t repi, Node& H, real_t* x);
 
 
 };

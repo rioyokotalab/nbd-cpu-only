@@ -28,7 +28,7 @@ Node nbd::node(EvalFunc ef, int dim, const Cell* i, const Cell* j) {
   return n;
 }
 
-int nbd::a_inv_b(real_t repi, const Matrix& A, const Matrix& B, Matrix& C) {
+void nbd::a_inv_b(const Matrix& A, const Matrix& B, Matrix& C) {
 
   C.M = A.M;
   C.N = A.N;
@@ -38,52 +38,46 @@ int nbd::a_inv_b(real_t repi, const Matrix& A, const Matrix& B, Matrix& C) {
   const real_t* tau = &B.A[(size_t)B.M * B.N];
   LAPACKE_dormqr(LAPACK_COL_MAJOR, 'R', 'T', C.M, C.N, B.M, B.A.data(), B.M, tau, C.A.data(), C.M);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, C.M, C.N, 1., B.A.data(), B.M, C.A.data(), C.M);
+}
 
+void nbd::F_ABBA(const Matrix& A, const Matrix& B, Matrix& F) {
+  std::vector<real_t> work((size_t)A.M * B.N);
+
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A.M, B.N, A.N, 1., A.A.data(), A.M, B.A.data(), B.M, 0., work.data(), A.M);    
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, A.M, A.M, B.N, 1., work.data(), A.M, work.data(), A.M, 1., F.A.data(), F.M);
+}
+
+int nbd::orth_base(real_t repi, const Matrix& A, Matrix& Us, Matrix& Uc) {
+  std::vector<real_t> C((size_t)A.M * A.N);
+  std::vector<real_t> U((size_t)A.M * A.M);
+  std::vector<real_t> S(std::max(A.M, A.N));
+  std::vector<real_t> superb(std::max(A.M, A.N) - 1);
+  std::copy(A.A.begin(), A.A.end(), C.begin());
+
+  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', A.M, A.N, C.data(), A.M, S.data(), U.data(), A.M, nullptr, A.N, superb.data());
   int rank = 0;
   if (repi < 1.) {
-    std::vector<real_t> C_((size_t)C.M * C.N);
-    std::vector<real_t> S(std::max(C.M, C.N));
-    std::vector<real_t> superb(std::max(C.M, C.N) - 1);
-    std::copy(C.A.begin(), C.A.end(), C_.begin());
-
-    LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'N', 'N', C.M, C.N, C_.data(), C.M, S.data(), nullptr, C.M, nullptr, C.N, superb.data());
-    while(S[rank] / S[0] > repi)
+    real_t sepi = S[0] * repi;
+    while(S[rank] > sepi)
       rank += 1;
   }
   else
     rank = (int)repi;
+
+  Us.M = Uc.M = A.M;
+  Us.N = rank;
+  Uc.N = A.M - rank;
+
+  Us.A.resize((size_t)Us.M * Us.N);
+  Uc.A.resize((size_t)Uc.M * Uc.N);
+
+  std::copy(U.begin(), U.begin() + Us.A.size(), Us.A.begin());
+  std::copy(U.begin() + Us.A.size(), U.end(), Uc.A.begin());
+  
   return rank;
 }
 
-inline real_t rand(real_t min, real_t max) {
-  return min + (max - min) * ((real_t)std::rand() / RAND_MAX);
-}
-
-void sample(const Matrix& A, Matrix& S) {
-  std::vector<real_t> rnd((size_t)A.N * S.N);
-
-  for (auto& i : rnd)
-    i = rand(-1, 1);
-    
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A.M, S.N, A.N, 1., A.A.data(), A.M, rnd.data(), A.N, 1., S.A.data(), S.M);
-}
-
-void nbd::orth_base(Matrix& Us, Matrix& Uc) {
-  Uc.M = Us.M;
-  Uc.N = Us.M - Us.N;
-  Uc.A.resize((size_t)Uc.M * Uc.N);
-
-  std::vector<real_t> work((size_t)Us.M * Us.M);
-  std::vector<real_t> tau(Us.N);
-  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Us.M, Us.N, Us.A.data(), Us.M, tau.data());
-  std::copy(Us.A.begin(), Us.A.end(), work.begin());
-
-  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Us.M, Us.M, Us.N, work.data(), Us.M, tau.data());
-  std::copy(work.begin(), work.begin() + Us.A.size(), Us.A.begin());
-  std::copy(work.begin() + Us.A.size(), work.end(), Uc.A.begin());
-}
-
-Base nbd::base_i(real_t repi, real_t p, const Node& H) {
+Base nbd::base_i(real_t repi, const Node& H) {
   Base base;
   base.Uo.resize(H.M);
   base.Uc.resize(H.M);
@@ -105,29 +99,26 @@ Base nbd::base_i(real_t repi, real_t p, const Node& H) {
 
 #pragma omp parallel for
   for (int y = 0; y < H.M; y++) {
-    int rank = 0;
-    std::vector<Matrix> C;
+    int ym = H.A[y + (size_t)y * H.M].M;
+    Matrix F;
+    F.M = F.N = ym;
+    F.A.resize((size_t)F.M * F.N);
+    std::fill(F.A.begin(), F.A.end(), 0.);
+
     for (int x = 0; x < H.N; x++) {
-      const Matrix& Axy = H.A[y + (size_t)x * H.M];
-      if(x != y && Axy.M * Axy.N > 0) {
-        C.emplace_back();
-        int r = a_inv_b(repi, Axy, diag_inv[x], C.back());
-        rank = std::max(r, rank);
+      const Matrix& Ayx = H.A[y + (size_t)x * H.M];
+      if(x != y && Ayx.M * Ayx.N > 0) {
+        Matrix aib;
+        a_inv_b(Ayx, diag_inv[x], aib);
+        for (int z = 0; z < H.N; z++) {
+          const Matrix& Axz = H.A[x + (size_t)z * H.M];
+          if(x != z && Axz.M * Axz.N > 0)
+            F_ABBA(aib, Axz, F);
+        }
       }
     }
 
-    int ym = H.A[y + (size_t)y * H.M].M;
-    rank = std::min((int)(rank * (1. + p)), ym);
-    Matrix& uy = base.Uo[y];
-    uy.M = ym;
-    uy.N = rank;
-    uy.A.resize((size_t)uy.M * uy.N);
-    std::fill(uy.A.begin(), uy.A.end(), 0.);
-
-    for (auto& Ci : C)
-      sample(Ci, uy);
-
-    orth_base(uy, base.Uc[y]);
+    int rank = orth_base(repi, F, base.Uo[y], base.Uc[y]);
   }
 
   return base;
@@ -439,21 +430,33 @@ void nbd::solve_D(Matrix& D, real_t* x) {
   LAPACKE_dgesv(LAPACK_COL_MAJOR, D.M, 1, D.A.data(), D.M, ipiv.data(), x, D.M);
 }
 
-void nbd::h2_solve_complete(real_t repi, real_t p, Node& H, real_t* x) {
-  Base bi = base_i(repi, p, H);
+int max_neighbors(const Node& H) {
+  int max_n = 0;
+  for (int y = 0; y < H.M; y++) {
+    int n = 0;
+    for (int x = 0; x < H.N; x++)
+      if (H.A[y + (size_t)x * H.M].M * H.A[y + (size_t)x * H.M].N > 0)
+        n++;
+    max_n = std::max(max_n, n);
+  }
+  return max_n;
+}
+
+void nbd::h2_solve_complete(real_t repi, Node& H, real_t* x) {
+  Base bi = base_i(repi, H);
   split_A(H, bi, bi);
   factor_A(H);
 
   auto xi = base_fw(bi, x);
   A_fw(H, xi);
 
-  if (H.M > 2) {
-    Node H2 = merge_H(H);
-    h2_solve_complete(repi, p, H2, xi[H.M]);
-  }
-  else {
+  if (H.M <= max_neighbors(H)) {
     Matrix last = merge_D(H);
     solve_D(last, xi[H.M]);
+  }
+  else {
+    Node H2 = merge_H(H);
+    h2_solve_complete(repi, H2, xi[H.M]);
   }
 
   A_bk(H, xi);
