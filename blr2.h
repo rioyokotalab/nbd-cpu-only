@@ -22,8 +22,8 @@ namespace nbd {
 
   Node node(EvalFunc ef, int dim, const Cell* i, const Cell* j);
 
-  // C = A^-1 * B or A * B^-1;
-  int a_inv_b(real_t repi, bool inv_A, const Matrix& A, const Matrix& B, Matrix& C);
+  // C = A * B^-1;
+  int a_inv_b(real_t repi, const Matrix& A, const Matrix& B, Matrix& C);
 
   void orth_base(Matrix& Us, Matrix& Uc);
 

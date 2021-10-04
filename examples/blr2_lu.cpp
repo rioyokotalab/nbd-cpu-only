@@ -17,9 +17,9 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 2;
-  int m = 8192;
-  int leaf = 128;
-  int p = 10;
+  int m = 20000;
+  int leaf = 256;
+  int p = leaf / 13;
   double theta = 0.7;
 
   Bodies b1(m);
@@ -28,7 +28,6 @@ int main(int argc, char* argv[]) {
   Cells c1 = getLeaves(buildTree(b1, leaf, dim));
   getList(&c1[0], &c1[0], dim, theta, true);
 
-  omp_set_num_threads(4);
   int num_threads = omp_get_max_threads();
   printf("threads: %d\n", num_threads);
 
@@ -36,7 +35,7 @@ int main(int argc, char* argv[]) {
   Node n = node(fun, dim, &c1[0], &c1[0]);
 
   start("build H2");
-  Base bi = base_i(1.e-13, p, n);
+  Base bi = base_i(1.e-12, p, n);
   split_A(n, bi, bi);
   stop("build H2");
 

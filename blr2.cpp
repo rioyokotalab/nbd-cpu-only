@@ -28,42 +28,24 @@ Node nbd::node(EvalFunc ef, int dim, const Cell* i, const Cell* j) {
   return n;
 }
 
-int nbd::a_inv_b(real_t repi, bool inv_A, const Matrix& A, const Matrix& B, Matrix& C) {
-  if (inv_A && A.M == A.N && A.M == B.M) {
-    std::vector<real_t> work((size_t)A.M * A.N);
-    std::copy(A.A.begin(), A.A.end(), work.begin());
+int nbd::a_inv_b(real_t repi, const Matrix& A, const Matrix& B, Matrix& C) {
 
-    C.M = B.M;
-    C.N = B.N;
-    C.A.resize((size_t)C.M * C.N);
-    std::copy(B.A.begin(), B.A.end(), C.A.begin());
+  C.M = A.M;
+  C.N = A.N;
+  C.A.resize((size_t)C.M * C.N);
+  std::copy(A.A.begin(), A.A.end(), C.A.begin());
 
-    std::vector<int> ipiv(A.M);
-    LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, A.M, work.data(), A.M, ipiv.data());
-    LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', C.M, C.N, work.data(), A.M, ipiv.data(), C.A.data(), C.M);
-  }
-  else if (!inv_A && B.M == B.N && A.N == B.M) {
-    std::vector<real_t> work((size_t)B.M * B.N);
-    std::copy(B.A.begin(), B.A.end(), work.begin());
-
-    C.M = A.M;
-    C.N = A.N;
-    C.A.resize((size_t)C.M * C.N);
-    std::copy(A.A.begin(), A.A.end(), C.A.begin());
-
-    std::vector<real_t> tau(B.M);
-    LAPACKE_dgeqrf(LAPACK_COL_MAJOR, B.M, B.M, work.data(), B.M, tau.data());
-    LAPACKE_dormqr(LAPACK_COL_MAJOR, 'R', 'T', C.M, C.N, B.M, work.data(), B.M, tau.data(), C.A.data(), C.M);
-    cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, C.M, C.N, 1., work.data(), B.M, C.A.data(), C.M);
-  }
-
-  std::vector<real_t> C_((size_t)C.M * C.N);
-  std::vector<real_t> S(std::max(C.M, C.N));
-  std::vector<real_t> superb(std::max(C.M, C.N) - 1);
-  std::copy(C.A.begin(), C.A.end(), C_.begin());
+  const real_t* tau = &B.A[(size_t)B.M * B.N];
+  LAPACKE_dormqr(LAPACK_COL_MAJOR, 'R', 'T', C.M, C.N, B.M, B.A.data(), B.M, tau, C.A.data(), C.M);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, C.M, C.N, 1., B.A.data(), B.M, C.A.data(), C.M);
 
   int rank = 0;
   if (repi < 1.) {
+    std::vector<real_t> C_((size_t)C.M * C.N);
+    std::vector<real_t> S(std::max(C.M, C.N));
+    std::vector<real_t> superb(std::max(C.M, C.N) - 1);
+    std::copy(C.A.begin(), C.A.end(), C_.begin());
+
     LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'N', 'N', C.M, C.N, C_.data(), C.M, S.data(), nullptr, C.M, nullptr, C.N, superb.data());
     while(S[rank] / S[0] > repi)
       rank += 1;
@@ -106,6 +88,21 @@ Base nbd::base_i(real_t repi, int p, const Node& H) {
   base.Uo.resize(H.M);
   base.Uc.resize(H.M);
 
+  Matrices diag_inv;
+  diag_inv.resize(H.M);
+
+#pragma omp parallel for
+  for (int i = 0; i < H.M; i++) {
+    Matrix& di = diag_inv[i];
+    const Matrix& A_ii = H.A[i + (size_t)i * H.M];
+    di.M = di.N = A_ii.M;
+    di.A.resize(di.M + (size_t)di.M * di.N);
+    std::copy(A_ii.A.begin(), A_ii.A.end(), di.A.begin());
+
+    real_t* tau = &di.A[(size_t)di.M * di.N];
+    LAPACKE_dgeqrf(LAPACK_COL_MAJOR, di.M, di.N, di.A.data(), di.M, tau);
+  }
+
 #pragma omp parallel for
   for (int y = 0; y < H.M; y++) {
     int rank = 0;
@@ -114,7 +111,7 @@ Base nbd::base_i(real_t repi, int p, const Node& H) {
       const Matrix& Axy = H.A[y + (size_t)x * H.M];
       if(x != y && Axy.M * Axy.N > 0) {
         C.emplace_back();
-        int r = a_inv_b(repi, false, Axy, H.A[x + (size_t)x * H.M], C.back());
+        int r = a_inv_b(repi, Axy, diag_inv[x], C.back());
         rank = std::max(r, rank);
       }
     }
@@ -365,6 +362,7 @@ Matrix nbd::merge_D(const Node& H) {
   Matrix D;
   D.M = D.N = l;
   D.A.resize((size_t)l * l);
+  std::fill(D.A.begin(), D.A.end(), 0.);
 
 #pragma omp parallel for
   for (int i = 0; i < n * n; i++) {
