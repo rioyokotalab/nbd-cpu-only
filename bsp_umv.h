@@ -13,6 +13,7 @@ namespace nbd {
     Matrices A_oc;
     Matrices A_co;
     Matrices A_oo;
+    Matrices F;
 
     Node (EvalFunc ef, int dim, const Cell* i, const Cell* j);
     Node (const Node& H);
@@ -35,7 +36,9 @@ namespace nbd {
   int orth_base(real_t repi, const Matrix& A, Matrix& Us, Matrix& Uc);
 
   // C = UT * A * VT;
-  void utav(const Matrix& U, const Matrix& A, const Matrix& VT, Matrix& C);
+  void utav(const Matrix& U, const Matrix& A, const Matrix& VT, Matrix& F, Matrix& C);
+
+  void utfv(const Matrix& U, const Matrix& VT, Matrix& F);
 
   void split_A(Node& H, const Base& U, const Base& V);
 
@@ -53,7 +56,11 @@ namespace nbd {
 
   void solve_D(const Matrix& D, const int* ipiv, real_t* x);
 
-  void h2_solve_complete(real_t repi, Node& H, real_t* x);
+  void h2_factor(real_t repi, std::vector<Node>& H, std::vector<Base>& B, Matrix& last, std::vector<int>& ipiv);
+
+  void h2_solve(int lvl, const Node* H, const Base* B, const Matrix& last, const int* ipiv, real_t* x);
+
+  void h2_solve_complete(real_t repi, EvalFunc ef, int dim, const Cell* i, const Cell* j, real_t* x);
 
 
 };
