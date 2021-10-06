@@ -16,7 +16,7 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 2;
-  int m = 32768;
+  int m = 8192;
   int leaf = 256;
   double theta = 0.8;
 
@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
   getList(&c1[0], &c1[0], dim, theta, true);
 
   auto fun = dim == 2 ? l2d() : l3d();
-  Node n = node(fun, dim, &c1[0], &c1[0]);
+  Node n(fun, dim, &c1[0], &c1[0]);
 
   std::vector<double> x(m), b(m);
   vecRandom(&x[0], m, 1, 0, 1);
@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
   closeQuarter(fun, c1, c1, dim, &x[0], &b[0]);
 
   start("solution");
-  h2_solve_complete(1.e-15, n, &b[0]);
+  h2_solve_complete(1.e-14, n, &b[0]);
   stop("solution");
 
   printf("solution err %e\n", rel2err(&b[0], &x[0], m, 1, m, m));

@@ -9,23 +9,20 @@
 
 using namespace nbd;
 
-Node nbd::node(EvalFunc ef, int dim, const Cell* i, const Cell* j) {
-  Node n;
-  n.M = i->NCHILD;
-  n.N = j->NCHILD;
-  n.A.resize((size_t)n.M * n.N);
+nbd::Node::Node(EvalFunc ef, int dim, const Cell* i, const Cell* j) {
+  M = i->NCHILD;
+  N = j->NCHILD;
+  A.resize((size_t)M * N);
 
-  if(n.M * n.N > 0)
+  if(M * N > 0)
 #pragma omp parallel for
-    for (int y = 0; y < n.M; y++) {
+    for (int y = 0; y < M; y++) {
       auto& cy = i->CHILD[y];
       for (auto& cx : cy.listNear) {
         int x = cx - j->CHILD;
-        P2Pnear(ef, &cy, cx, dim, n.A[y + (size_t)x * n.M]);
+        P2Pnear(ef, &cy, cx, dim, A[y + (size_t)x * M]);
       }
     }
-  
-  return n;
 }
 
 void nbd::a_inv_b(const Matrix& A, const Matrix& B, Matrix& C) {
@@ -74,13 +71,13 @@ int nbd::orth_base(real_t repi, const Matrix& A, Matrix& Us, Matrix& Uc) {
   std::copy(U.begin(), U.begin() + Us.A.size(), Us.A.begin());
   std::copy(U.begin() + Us.A.size(), U.end(), Uc.A.begin());
   
+  printf("%d\n", rank);
   return rank;
 }
 
-Base nbd::base_i(real_t repi, const Node& H) {
-  Base base;
-  base.Uo.resize(H.M);
-  base.Uc.resize(H.M);
+nbd::Base::Base(real_t repi, const Node& H) {
+  Uo.resize(H.M);
+  Uc.resize(H.M);
 
   Matrices diag_inv;
   diag_inv.resize(H.M);
@@ -118,10 +115,9 @@ Base nbd::base_i(real_t repi, const Node& H) {
       }
     }
 
-    int rank = orth_base(repi, F, base.Uo[y], base.Uc[y]);
+    int rank = orth_base(repi, F, Uo[y], Uc[y]);
   }
 
-  return base;
 }
 
 void nbd::utav(const Matrix& U, const Matrix& A, const Matrix& VT, Matrix& C) {
@@ -372,31 +368,29 @@ void merge4(int m0, int m1, int n0, int n1, const Matrix& A00, const Matrix& A10
   }
 }
 
-Node nbd::merge_H(const Node& H) {
-  Node n;
-  n.M = H.M / 2;
-  n.N = H.N / 2;
-  n.A.resize((size_t)n.M * n.N);
+nbd::Node::Node(const Node& H) {
+  M = H.M / 2;
+  N = H.N / 2;
+  A.resize((size_t)M * N);
 
   std::vector<int> len(H.M);
   for (int i = 0; i < H.M; i++)
     len[i] = H.A_oo[i + (size_t)i * H.M].M;
 
-  if(n.M * n.N > 0)
+  if(M * N > 0)
 #pragma omp parallel for
-    for (int i = 0; i < n.M * n.N; i++) {
-      int x = i / n.M, y = i - x * n.M;
+    for (int i = 0; i < M * N; i++) {
+      int x = i / M, y = i - x * M;
       merge4(len[y*2], len[y*2+1], len[x*2], len[x*2+1], H.A_oo[y*2 + (size_t)x*2 * H.M], 
         H.A_oo[y*2+1 + (size_t)(x*2) * H.M], 
         H.A_oo[y*2 + (size_t)(x*2+1) * H.M], 
-        H.A_oo[y*2+1 + (size_t)(x*2+1) * H.M], n.A[y + (size_t)x * n.M]);
+        H.A_oo[y*2+1 + (size_t)(x*2+1) * H.M], A[y + (size_t)x * M]);
     }
   
-  return n;
 }
 
 
-Matrix nbd::merge_D(const Node& H) {
+void nbd::merge_D(const Node& H, Matrix& D, std::vector<int>& ipiv) {
   int n = H.M, l = 0;
   std::vector<int> off(n + 1);
   off[0] = 0;
@@ -406,10 +400,10 @@ Matrix nbd::merge_D(const Node& H) {
     off[i + 1] = l;
   }
 
-  Matrix D;
   D.M = D.N = l;
   D.A.resize((size_t)l * l);
   std::fill(D.A.begin(), D.A.end(), 0.);
+  ipiv.resize(l);
 
 #pragma omp parallel for
   for (int i = 0; i < n * n; i++) {
@@ -421,13 +415,12 @@ Matrix nbd::merge_D(const Node& H) {
         dxy[yy + (size_t)xx * l] = Axy.A[yy + (size_t)xx * Axy.M];
   }
 
-  return D;
+  LAPACKE_dgetrf(LAPACK_COL_MAJOR, D.M, D.N, D.A.data(), D.M, ipiv.data());
 }
 
 
-void nbd::solve_D(Matrix& D, real_t* x) {
-  std::vector<int> ipiv(D.M);
-  LAPACKE_dgesv(LAPACK_COL_MAJOR, D.M, 1, D.A.data(), D.M, ipiv.data(), x, D.M);
+void nbd::solve_D(const Matrix& D, const int* ipiv, real_t* x) {
+  LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', D.M, 1, D.A.data(), D.M, ipiv, x, D.M);
 }
 
 int max_neighbors(const Node& H) {
@@ -443,19 +436,22 @@ int max_neighbors(const Node& H) {
 }
 
 void nbd::h2_solve_complete(real_t repi, Node& H, real_t* x) {
-  Base bi = base_i(repi, H);
+  Base bi(repi, H);
   split_A(H, bi, bi);
   factor_A(H);
 
   auto xi = base_fw(bi, x);
   A_fw(H, xi);
 
-  if (H.M <= max_neighbors(H)) {
-    Matrix last = merge_D(H);
-    solve_D(last, xi[H.M]);
+  //if (H.M <= max_neighbors(H)) {
+  if (true) {
+    std::vector<int> ipiv;
+    Matrix last;
+    merge_D(H, last, ipiv);
+    solve_D(last, ipiv.data(), xi[H.M]);
   }
   else {
-    Node H2 = merge_H(H);
+    Node H2(H);
     h2_solve_complete(repi, H2, xi[H.M]);
   }
 

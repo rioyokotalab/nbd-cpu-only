@@ -13,14 +13,17 @@ namespace nbd {
     Matrices A_oc;
     Matrices A_co;
     Matrices A_oo;
+
+    Node (EvalFunc ef, int dim, const Cell* i, const Cell* j);
+    Node (const Node& H);
   };
 
   struct Base {
     Matrices Uo;
     Matrices Uc;
-  };
 
-  Node node(EvalFunc ef, int dim, const Cell* i, const Cell* j);
+    Base (real_t repi, const Node& H);
+  };
 
   // C = A * B^-1;
   void a_inv_b(const Matrix& A, const Matrix& B, Matrix& C);
@@ -30,8 +33,6 @@ namespace nbd {
   void F_ABBA(const Matrix& A, const Matrix& B, Matrix& F);
 
   int orth_base(real_t repi, const Matrix& A, Matrix& Us, Matrix& Uc);
-
-  Base base_i(real_t repi, const Node& H);
 
   // C = UT * A * VT;
   void utav(const Matrix& U, const Matrix& A, const Matrix& VT, Matrix& C);
@@ -48,11 +49,9 @@ namespace nbd {
 
   void A_bk(const Node& H, std::vector<real_t*>& x);
 
-  Node merge_H(const Node& H);
+  void merge_D(const Node& H, Matrix& D, std::vector<int>& ipiv);
 
-  Matrix merge_D(const Node& H);
-
-  void solve_D(Matrix& D, real_t* x);
+  void solve_D(const Matrix& D, const int* ipiv, real_t* x);
 
   void h2_solve_complete(real_t repi, Node& H, real_t* x);
 
