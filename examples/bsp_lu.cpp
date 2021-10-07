@@ -16,8 +16,8 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int dim = 2;
-  int m = 8192;
-  int leaf = 256;
+  int m = atoi(argv[1]);
+  int leaf = 128;
   double theta = 0.7;
 
   Bodies b1(m);
@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
   Matrix last;
   std::vector<int> ipiv;
   B.reserve(100);
-  h2_factor(1.e-12, H, B, last, ipiv);
+  h2_factor(1.e-6, H, B, last, ipiv);
   stop("factor");
 
   start("solution");

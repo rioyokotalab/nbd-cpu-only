@@ -13,7 +13,7 @@ EvalFunc nbd::l2d() {
   ef.r2f = [](real_t& r2, real_t singularity, real_t alpha) -> void {
     r2 = r2 == 0 ? singularity : std::log(std::sqrt(r2));
   };
-  ef.singularity = 1.e5;
+  ef.singularity = 1.e6;
   ef.alpha = 1.;
   return ef;
 }
@@ -23,7 +23,7 @@ EvalFunc nbd::l3d() {
   ef.r2f = [](real_t& r2, real_t singularity, real_t alpha) -> void {
     r2 = r2 == 0 ? singularity : 1. / std::sqrt(r2);
   };
-  ef.singularity = 1.e5;
+  ef.singularity = 1.e6;
   ef.alpha = 1.;
   return ef;
 }

@@ -38,11 +38,12 @@ void nbd::a_inv_b(const Matrix& A, const Matrix& B, Matrix& C) {
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, C.M, C.N, 1., B.A.data(), B.M, C.A.data(), C.M);
 }
 
-void nbd::F_ABBA(const Matrix& A, const Matrix& B, Matrix& F) {
+void nbd::F_ABBA(const Matrix& A, const Matrix& B, Matrix& F, const real_t* R, int R_MAX) {
   std::vector<real_t> work((size_t)A.M * B.N);
+  R_MAX = R_MAX == 0 ? A.M : std::min(A.M, R_MAX);
 
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A.M, B.N, A.N, 1., A.A.data(), A.M, B.A.data(), B.M, 0., work.data(), A.M);    
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, A.M, A.M, B.N, 1., work.data(), A.M, work.data(), A.M, 1., F.A.data(), F.M);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A.M, B.N, A.N, 1., A.A.data(), A.M, B.A.data(), B.M, 0., work.data(), A.M);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A.M, R_MAX, B.N, 1., work.data(), A.M, R, B.N, 1., F.A.data(), F.M);
 }
 
 int nbd::orth_base(real_t repi, const Matrix& A, Matrix& Us, Matrix& Uc) {
@@ -75,7 +76,7 @@ int nbd::orth_base(real_t repi, const Matrix& A, Matrix& Us, Matrix& Uc) {
   return rank;
 }
 
-nbd::Base::Base(real_t repi, const Node& H) {
+nbd::Base::Base(real_t repi, const Node& H, const real_t* R) {
   Uo.resize(H.M);
   Uc.resize(H.M);
 
@@ -110,7 +111,7 @@ nbd::Base::Base(real_t repi, const Node& H) {
         for (int z = 0; z < H.N; z++) {
           const Matrix& Axz = H.A[x + (size_t)z * H.M];
           if(x != z && Axz.M * Axz.N > 0)
-            F_ABBA(aib, Axz, F);
+            F_ABBA(aib, Axz, F, R, 0);
         }
       }
     }
@@ -260,7 +261,6 @@ std::vector<real_t*> nbd::base_fw(const Base& U, real_t* x) {
   std::vector<real_t> x_out(lx);
   std::vector<real_t*> i_out(n + n);
 
-#pragma omp parallel for
   for (int i = 0; i < n; i++) {
     const real_t* xi = x + off_x[i];
     real_t* ci = x_out.data() + off_c[i];
@@ -299,7 +299,6 @@ void nbd::base_bk(const Base& U, real_t* x) {
 
   std::vector<real_t> x_out(lx);
 
-#pragma omp parallel for
   for (int i = 0; i < n; i++) {
     const real_t* ci = x + off_c[i];
     const real_t* oi = x + lc + off_o[i];
@@ -467,8 +466,17 @@ int max_neighbors(const Node& H) {
   return max_n;
 }
 
+inline real_t rand(real_t min, real_t max) {
+  return min + (max - min) * ((double)std::rand() / RAND_MAX);
+}
+
 void nbd::h2_factor(real_t repi, std::vector<Node>& H, std::vector<Base>& B, Matrix& last, std::vector<int>& ipiv) {
-  B.emplace_back(repi, H[0]);
+  
+  std::vector<real_t> rnd(65536);
+  for (auto& i : rnd)
+    i = rand(-1, 1);
+
+  B.emplace_back(repi, H[0], rnd.data());
   split_A(H[0], B[0], B[0]);
   factor_A(H[0]);
 
@@ -476,7 +484,7 @@ void nbd::h2_factor(real_t repi, std::vector<Node>& H, std::vector<Base>& B, Mat
     Node& H1 = H.back();
     H.emplace_back(H1);
     Node& H2 = H.back();
-    B.emplace_back(repi, H2);
+    B.emplace_back(repi, H2, rnd.data());
     split_A(H2, B.back(), B.back());
     factor_A(H2);
   }

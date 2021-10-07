@@ -23,7 +23,7 @@ namespace nbd {
     Matrices Uo;
     Matrices Uc;
 
-    Base (real_t repi, const Node& H);
+    Base (real_t repi, const Node& H, const real_t* R);
   };
 
   // C = A * B^-1;
@@ -31,7 +31,7 @@ namespace nbd {
 
   int get_rank(real_t repi, const Matrix& A);
 
-  void F_ABBA(const Matrix& A, const Matrix& B, Matrix& F);
+  void F_ABBA(const Matrix& A, const Matrix& B, Matrix& F, const real_t* R, int R_MAX = 0);
 
   int orth_base(real_t repi, const Matrix& A, Matrix& Us, Matrix& Uc);
 
