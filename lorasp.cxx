@@ -49,18 +49,18 @@ int main(int argc, char* argv[]) {
 
   SpDense sp;
   allocSpDense(sp, &rels[0], levels);
-  MPI_Barrier();
-  double start_time = std::chrono::system_clock::now();
+  MPI_Barrier(MPI_COMM_WORLD);
+  auto start_time = std::chrono::system_clock::now();
   factorSpDense(sp, lcleaf, A, 200, &R[0], R.size());
-  MPI_Barrier();
-  double stop_time = std::chrono::system_clock::now();
-  double factor_time_process = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time);
+  MPI_Barrier(MPI_COMM_WORLD);
+  auto stop_time = std::chrono::system_clock::now();
+  double factor_time_process = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
 
-  double total_time;
-  MPI_Reduce(&factor_time_process, &total_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  double total_factor_time;
+  MPI_Reduce(&factor_time_process, &total_factor_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   int mpi_size;
-  MPI_Comm_Size(MPI_COMM_WORLD, &mpi_size);
-  total_time = total_time / mpi_size; 
+  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+  total_factor_time = total_factor_time / mpi_size; 
 
   Vectors X, Xref;
   loadX(X, lcleaf, levels);
@@ -68,14 +68,14 @@ int main(int argc, char* argv[]) {
 
   RHSS rhs(levels + 1);
 
-  MPI_Barrier();
-  double start_solve = std::chrono::system_clock::now();
+  MPI_Barrier(MPI_COMM_WORLD);
+  auto start_solve = std::chrono::system_clock::now();
   solveSpDense(&rhs[0], sp, X);
-  MPI_Barrier();
-  double stop_solve = std::chrono::system_clock::now();
-  double solve_time_process = std::chrono::duration_cast<std::chrono::milliseconds>(stop_solve - start_solve);
+  MPI_Barrier(MPI_COMM_WORLD);
+  auto  stop_solve = std::chrono::system_clock::now();
+  double solve_time_process = std::chrono::duration_cast<std::chrono::milliseconds>(stop_solve - start_solve).count();
   double total_solve_time = 0;
-  MPI_Reduce(&factor_time_process, &total_solve_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  MPI_Reduce(&solve_time_process, &total_solve_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   total_solve_time = total_solve_time / mpi_size;
 
   DistributeVectorsList(rhs[levels].X, levels);
@@ -95,8 +95,8 @@ int main(int argc, char* argv[]) {
 
   if (mpi_rank == 0) {
     std::cout << Nbody << "," << Ncrit << "," << theta << "," << dim
-	    << "," << mpi_size << "," << total_factor_size << ","
-	    << "," << total_solve_size << std::endl;
+	    << "," << mpi_size << "," << total_factor_time << ","
+	    << "," << total_solve_time << std::endl;
 	    
   }
   closeComm();
