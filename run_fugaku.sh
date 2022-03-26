@@ -16,4 +16,4 @@ export MODULEPATH=/vol0004/apps/oss/spack/share/spack/modules/linux-rhel8-a64fx:
 
 spack load /vgsk3aw
 make
-mpiexec -n 16 ./lorasp
+mpiexec -std out/output.txt -n 16 ./lorasp
