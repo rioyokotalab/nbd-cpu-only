@@ -87,16 +87,16 @@ int main(int argc, char* argv[]) {
   commRank(&mpi_rank, NULL, NULL);
   double err;
   solveRelErr(&err, X, Xref, levels);
-  printf("%lld ERR: %e\n", mpi_rank, err);
+  //printf("%lld ERR: %e\n", mpi_rank, err);
 
   int64_t* flops = getFLOPS();
   double gf = flops[0] * 1.e-9;
-  printf("%lld GFLOPS: %f\n", mpi_rank, gf);
+  //printf("%lld GFLOPS: %f\n", mpi_rank, gf);
 
   if (mpi_rank == 0) {
     std::cout << Nbody << "," << Ncrit << "," << theta << "," << dim
 	    << "," << mpi_size << "," << total_factor_time << ","
-	    << "," << total_solve_time << std::endl;
+	    << total_solve_time << "," << err << "," << gf << std::endl;
 	    
   }
   closeComm();
