@@ -20,8 +20,8 @@ make
 
 procs=64
 
-for N in 32768 65536 131072 262144 524288 1048576 2097152; do
-	for nleaf in 256 512; do
+for nleaf in 256 512; do
+	for N in 32768 65536 131072 262144 524288 1048576 2097152; do
 		mpiexec -std out/output.txt -n $procs ./lorasp $N $nleaf 1 3
 	done
 done
