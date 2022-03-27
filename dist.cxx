@@ -837,15 +837,18 @@ void nbd::butterflySumX(Vectors& X, int64_t level) {
 void nbd::startTimer(double* wtime) {
   int mpi_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  MPI_Barrier(MPI_COMM_WORLD);
   if (mpi_rank == 0)
     *wtime = MPI_Wtime();
 }
 
-void nbd::stopTimer(double wtime, const char str[]) {
+void nbd::stopTimer(double* wtime) {
   int mpi_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  MPI_Barrier(MPI_COMM_WORLD);
   if (mpi_rank == 0) {
+    double stime = *wtime;
     double etime = MPI_Wtime();
-    printf("%-20s : %f s\n", str, etime - wtime);
+    *wtime = etime - stime;
   }
 }

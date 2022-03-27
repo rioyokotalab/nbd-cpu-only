@@ -24,6 +24,7 @@ int main(int argc, char* argv[]) {
   int64_t dim = atol(argv[4]);
   
   EvalFunc ef = dim == 2 ? l2d() : l3d();
+  ef.singularity = Nbody * 1.e3;
 
   std::srand(100);
   std::vector<double> R(1 << 16);

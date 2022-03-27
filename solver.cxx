@@ -136,7 +136,7 @@ void nbd::solveA(RHS st[], const Node A[], const Base B[], const CSC rels[], con
   int64_t ibegin = 0;
   int64_t iend = (int64_t)1 << levels;
   selfLocalRange(ibegin, iend, levels);
-  int64_t nodes = iend - ibegin;
+
   for (int64_t i = ibegin; i < iend; i++)
     cpyVecToVec(X[i].N, X[i], st[levels].X[i], 0, 0);
   DistributeVectorsList(st[levels].X, levels);

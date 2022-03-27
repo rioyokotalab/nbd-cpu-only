@@ -587,7 +587,7 @@ void nbd::evaluateNear(Matrices d[], EvalFunc ef, const Cells& cells, int64_t di
   const CSC& cleaf = rels[levels];
   for (int64_t i = 0; i <= levels; i++)
     d[i].resize(rels[i].NNZ);
-  evaluateLeafNear(d[levels], ef, &cells[0], dim, cleaf);
+  evaluateLeafNear(dleaf, ef, &cells[0], dim, cleaf);
   for (int64_t i = levels - 1; i >= 0; i--) {
     evaluateIntermediate(ef, &cells[0], dim, &rels[i], &base[i], &d[i], i);
     if (rels[i].N == rels[i + 1].N)

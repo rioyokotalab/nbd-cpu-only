@@ -53,6 +53,6 @@ namespace nbd {
 
   void startTimer(double* wtime);
 
-  void stopTimer(double wtime, const char str[]);
+  void stopTimer(double* wtime);
 
 };
