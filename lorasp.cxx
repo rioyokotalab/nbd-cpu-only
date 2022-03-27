@@ -9,7 +9,7 @@
 #include <cstdio>
 #include <cmath>
 #include <iostream>
-
+#include <chrono>
 #include "mpi.h"
 
 using namespace nbd;

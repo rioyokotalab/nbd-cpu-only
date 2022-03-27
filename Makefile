@@ -1,7 +1,7 @@
 
-CC	= mpifcc -O3 -I.
-CXX	= mpiFCC -std=c++11 -O3 -I.
-MPICXX	= mpiFCC -O3 -I.
+CC	= mpicc -O3 -I.
+CXX	= mpicxx -std=c++11 -O3 -I.
+MPICXX	= mpicxx -std=c++11 -O3 -I.
 LC	= -lm
 
 all:
