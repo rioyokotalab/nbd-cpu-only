@@ -36,6 +36,4 @@ namespace nbd {
 
   void M2Lmat(EvalFunc ef, const Cell* ci, const Cell* cj, int64_t dim, Matrix& a);
 
-  void P2Mmat(EvalFunc ef, Cell* ci, const Body rm[], int64_t n, int64_t dim, Matrix& u, double epi);
-
 }

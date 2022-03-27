@@ -23,8 +23,6 @@ namespace nbd {
     std::vector<Cell*> listFar;
     std::vector<Cell*> listNear;
     std::vector<int64_t> Multipole;
-    Matrix Base;
-    Matrix Biv;
   };
 
   typedef std::vector<Cell> Cells;
@@ -54,19 +52,23 @@ namespace nbd {
 
   void findCellsAtLevel(const Cell* cells[], int64_t* len, const Cell* cell, int64_t level);
 
+  void findCellsAtLevelModify(Cell* cells[], int64_t* len, Cell* cell, int64_t level);
+
   const Cell* findLocalAtLevel(const Cell* cell, int64_t level);
+
+  Cell* findLocalAtLevelModify(Cell* cell, int64_t level);
 
   void traverse(Cells& cells, int64_t levels, int64_t dim, int64_t theta);
 
   void remoteBodies(Bodies& remote, int64_t size, const Cell& cell, const Bodies& bodies, int64_t dim);
 
-  void childMultipoles(Cell& cell);
+  void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
+
+  void writeChildMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen);
 
   void childMultipoleSize(int64_t* size, const Cell& cell);
 
-  void selectMultipole(Cell& cell, const int64_t arows[], int64_t rank);
-
-  void evaluateBasis(EvalFunc ef, Cell* cell, const Bodies& bodies, double repi, int64_t sp_pts, int64_t dim);
+  void evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, const Bodies& bodies, double repi, int64_t sp_pts, int64_t dim);
 
   void relationsNear(CSC rels[], const Cells& cells);
 

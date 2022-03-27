@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
   using namespace nbd;
 
   int64_t dim = 2;
-  int64_t m = 16384;
+  int64_t m = 4096;
   int64_t leaf = 128;
   int64_t theta = 1;
 
@@ -32,15 +32,10 @@ int main(int argc, char* argv[]) {
   initComm(&argc, &argv);
 
   traverse(cell, levels, dim, theta);
-  evaluateBasis(fun, &cell[0], body, 100, 400, dim);
 
-  const Cell* local = &cell[0];
   Basis basis;
   allocBasis(basis, levels);
-  for (int64_t i = 0; i <= levels; i++) {
-    local = findLocalAtLevel(local, i);
-    fillDimsFromCell(basis[i], local, i);
-  }
+  evaluateBaseAll(fun, &basis[0], cell, levels, body, 100, 2000, dim);
 
   std::vector<CSC> cscs(levels + 1);
   relationsNear(&cscs[0], cell);
@@ -52,7 +47,7 @@ int main(int argc, char* argv[]) {
   for (int64_t i = 0; i < R.size(); i++)
     R[i] = -1. + 2. * ((double)std::rand() / RAND_MAX);
 
-  local = &cell[0];
+  const Cell* local = &cell[0];
   std::vector<SpDense> sp(levels + 1);
   for (int64_t i = 0; i <= levels; i++) {
     local = findLocalAtLevel(local, i);

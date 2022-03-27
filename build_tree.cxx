@@ -231,8 +231,43 @@ void nbd::findCellsAtLevel(const Cell* cells[], int64_t* len, const Cell* cell, 
       findCellsAtLevel(cells, len, cell->CHILD + i, level);
 }
 
+void nbd::findCellsAtLevelModify(Cell* cells[], int64_t* len, Cell* cell, int64_t level) {
+  if (level == cell->LEVEL) {
+    int64_t i = *len;
+    cells[i] = cell;
+    *len = i + 1;
+  }
+  else if (level > cell->LEVEL && cell->NCHILD > 0)
+    for (int64_t i = 0; i < cell->NCHILD; i++)
+      findCellsAtLevelModify(cells, len, cell->CHILD + i, level);
+}
+
 const Cell* nbd::findLocalAtLevel(const Cell* cell, int64_t level) {
   const Cell* iter = cell;
+  int64_t mpi_rank;
+  int64_t mpi_levels;
+  commRank(&mpi_rank, NULL, &mpi_levels);
+  int64_t iters = level < mpi_levels ? level : mpi_levels;
+
+  for (int64_t i = iter->LEVEL + 1; i <= iters; i++) {
+    int64_t lvl_diff = mpi_levels - i;
+    int64_t my_rank = mpi_rank >> lvl_diff;
+    int64_t nchild = iter->NCHILD;
+    Cell* child = iter->CHILD;
+    for (int64_t n = 0; n < nchild; n++)
+      if (child[n].ZID == my_rank)
+        iter = child + n;
+  }
+
+  int64_t my_rank = mpi_rank >> (mpi_levels - iters);
+  if (iter->ZID == my_rank)
+    return iter;
+  else
+    return nullptr;
+}
+
+Cell* nbd::findLocalAtLevelModify(Cell* cell, int64_t level) {
+  Cell* iter = cell;
   int64_t mpi_rank;
   int64_t mpi_levels;
   commRank(&mpi_rank, NULL, &mpi_levels);
@@ -306,29 +341,52 @@ void nbd::remoteBodies(Bodies& remote, int64_t size, const Cell& cell, const Bod
   }
 }
 
-void nbd::childMultipoles(Cell& cell) {
+void nbd::collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
   if (cell.NCHILD > 0) {
-    int64_t size = 0;
     int64_t count = 0;
-    for (int64_t i = 0; i < cell.NCHILD; i++)
-      size += cell.CHILD[i].Multipole.size();
-    std::vector<int64_t>& cellm = cell.Multipole;
-    cellm.resize(size);
-
     for (int64_t i = 0; i < cell.NCHILD; i++) {
       const Cell& c = cell.CHILD[i];
       int64_t loc = c.BODY - cell.BODY;
       int64_t len = c.Multipole.size();
       for (int64_t n = 0; n < len; n++) {
         int64_t nloc = loc + c.Multipole[n];
-        cellm[count] = nloc;
+        multipoles[count] = nloc;
         count += 1;
       }
     }
   }
   else {
-    cell.Multipole.resize(cell.NBODY);
-    std::iota(cell.Multipole.begin(), cell.Multipole.end(), 0);
+    int64_t len = cell.NBODY;
+    std::iota(multipoles, multipoles + len, 0);
+  }
+}
+
+void nbd::writeChildMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen) {
+  if (cell.NCHILD > 0) {
+    int64_t max = 0;
+    int64_t count = 0;
+    for (int64_t i = 0; i < cell.NCHILD; i++) {
+      Cell& c = cell.CHILD[i];
+      int64_t begin = count;
+      max = max + c.NBODY;
+      while (count < mlen && multipoles[count] < max)
+        count++;
+      int64_t len = count - begin;
+      if (c.Multipole.size() != len)
+        c.Multipole.resize(len);
+    }
+
+    count = 0;
+    for (int64_t i = 0; i < cell.NCHILD; i++) {
+      Cell& c = cell.CHILD[i];
+      int64_t loc = c.BODY - cell.BODY;
+      int64_t len = c.Multipole.size();
+      for (int64_t n = 0; n < len; n++) {
+        int64_t nloc = multipoles[count] - loc;
+        c.Multipole[n] = nloc;
+        count += 1;
+      }
+    }
   }
 }
 
@@ -340,33 +398,44 @@ void nbd::childMultipoleSize(int64_t* size, const Cell& cell) {
     *size = s;
   }
   else
-    *size = 0;
+    *size = cell.NBODY;
 }
 
 
-void nbd::selectMultipole(Cell& cell, const int64_t arows[], int64_t rank) {
-  std::vector<int64_t> cellm;
-  cellm.resize(cell.Multipole.size());
-  std::copy(cell.Multipole.begin(), cell.Multipole.end(), cellm.begin());
-  
-  if (cell.Multipole.size() != rank)
-    cell.Multipole.resize(rank);
-  for (int64_t i = 0; i < rank; i++) {
-    int64_t ai = arows[i];
-    cell.Multipole[i] = cellm[ai];
-  }
-}
-
-void nbd::evaluateBasis(EvalFunc ef, Cell* cell, const Bodies& bodies, double repi, int64_t sp_pts, int64_t dim) {
-  if (cell->NCHILD > 0)
-    for (int64_t i = 0; i < cell->NCHILD; i++)
-      evaluateBasis(ef, cell->CHILD + i, bodies, repi, sp_pts, dim);
+void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, const Bodies& bodies, double repi, int64_t sp_pts, int64_t dim) {
+  int64_t m;
+  childMultipoleSize(&m, *cell);
 
   Bodies remote;
   remoteBodies(remote, sp_pts, *cell, bodies, dim);
-  if (remote.size() > 0) {
-    P2Mmat(ef, cell, remote.data(), remote.size(), dim, cell->Base, repi);
-    invBasis(cell->Base, cell->Biv);
+  int64_t n = remote.size();
+
+  if (m > 0 && n > 0) {
+    std::vector<int64_t> cellm(m);
+    collectChildMultipoles(*cell, cellm.data());
+
+    int64_t rank = repi < 1. ? std::min(m, n) : (int64_t)repi;
+    Matrix a;
+    std::vector<int64_t> pa(rank);
+    cMatrix(a, m, n);
+    cMatrix(Base, m, rank);
+
+    M2Lmat_bodies(ef, m, n, cellm.data(), nullptr, cell->BODY, remote.data(), dim, a);
+
+    int64_t iters;
+    lraID(repi, a, Base, pa.data(), &iters);
+
+    if (cell->Multipole.size() != iters)
+      cell->Multipole.resize(iters);
+    for (int64_t i = 0; i < iters; i++) {
+      int64_t ai = pa[i];
+      cell->Multipole[i] = cellm[ai];
+    }
+
+    if (iters != rank)
+      cMatrix(Base, m, iters);
+    cMatrix(Biv, iters, m);
+    invBasis(Base, Biv);
   }
 }
 

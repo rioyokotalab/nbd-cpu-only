@@ -23,7 +23,6 @@ std::vector<Communicator> COMMS;
 
 double prog_time = 0.;
 double tot_time = 0.;
-double last_mark = 0.;
 
 void nbd::initComm(int* argc, char** argv[]) {
   MPI_Init(argc, argv);
@@ -38,7 +37,6 @@ void nbd::initComm(int* argc, char** argv[]) {
 
   prog_time = MPI_Wtime();
   tot_time = 0.;
-  last_mark = 0.;
 }
 
 void nbd::closeComm() {
@@ -182,7 +180,6 @@ void nbd::DistributeVectorsList(Vectors& lis, int64_t level) {
   std::vector<double*> DATA(ngbs_len);
 
   for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
     int64_t tot_len = 0;
     for (int64_t n = 0; n < nboxes; n++) {
       int64_t rm_i = i * nboxes + n;
@@ -254,7 +251,6 @@ void nbd::DistributeMatricesList(Matrices& lis, int64_t level) {
   std::vector<double*> DATA(ngbs_len);
 
   for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
     int64_t tot_len = 0;
     for (int64_t n = 0; n < nboxes; n++) {
       int64_t rm_i = i * nboxes + n;
@@ -345,6 +341,79 @@ void nbd::DistributeDims(int64_t dims[], int64_t level) {
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
 }
+
+void nbd::DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64_t level) {
+  int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
+  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  std::vector<int64_t> sizes(ngbs_len);
+  std::vector<int64_t> offsets(ngbs_len);
+
+  int64_t tot_len = 0;
+  for (int64_t i = 0; i < ngbs_len; i++) {
+    int64_t len = 0;
+    for (int64_t n = 0; n < nboxes; n++) {
+      int64_t rm_i = i * nboxes + n;
+      len = len + dims[rm_i];
+    }
+    sizes[i] = len;
+    offsets[i] = tot_len;
+    tot_len = tot_len + len;
+  }
+
+  int64_t my_len = sizes[my_ind];
+  int64_t my_offset = offsets[my_ind];
+  const int64_t* my_mps = &multipoles[my_offset];
+
+  std::vector<MPI_Request> requests(ngbs_len);
+
+  for (int64_t i = 0; i < ngbs_len; i++) {
+    int64_t rm_rank = ngbs[i];
+    if (rm_rank != my_rank)
+      MPI_Isend(my_mps, (int)my_len, MPI_INT64_T, (int)rm_rank, 0, MPI_COMM_WORLD, &requests[i]);
+  }
+
+  for (int64_t i = 0; i < ngbs_len; i++) {
+    int64_t rm_rank = ngbs[i];
+    if (rm_rank != my_rank) {
+      int64_t rm_len = sizes[i];
+      int64_t rm_offset = offsets[i];
+      int64_t* rm_mps = &multipoles[rm_offset];
+
+      MPI_Recv(rm_mps, (int)rm_len , MPI_INT64_T, (int)rm_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+  }
+
+  for (int64_t i = 0; i < ngbs_len; i++) {
+    int64_t rm_rank = ngbs[i];
+    if (rm_rank != my_rank)
+      MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
+  }
+
+}
+
+
+void nbd::butterflyUpdateMultipoles(int64_t multipoles[], int64_t my_dim, int64_t mlen, int64_t level) {
+  int64_t my_ind, my_rank, my_twi, rm_rank;
+  locateButterflyCOMM(level, &my_ind, &my_rank, &my_twi, &rm_rank);
+
+  MPI_Request request;
+  int64_t* DATA;
+
+  DATA = (int64_t*)malloc(sizeof(int64_t) * mlen);
+  int64_t rm_dim = mlen - my_dim;
+  int64_t offset = my_rank < rm_rank ? my_dim : 0;
+
+  MPI_Isend(multipoles, (int)my_dim, MPI_INT64_T, (int)rm_rank, 0, MPI_COMM_WORLD, &request);
+  MPI_Recv(&DATA[offset], (int)rm_dim, MPI_INT64_T, (int)rm_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  MPI_Wait(&request, MPI_STATUS_IGNORE);
+
+  offset = my_rank < rm_rank ? 0 : rm_dim;
+  std::copy(multipoles, multipoles + my_dim, &DATA[offset]);
+  std::copy(DATA, DATA + mlen, multipoles);
+
+  free(DATA);
+}
+
 
 void constructCOMM_AXAT(double** DATA, int64_t* LEN, int64_t RM_BOX, const Matrices& A, const CSC& rels) {
   int64_t nboxes = rels.N;
@@ -780,50 +849,3 @@ void nbd::stopTimer(double wtime, const char str[]) {
     printf("%-20s : %f s\n", str, etime - wtime);
   }
 }
-
-/*void nbd::DistributeBodies(LocalBodies& bodies, int64_t level) {
-  int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
-  int64_t dim = bodies.DIM;
-
-  int64_t my_nbody = bodies.NBODIES[my_ind] * dim;
-  int64_t my_offset = bodies.OFFSETS[my_ind * nboxes] * dim;
-  const double* my_bodies = &bodies.BODIES[my_offset];
-  const int64_t* my_lens = &bodies.LENS[my_ind * nboxes];
-
-  std::vector<MPI_Request> requests1(ngbs_len);
-  std::vector<MPI_Request> requests2(ngbs_len);
-
-  for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
-    if (rm_rank != my_rank) {
-      MPI_Isend(my_bodies, my_nbody, MPI_DOUBLE, rm_rank, 0, MPI_COMM_WORLD, &requests1[i]);
-      MPI_Isend(my_lens, nboxes, MPI_INT64_T, rm_rank, 0, MPI_COMM_WORLD, &requests2[i]);
-    }
-  }
-
-  for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
-    if (rm_rank != my_rank) {
-      int64_t rm_nbody = bodies.NBODIES[i] * dim;
-      int64_t rm_offset = bodies.OFFSETS[i * nboxes] * dim;
-      double* rm_bodies = &bodies.BODIES[rm_offset];
-      int64_t* rm_lens = &bodies.LENS[i * nboxes];
-      
-      MPI_Recv(rm_bodies, rm_nbody, MPI_DOUBLE, rm_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      MPI_Recv(rm_lens, nboxes, MPI_INT64_T, rm_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-  }
-
-  for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
-    if (rm_rank != my_rank) {
-      MPI_Wait(&requests1[i], MPI_STATUS_IGNORE);
-      MPI_Wait(&requests2[i], MPI_STATUS_IGNORE);
-    }
-  }
-
-  bodies.OFFSETS[0] = 0;
-  for (int64_t i = 1; i < bodies.OFFSETS.size(); i++)
-    bodies.OFFSETS[i] = bodies.OFFSETS[i - 1] + bodies.LENS[i - 1];
-}*/

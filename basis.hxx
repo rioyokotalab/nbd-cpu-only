@@ -21,6 +21,12 @@ namespace nbd {
   void orthoBasis(double repi, Matrices& C, int64_t dims_o[], int64_t level);
 
   void allocBasis(Basis& basis, int64_t levels);
+
+  void evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, const Bodies& bodies, double repi, int64_t sp_pts, int64_t dim);
+
+  void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level);
+
+  void evaluateBaseAll(EvalFunc ef, Base basis[], Cells& cells, int64_t levels, const Bodies& bodies, double repi, int64_t sp_pts, int64_t dim);
   
   void fillDimsFromCell(Base& basis, const Cell* cell, int64_t level);
 
