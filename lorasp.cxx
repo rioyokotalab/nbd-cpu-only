@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
   //printf("%lld GFLOPS: %f\n", mpi_rank, gf);
 
   if (mpi_rank == 0) {
-    std::cout << Nbody << "," << Ncrit << "," << theta << "," << dim
+    std::cout << "LORASP: " << Nbody << "," << Ncrit << "," << theta << "," << dim
 	    << "," << mpi_size << "," << total_factor_time << ","
 	    << total_solve_time << "," << err << "," << gf << std::endl;
 	    

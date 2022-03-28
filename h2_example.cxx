@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
   solveRelErr(&err_s, rhs[levels].X, X, levels);
 
   if (mpi_rank == 0) {
-    std::cout << m << "," << leaf << "," << theta << "," << dim
+    std::cout << "H2: " << m << "," << leaf << "," << theta << "," << dim
 	    << "," << mpi_size << "," << ctime << "," << ftime << ","
 	    << mvtime << "," << stime << "," << err_mv << "," << err_s << std::endl;
   }
