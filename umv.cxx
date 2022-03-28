@@ -9,6 +9,7 @@ void nbd::splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matr
   selfLocalRange(ibegin, iend, level);
   const Matrix* vlocal = &V[ibegin];
 
+#pragma omp parallel for
   for (int64_t x = 0; x < rels.N; x++) {
     for (int64_t yx = rels.CSC_COLS[x]; yx < rels.CSC_COLS[x + 1]; yx++) {
       int64_t y = rels.CSC_ROWS[yx];
@@ -21,6 +22,7 @@ void nbd::splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matr
 
 void nbd::factorAcc(Matrices& A_cc, const CSC& rels) {
   int64_t lbegin = rels.CBGN;
+#pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
     lookupIJ(ii, rels, i + lbegin, i + lbegin);
@@ -37,7 +39,7 @@ void nbd::factorAcc(Matrices& A_cc, const CSC& rels) {
 
 void nbd::factorAoc(Matrices& A_oc, const Matrices& A_cc, const CSC& rels) {
   int64_t lbegin = rels.CBGN;
-
+#pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
     lookupIJ(ii, rels, i + lbegin, i + lbegin);
@@ -49,7 +51,7 @@ void nbd::factorAoc(Matrices& A_oc, const Matrices& A_cc, const CSC& rels) {
 
 void nbd::schurCmplm(Matrices& S, const Matrices& A_oc, const CSC& rels) {
   int64_t lbegin = rels.CBGN;
-
+#pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
     lookupIJ(ii, rels, i + lbegin, i + lbegin);
@@ -65,7 +67,7 @@ void nbd::schurCmplm(Matrices& S, const Matrices& A_oc, const CSC& rels) {
 void nbd::axatLocal(Matrices& A, const CSC& rels) {
   int64_t lbegin = rels.CBGN;
   int64_t lend = lbegin + rels.N;
-
+#pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++)
     for (int64_t ji = rels.CSC_COLS[i]; ji < rels.CSC_COLS[i + 1]; ji++) {
       int64_t j = rels.CSC_ROWS[ji];
@@ -152,6 +154,7 @@ void nbd::factorNode(Node& n, Base& basis, const CSC& rels, double repi, const d
   axatDistribute(n.S, rels, level);
 
   int64_t len = n.S.size();
+#pragma omp parallel for
   for (int64_t i = 0; i < len; i++)
     madd(n.A_oo[i], n.S[i]);
 }
@@ -163,7 +166,7 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
   nextBasisDims(bsnext, bsprev, nlevel);
   allocA(Mup, rels_up, &bsnext.DIMS[0], nlevel);
   int64_t nbegin = rels_up.CBGN;
-
+#pragma omp parallel for
   for (int64_t j = 0; j < rels_up.N; j++) {
     int64_t gj = j + nbegin;
     int64_t cj0 = (gj << 1);
