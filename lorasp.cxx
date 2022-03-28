@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
   int64_t theta = atol(argv[3]);
   int64_t dim = atol(argv[4]);
   double repi = 200;
-  omp_set_num_threads(4);
+  //omp_set_num_threads(4);
   
   EvalFunc ef = dim == 2 ? l2d() : l3d();
   ef.singularity = Nbody * 1.e3;
