@@ -83,17 +83,17 @@ void nbd::bucketSort(Bodies& bodies, int64_t buckets[], int64_t slices[], const 
   std::vector<int64_t> bodies_i(nbody);
   std::vector<int64_t> offsets(nboxes);
   Bodies bodies_cpy(nbody);
-  std::vector<int64_t> Xi(dim);
 
 #pragma omp parallel for
   for (int64_t i = 0; i < nbody; i++) {
+    std::vector<int64_t> Xi(dim);
     const Body& bi = bodies[i];
     for (int64_t d = 0; d < dim; d++)
       Xi[d] = (int64_t)((bi.X[d] - adj_dmin[d]) / box_dim[d]);
     int64_t ind = getIndex(Xi.data(), dim);
     bodies_i[i] = ind;
 #pragma omp atomic
-    buckets[ind] += 1;
+    buckets[ind] = buckets[ind] + 1;
   }
 
   offsets[0] = 0;
