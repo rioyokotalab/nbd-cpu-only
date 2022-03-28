@@ -11,6 +11,7 @@ void nbd::sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, const doubl
   int64_t lbegin = rels.CBGN;
   int64_t ibegin = 0, iend;
   selfLocalRange(ibegin, iend, level);
+#pragma omp parallel for
   for (int64_t j = 0; j < rels.N; j++) {
     Matrix& cj = C1[j + ibegin];
 
@@ -34,6 +35,7 @@ void nbd::sampleC2(Matrices& C2, const CSC& rels, const Matrices& A, const Matri
   int64_t lbegin = rels.CBGN;
   int64_t ibegin = 0, iend;
   selfLocalRange(ibegin, iend, level);
+#pragma omp parallel for
   for (int64_t j = 0; j < rels.N; j++) {
     Matrix& cj = C2[j + ibegin];
 
@@ -54,8 +56,10 @@ void nbd::orthoBasis(double repi, Matrices& C, int64_t dims_o[], int64_t level) 
   int64_t ibegin = 0;
   int64_t iend = C.size();
   selfLocalRange(ibegin, iend, level);
-  for (int64_t i = ibegin; i < iend; i++)
-    orthoBase(repi, C[i], &dims_o[i]);
+  int64_t nodes = iend - ibegin;
+#pragma omp parallel for
+  for (int64_t i = 0; i < nodes; i++)
+    orthoBase(repi, C[i + ibegin], &dims_o[i + ibegin]);
 }
 
 void nbd::allocBasis(Basis& basis, int64_t levels) {
@@ -209,6 +213,7 @@ void nbd::allocUcUo(Base& basis, const Matrices& C, int64_t level) {
   int64_t lbegin = 0;
   int64_t lend = len;
   selfLocalRange(lbegin, lend, level);
+#pragma omp parallel for
   for (int64_t i = 0; i < len; i++) {
     int64_t dim = basis.DIMS[i];
     int64_t dim_o = basis.DIMO[i];

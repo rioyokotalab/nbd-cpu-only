@@ -6,6 +6,7 @@
 #include "solver.hxx"
 #include "dist.hxx"
 
+#include "omp.h"
 #include <iostream>
 #include <cstdlib>
 #include <random>
@@ -20,6 +21,7 @@ int main(int argc, char* argv[]) {
   int64_t dim = argc > 4 ? atol(argv[4]) : 3;
   double repi = 200;
   int64_t sp_pts = 2000;
+  omp_set_num_threads(4);
 
   EvalFunc fun = dim == 2 ? l2d() : l3d();
   fun.singularity = m * 1.e3;
