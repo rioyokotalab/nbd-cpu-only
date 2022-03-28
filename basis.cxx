@@ -84,6 +84,7 @@ void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, con
   std::vector<Cell*> leaves(nodes);
   findCellsAtLevelModify(&leaves[0], &len, cell, level);
 
+#pragma omp parallel for
   for (int64_t i = 0; i < len; i++) {
     Cell* ci = leaves[i];
     int64_t ii = ci->ZID;

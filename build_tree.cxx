@@ -85,30 +85,35 @@ void nbd::bucketSort(Bodies& bodies, int64_t buckets[], int64_t slices[], const 
   Bodies bodies_cpy(nbody);
   std::vector<int64_t> Xi(dim);
 
+#pragma omp parallel for
   for (int64_t i = 0; i < nbody; i++) {
     const Body& bi = bodies[i];
     for (int64_t d = 0; d < dim; d++)
       Xi[d] = (int64_t)((bi.X[d] - adj_dmin[d]) / box_dim[d]);
     int64_t ind = getIndex(Xi.data(), dim);
     bodies_i[i] = ind;
-    buckets[ind] = buckets[ind] + 1;
+#pragma omp atomic
+    buckets[ind] += 1;
   }
 
   offsets[0] = 0;
   for (int64_t i = 1; i < nboxes; i++)
     offsets[i] = offsets[i - 1] + buckets[i - 1];
 
+#pragma omp parallel for
   for (int64_t i = 0; i < nbody; i++) {
     int64_t bi = bodies_i[i];
+    int64_t offset_bi;
+#pragma omp ordered
+    { offset_bi = offsets[bi]; offsets[bi] = offset_bi + 1; }
     const Body& src = bodies[i];
-    int64_t offset_bi = offsets[bi];
     Body& tar = bodies_cpy[offset_bi];
     for (int64_t d = 0; d < dim; d++)
       tar.X[d] = src.X[d];
     tar.B = src.B;
-    offsets[bi] = offset_bi + 1;
   }
 
+#pragma omp parallel for
   for (int64_t i = 0; i < nbody; i++) {
     for (int64_t d = 0; d < dim; d++)
       bodies[i].X[d] = bodies_cpy[i].X[d];
