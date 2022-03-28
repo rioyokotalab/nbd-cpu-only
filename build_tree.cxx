@@ -100,7 +100,7 @@ void nbd::bucketSort(Bodies& bodies, int64_t buckets[], int64_t slices[], const 
   for (int64_t i = 1; i < nboxes; i++)
     offsets[i] = offsets[i - 1] + buckets[i - 1];
 
-#pragma omp parallel for
+#pragma omp parallel for ordered
   for (int64_t i = 0; i < nbody; i++) {
     int64_t bi = bodies_i[i];
     int64_t offset_bi;
