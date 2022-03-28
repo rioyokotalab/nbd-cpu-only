@@ -202,6 +202,7 @@ void nbd::DistributeVectorsList(Vectors& lis, int64_t level) {
     offset = offset + len;
   }
 
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank != my_rank)
@@ -222,6 +223,8 @@ void nbd::DistributeVectorsList(Vectors& lis, int64_t level) {
     if (rm_rank != my_rank)
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
@@ -273,6 +276,7 @@ void nbd::DistributeMatricesList(Matrices& lis, int64_t level) {
     offset = offset + len;
   }
 
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank != my_rank)
@@ -293,6 +297,8 @@ void nbd::DistributeMatricesList(Matrices& lis, int64_t level) {
     if (rm_rank != my_rank)
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
@@ -320,7 +326,7 @@ void nbd::DistributeDims(int64_t dims[], int64_t level) {
   std::vector<MPI_Request> requests(ngbs_len);
 
   const int64_t* my_data = &dims[my_ind * nboxes];
-
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank != my_rank)
@@ -340,6 +346,8 @@ void nbd::DistributeDims(int64_t dims[], int64_t level) {
     if (rm_rank != my_rank)
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 }
 
 void nbd::DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64_t level) {
@@ -365,7 +373,7 @@ void nbd::DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64
   const int64_t* my_mps = &multipoles[my_offset];
 
   std::vector<MPI_Request> requests(ngbs_len);
-
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank != my_rank)
@@ -388,7 +396,8 @@ void nbd::DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64
     if (rm_rank != my_rank)
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
-
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 }
 
 
@@ -403,9 +412,12 @@ void nbd::butterflyUpdateMultipoles(int64_t multipoles[], int64_t my_dim, int64_
   int64_t rm_dim = mlen - my_dim;
   int64_t offset = my_rank < rm_rank ? my_dim : 0;
 
+  double stime = MPI_Wtime();
   MPI_Isend(multipoles, (int)my_dim, MPI_INT64_T, (int)rm_rank, 0, MPI_COMM_WORLD, &request);
   MPI_Recv(&DATA[offset], (int)rm_dim, MPI_INT64_T, (int)rm_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   MPI_Wait(&request, MPI_STATUS_IGNORE);
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   offset = my_rank < rm_rank ? 0 : rm_dim;
   std::copy(multipoles, multipoles + my_dim, &DATA[offset]);
@@ -493,6 +505,7 @@ void nbd::axatDistribute(Matrices& A, const CSC& rels, int64_t level) {
     }
   }
 
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank != my_rank) {
@@ -516,6 +529,8 @@ void nbd::axatDistribute(Matrices& A, const CSC& rels, int64_t level) {
     if (rm_rank != my_rank)
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
@@ -560,9 +575,12 @@ void nbd::butterflySumA(Matrices& A, int64_t level) {
     offset = offset + len;
   }
 
+  double stime = MPI_Wtime();
   MPI_Isend(SRC_DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, 0, MPI_COMM_WORLD, &request);
   MPI_Recv(RM_DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   MPI_Wait(&request, MPI_STATUS_IGNORE);
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   offset = 0;
   for (int64_t i = 0; i < alen; i++) {
@@ -584,6 +602,7 @@ void nbd::sendFwSubstituted(const Vectors& X, int64_t level) {
   std::vector<double*> DATA(ngbs_len);
   std::vector<int64_t> LENS(ngbs_len);
 
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank > my_rank) {
@@ -610,6 +629,8 @@ void nbd::sendFwSubstituted(const Vectors& X, int64_t level) {
     if (rm_rank > my_rank)
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
@@ -635,11 +656,14 @@ void nbd::sendBkSubstituted(const Vectors& X, int64_t level) {
     LEN = LEN + X[i].N;
   }
   
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank < my_rank)
       MPI_Send(DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, 0, MPI_COMM_WORLD);
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   free(DATA);
 }
@@ -655,6 +679,7 @@ void nbd::recvFwSubstituted(Vectors& X, int64_t level) {
     LEN = LEN + X[i].N;
   double* DATA = (double*)malloc(sizeof(double) * LEN);
   
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank < my_rank) {
@@ -666,6 +691,8 @@ void nbd::recvFwSubstituted(Vectors& X, int64_t level) {
       }
     }
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   free(DATA);
 }
@@ -692,6 +719,7 @@ void nbd::recvBkSubstituted(Vectors& X, int64_t level) {
     }
   }
 
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank > my_rank)
@@ -703,6 +731,8 @@ void nbd::recvBkSubstituted(Vectors& X, int64_t level) {
     if (rm_rank > my_rank)
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
@@ -755,6 +785,7 @@ void nbd::distributeSubstituted(Vectors& X, int64_t level) {
     }
   }
 
+  double stime = MPI_Wtime();
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
     if (rm_rank != my_rank) {
@@ -777,6 +808,8 @@ void nbd::distributeSubstituted(Vectors& X, int64_t level) {
     if (rm_rank != my_rank)
       MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
   }
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
@@ -820,9 +853,12 @@ void nbd::butterflySumX(Vectors& X, int64_t level) {
     offset = offset + X[i].N;
   }
 
+  double stime = MPI_Wtime();
   MPI_Isend(SRC_DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, 0, MPI_COMM_WORLD, &request);
   MPI_Recv(RM_DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   MPI_Wait(&request, MPI_STATUS_IGNORE);
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
 
   offset = 0;
   for (int64_t i = 0; i < xlen; i++) {
