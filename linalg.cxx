@@ -29,7 +29,7 @@ void nbd::cpyFromMatrix(char trans, const Matrix& A, double* V) {
     incv = A.N;
   }
   for (int64_t j = 0; j < A.N; j++)
-    dcopy(A.M, &A.A[j * A.M], 1, &V[j * iv], incv);
+    Cdcopy(A.M, &A.A[j * A.M], 1, &V[j * iv], incv);
 }
 
 void nbd::cpyFromVector(const Vector& A, double* v) {
@@ -41,8 +41,8 @@ void nbd::maxpby(Matrix& A, const double* v, double alpha, double beta) {
   if (beta == 0.)
     std::fill(A.A.data(), A.A.data() + size, 0.);
   else if (beta != 1.)
-    dscal(size, beta, A.A.data(), 1);
-  daxpy(size, alpha, v, 1, A.A.data(), 1);
+    Cdscal(size, beta, A.A.data(), 1);
+  Cdaxpy(size, alpha, v, 1, A.A.data(), 1);
 }
 
 void nbd::vaxpby(Vector& A, const double* v, double alpha, double beta) {
@@ -50,8 +50,8 @@ void nbd::vaxpby(Vector& A, const double* v, double alpha, double beta) {
   if (beta == 0.)
     std::fill(A.X.data(), A.X.data() + size, 0.);
   else if (beta != 1.)
-    dscal(size, beta, A.X.data(), 1);
-  daxpy(size, alpha, v, 1, A.X.data(), 1);
+    Cdscal(size, beta, A.X.data(), 1);
+  Cdaxpy(size, alpha, v, 1, A.X.data(), 1);
 }
 
 void nbd::cpyMatToMat(int64_t m, int64_t n, const Matrix& m1, Matrix& m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2) {
@@ -100,7 +100,7 @@ void nbd::zeroVector(Vector& A) {
 void nbd::mmult(char ta, char tb, const Matrix& A, const Matrix& B, Matrix& C, double alpha, double beta) {
   int64_t k = (ta == 'N' || ta == 'n') ? A.N : A.M;
   if (C.M > 0 && C.N > 0 && k > 0)
-    dgemm(ta, tb, C.M, C.N, k, alpha, A.A.data(), A.M, B.A.data(), B.M, beta, C.A.data(), C.M);
+    Cdgemm(ta, tb, C.M, C.N, k, alpha, A.A.data(), A.M, B.A.data(), B.M, beta, C.A.data(), C.M);
 }
 
 void nbd::msample(char ta, int64_t lenR, const Matrix& A, const double* R, Matrix& C) {
@@ -118,10 +118,10 @@ void nbd::msample(char ta, int64_t lenR, const Matrix& A, const double* R, Matri
   int64_t rk = lenR / C.N;
   int64_t lk = k % rk;
   if (lk > 0)
-    dgemm(ta, 'N', C.M, C.N, lk, 1., A.A.data(), A.M, R, lk, 1., C.A.data(), C.M);
+    Cdgemm(ta, 'N', C.M, C.N, lk, 1., A.A.data(), A.M, R, lk, 1., C.A.data(), C.M);
   if (k > rk)
     for (int64_t i = lk; i < k; i += rk)
-      dgemm(ta, 'N', C.M, C.N, rk, 1., &A.A[i * inca], A.M, R, rk, 1., C.A.data(), C.M);
+      Cdgemm(ta, 'N', C.M, C.N, rk, 1., &A.A[i * inca], A.M, R, rk, 1., C.A.data(), C.M);
 }
 
 void nbd::msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C) {
@@ -129,7 +129,7 @@ void nbd::msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C) {
   if (ta == 'N' || ta == 'n')
     k = A.N;
   int64_t nrhs = std::min(B.N, C.N);
-  dgemm(ta, 'N', C.M, nrhs, k, 1., A.A.data(), A.M, B.A.data(), B.M, 1., C.A.data(), C.M);
+  Cdgemm(ta, 'N', C.M, nrhs, k, 1., A.A.data(), A.M, B.A.data(), B.M, 1., C.A.data(), C.M);
 }
 
 void nbd::minvl(const Matrix& A, Matrix& B) {
@@ -160,7 +160,7 @@ void nbd::invBasis(const Matrix& u, Matrix& uinv) {
 
 void nbd::chol_decomp(Matrix& A) {
   if (A.M > 0)
-    dpotrf(A.M, A.A.data(), A.M);
+    Cdpotrf(A.M, A.A.data(), A.M);
 }
 
 void nbd::trsm_lowerA(Matrix& A, const Matrix& L) {
@@ -184,16 +184,16 @@ void nbd::utav(char tb, const Matrix& U, const Matrix& A, const Matrix& VT, Matr
 void nbd::axat(Matrix& A, Matrix& AT) {
   if (A.M > 0 && A.N > 0) {
     for (int64_t j = 0; j < A.N; j++)
-      daxpy(A.M, 1., &AT.A[j], AT.M, &A.A[j * A.M], 1);
+      Cdaxpy(A.M, 1., &AT.A[j], AT.M, &A.A[j * A.M], 1);
     for (int64_t i = 0; i < A.M; i++)
-      dcopy(A.N, &A.A[i], A.M, &AT.A[i * AT.M], 1);
+      Cdcopy(A.N, &A.A[i], A.M, &AT.A[i * AT.M], 1);
   }
 }
 
 void nbd::madd(Matrix& A, const Matrix& B) {
   int64_t size = A.M * A.N;
   if (size > 0)
-    daxpy(size, 1., &B.A[0], 1, &A.A[0], 1);
+    Cdaxpy(size, 1., &B.A[0], 1, &A.A[0], 1);
 }
 
 void nbd::chol_solve(Vector& X, const Matrix& A) {
@@ -213,7 +213,7 @@ void nbd::bk_solve(Vector& X, const Matrix& L) {
 
 void nbd::mvec(char ta, const Matrix& A, const Vector& X, Vector& B, double alpha, double beta) {
   if (A.M > 0 && A.N > 0)
-    dgemv(ta, A.M, A.N, alpha, A.A.data(), A.M, X.X.data(), 1, beta, B.X.data(), 1);
+    Cdgemv(ta, A.M, A.N, alpha, A.A.data(), A.M, X.X.data(), 1, beta, B.X.data(), 1);
 }
 
 void nbd::pvc_fw(const Vector& X, const Matrix& Us, const Matrix& Uc, Vector& Xs, Vector& Xc) {
@@ -227,7 +227,7 @@ void nbd::pvc_bk(const Vector& Xs, const Vector& Xc, const Matrix& Us, const Mat
 }
 
 void nbd::vnrm2(const Vector& A, double* nrm) {
-  dnrm2(A.N, A.X.data(), 1, nrm);
+  Cdnrm2(A.N, A.X.data(), 1, nrm);
 }
 
 void nbd::verr2(const Vector& A, const Vector& B, double* err) {

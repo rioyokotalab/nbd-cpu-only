@@ -22,7 +22,7 @@ void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, double* u, int
   while (i < k && (n2 > epi2 * nrm) && amax > 0) {
     amax = 0.;
     int64_t ymax = 0;
-    didamax(m * n, a, 1, &ymax);
+    Cidamax(m * n, a, 1, &ymax);
     amax = fabs(a[ymax]);
 
     if (amax > 0.) {
@@ -34,19 +34,19 @@ void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, double* u, int
       double* ui = &u[i * ldu];
       double* vi = &vt[i * ldvt];
 
-      dcopy(n, &a[yp], m, vi, 1);
-      dcopy(m, &a[xp * m], 1, ui, 1);
-      dscal(m, ap, ui, 1);
+      Cdcopy(n, &a[yp], m, vi, 1);
+      Cdcopy(m, &a[xp * m], 1, ui, 1);
+      Cdscal(m, ap, ui, 1);
       ui[yp] = 1.;
 
       for (int64_t x = 0; x < n; x++) {
         double ri = -vi[x];
-        daxpy(m, ri, ui, 1, &a[x * m], 1);
+        Cdaxpy(m, ri, ui, 1, &a[x * m], 1);
       }
 
       double zero = 0.;
-      dcopy(n, &zero, 0, &a[yp], m);
-      dcopy(m, &zero, 0, &a[xp * m], 1);
+      Cdcopy(n, &zero, 0, &a[yp], m);
+      Cdcopy(m, &zero, 0, &a[xp * m], 1);
 
       if (epi2 > 0.) {
         double nrm_v = 0.;
@@ -54,8 +54,8 @@ void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, double* u, int
         double nrm_vi = 0.;
         double nrm_ui = 0.;
 
-        ddot(n, vi, 1, vi, 1, &nrm_vi);
-        ddot(m, ui, 1, ui, 1, &nrm_ui);
+        Cddot(n, vi, 1, vi, 1, &nrm_vi);
+        Cddot(m, ui, 1, ui, 1, &nrm_ui);
 
         for (int64_t j = 0; j < i; j++) {
           double* vj = &vt[j * ldvt];
@@ -63,8 +63,8 @@ void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, double* u, int
           double nrm_vj = 0.;
           double nrm_uj = 0.;
 
-          ddot(n, vi, 1, vj, 1, &nrm_vj);
-          ddot(m, ui, 1, uj, 1, &nrm_uj);
+          Cddot(n, vi, 1, vj, 1, &nrm_vj);
+          Cddot(m, ui, 1, uj, 1, &nrm_uj);
           nrm_v = nrm_v + nrm_vj;
           nrm_u = nrm_u + nrm_uj;
         }
@@ -95,11 +95,11 @@ void didrow(double epi, int64_t m, int64_t n, int64_t k, double* a, double* x, i
     int64_t xp = ymax / m;
     int64_t yp = ymax - xp * m;
     arow[i] = yp;
-    dcopy(rnk, u + yp, m, r + i, rnk);
+    Cdcopy(rnk, u + yp, m, r + i, rnk);
   }
   dorth('F', rnk, rnk, r, rnk, q, rnk);
   dtrsmr_right(m, rnk, r, rnk, u, m);
-  dgemm('N', 'T', m, rnk, rnk, 1., u, m, q, rnk, 0., x, ldx);
+  Cdgemm('N', 'T', m, rnk, rnk, 1., u, m, q, rnk, 0., x, ldx);
 
   free(u);
   free(vt);
@@ -183,7 +183,7 @@ void dorth(char ecoq, int64_t m, int64_t n, double* r, int64_t ldr, double* q, i
   FLOPS = FLOPS + 2 * m * n * n;
 }
 
-void dpotrf(int64_t n, double* a, int64_t lda) {
+void Cdpotrf(int64_t n, double* a, int64_t lda) {
 #ifdef CBLAS
   LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, a, lda);
 #else
@@ -326,7 +326,7 @@ void dtrsmr_left(int64_t m, int64_t n, const double* a, int64_t lda, double* b, 
   FLOPS = FLOPS + m * n * m / 3;
 }
 
-void dgemv(char ta, int64_t m, int64_t n, double alpha, const double* a, int64_t lda, const double* x, int64_t incx, double beta, double* y, int64_t incy) {
+void Cdgemv(char ta, int64_t m, int64_t n, double alpha, const double* a, int64_t lda, const double* x, int64_t incx, double beta, double* y, int64_t incy) {
 #ifdef CBLAS
   if (ta == 'T' || ta == 't')
     cblas_dgemv(CblasColMajor, CblasTrans, m, n, alpha, a, lda, x, incx, beta, y, incy);
@@ -379,7 +379,7 @@ void dgemv(char ta, int64_t m, int64_t n, double alpha, const double* a, int64_t
   FLOPS = FLOPS + 2 * n * m;
 }
 
-void dgemm(char ta, char tb, int64_t m, int64_t n, int64_t k, double alpha, const double* a, int64_t lda, const double* b, int64_t ldb, double beta, double* c, int64_t ldc) {
+void Cdgemm(char ta, char tb, int64_t m, int64_t n, int64_t k, double alpha, const double* a, int64_t lda, const double* b, int64_t ldb, double beta, double* c, int64_t ldc) {
 #ifdef CBLAS
   if (ta == 'T' || ta == 't') {
     if (tb == 'T' || tb == 't')
@@ -403,14 +403,14 @@ void dgemm(char ta, char tb, int64_t m, int64_t n, int64_t k, double alpha, cons
 
   if (tb == 'T' || tb == 't')
     for (int64_t i = 0; i < n; i++)
-      dgemv(ta, ma, na, alpha, a, lda, b + i, ldb, beta, c + i * ldc, 1);
+      Cdgemv(ta, ma, na, alpha, a, lda, b + i, ldb, beta, c + i * ldc, 1);
   else if (tb == 'N' || tb == 'n')
     for (int64_t i = 0; i < n; i++)
-      dgemv(ta, ma, na, alpha, a, lda, b + i * ldb, 1, beta, c + i * ldc, 1);
+      Cdgemv(ta, ma, na, alpha, a, lda, b + i * ldb, 1, beta, c + i * ldc, 1);
 #endif
 }
 
-void dcopy(int64_t n, const double* x, int64_t incx, double* y, int64_t incy) {
+void Cdcopy(int64_t n, const double* x, int64_t incx, double* y, int64_t incy) {
 #ifdef CBLAS
   cblas_dcopy(n, x, incx, y, incy);
 #else
@@ -419,7 +419,7 @@ void dcopy(int64_t n, const double* x, int64_t incx, double* y, int64_t incy) {
 #endif
 }
 
-void dscal(int64_t n, double alpha, double* x, int64_t incx) {
+void Cdscal(int64_t n, double alpha, double* x, int64_t incx) {
 #ifdef CBLAS
   cblas_dscal(n, alpha, x, incx);
 #else
@@ -433,7 +433,7 @@ void dscal(int64_t n, double alpha, double* x, int64_t incx) {
   FLOPS = FLOPS + n;
 }
 
-void daxpy(int64_t n, double alpha, const double* x, int64_t incx, double* y, int64_t incy) {
+void Cdaxpy(int64_t n, double alpha, const double* x, int64_t incx, double* y, int64_t incy) {
 #ifdef CBLAS
   cblas_daxpy(n, alpha, x, incx, y, incy);
 #else
@@ -443,7 +443,7 @@ void daxpy(int64_t n, double alpha, const double* x, int64_t incx, double* y, in
   FLOPS = FLOPS + 2 * n;
 }
 
-void ddot(int64_t n, const double* x, int64_t incx, const double* y, int64_t incy, double* result) {
+void Cddot(int64_t n, const double* x, int64_t incx, const double* y, int64_t incy, double* result) {
 #ifdef CBLAS
   *result = cblas_ddot(n, x, incx, y, incy);
 #else
@@ -455,7 +455,7 @@ void ddot(int64_t n, const double* x, int64_t incx, const double* y, int64_t inc
   FLOPS = FLOPS + 2 * n;
 }
 
-void didamax(int64_t n, const double* x, int64_t incx, int64_t* ida) {
+void Cidamax(int64_t n, const double* x, int64_t incx, int64_t* ida) {
 #ifdef CBLAS
   *ida = cblas_idamax(n, x, incx);
 #else
@@ -475,7 +475,7 @@ void didamax(int64_t n, const double* x, int64_t incx, int64_t* ida) {
   FLOPS = FLOPS + n;
 }
 
-void dnrm2(int64_t n, const double* x, int64_t incx, double* nrm_out) {
+void Cdnrm2(int64_t n, const double* x, int64_t incx, double* nrm_out) {
 #ifdef CBLAS
   *nrm_out = cblas_dnrm2(n, x, incx);
 #else
