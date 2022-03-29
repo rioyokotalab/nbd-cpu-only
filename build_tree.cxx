@@ -407,7 +407,7 @@ void nbd::childMultipoleSize(int64_t* size, const Cell& cell) {
 }
 
 
-void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, const Bodies& bodies, double repi, int64_t sp_pts, int64_t dim) {
+void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
   int64_t m;
   childMultipoleSize(&m, *cell);
 
@@ -419,7 +419,9 @@ void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, cons
     std::vector<int64_t> cellm(m);
     collectChildMultipoles(*cell, cellm.data());
 
-    int64_t rank = repi < 1. ? std::min(m, n) : (int64_t)repi;
+    int64_t rank = mrank;
+    rank = std::min(m, rank);
+    rank = std::min(n, rank);
     Matrix a;
     std::vector<int64_t> pa(rank);
     cMatrix(a, m, n);
@@ -428,7 +430,7 @@ void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, cons
     M2Lmat_bodies(ef, m, n, cellm.data(), nullptr, cell->BODY, remote.data(), dim, a);
 
     int64_t iters;
-    lraID(repi, a, Base, pa.data(), &iters);
+    lraID(epi, rank, a, Base, pa.data(), &iters);
 
     if (cell->Multipole.size() != iters)
       cell->Multipole.resize(iters);

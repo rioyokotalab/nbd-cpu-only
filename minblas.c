@@ -76,8 +76,6 @@ void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, double* u, int
   }
 
   *rank = i;
-  if (epi2 > 0 && i == k)
-    fprintf(stderr, "LRA reached full iterations.\n");
 }
 
 void didrow(double epi, int64_t m, int64_t n, int64_t k, double* a, double* x, int64_t ldx, int64_t* arow, int64_t* rank) {

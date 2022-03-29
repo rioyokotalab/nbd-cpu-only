@@ -167,7 +167,7 @@ void nbd::allocSpDense(SpDense& sp, const CSC rels[], int64_t levels) {
   allocBasis(sp.Basis, levels);
 }
 
-void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D, double repi, const double* R, int64_t lenR) {
+void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D, double epi, int64_t mrank, const double* R, int64_t lenR) {
   int64_t levels = sp.Levels;
   fillDimsFromCell(sp.Basis[levels], local, levels);
 
@@ -184,7 +184,7 @@ void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D, doubl
     }
   }
   if (!cless)
-    factorA(&sp.D[0], &sp.Basis[0], sp.Rels, levels, repi, R, lenR);
+    factorA(&sp.D[0], &sp.Basis[0], sp.Rels, levels, epi, mrank, R, lenR);
 }
 
 void nbd::solveSpDense(RHS st[], const SpDense& sp, const Vectors& X) {

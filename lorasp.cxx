@@ -23,7 +23,8 @@ int main(int argc, char* argv[]) {
   int64_t Ncrit = argc > 2 ? atol(argv[2]) : 256;
   int64_t theta = argc > 3 ? atol(argv[3]) : 1;
   int64_t dim = argc > 4 ? atol(argv[4]) : 3;
-  double repi = 200;
+  double epi = 1.e-3;
+  int64_t rank_max = 150;
   //omp_set_num_threads(4);
   
   EvalFunc ef = dim == 2 ? l2d() : l3d();
@@ -55,7 +56,7 @@ int main(int argc, char* argv[]) {
   allocSpDense(sp, &rels[0], levels);
   MPI_Barrier(MPI_COMM_WORLD);
   auto start_time = std::chrono::system_clock::now();
-  factorSpDense(sp, lcleaf, A, repi, &R[0], R.size());
+  factorSpDense(sp, lcleaf, A, epi, rank_max, &R[0], R.size());
   MPI_Barrier(MPI_COMM_WORLD);
   auto stop_time = std::chrono::system_clock::now();
   double factor_time_process = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();

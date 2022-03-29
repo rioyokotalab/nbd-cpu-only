@@ -68,14 +68,15 @@ void nbd::cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64
     std::copy(&v1.X[x1], &v1.X[x1] + n, &v2.X[x2]);
 }
 
-void nbd::orthoBase(double repi, Matrix& A, int64_t *rnk_out) {
-  bool prec = repi < 1.;
+void nbd::orthoBase(double epi, int64_t mrank, Matrix& A, int64_t *rnk_out) {
   Matrix U, V;
-  int64_t rank = prec ? std::min(A.M, A.N) : (int64_t)repi;
+  int64_t rank = mrank;
+  rank = std::min(A.M, rank);
+  rank = std::min(A.N, rank);
   cMatrix(U, A.M, rank);
   cMatrix(V, A.N, rank);
 
-  dlra(prec ? repi : 0., A.M, A.N, rank, A.A.data(), U.A.data(), A.M, V.A.data(), A.N, rnk_out, NULL);
+  dlra(epi, A.M, A.N, rank, A.A.data(), U.A.data(), A.M, V.A.data(), A.N, rnk_out, NULL);
   rank = *rnk_out;
 
   if (A.N < A.M)
@@ -83,10 +84,11 @@ void nbd::orthoBase(double repi, Matrix& A, int64_t *rnk_out) {
   dorth('F', A.M, rank, U.A.data(), A.M, A.A.data(), A.M);
 }
 
-void nbd::lraID(double repi, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out) {
-  bool prec = repi < 1.;
-  int64_t rank = prec ? std::min(A.M, A.N) : (int64_t)repi;
-  didrow(prec ? repi : 0., A.M, A.N, rank, A.A.data(), U.A.data(), A.M, arows, rnk_out);
+void nbd::lraID(double epi, int64_t mrank, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out) {
+  int64_t rank = mrank;
+  rank = std::min(A.M, rank);
+  rank = std::min(A.N, rank);
+  didrow(epi, A.M, A.N, rank, A.A.data(), U.A.data(), A.M, arows, rnk_out);
 }
 
 void nbd::zeroMatrix(Matrix& A) {
