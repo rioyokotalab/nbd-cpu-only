@@ -1,5 +1,5 @@
 
-CC  = gcc -O3 -I. -DMKL_LP64 -I"${MKLROOT}/include
+CC  = gcc -O3 -I. -DMKL_LP64 -I"${MKLROOT}/include"
 CXX = g++ -std=c++11 -O3 -I. -fopenmp
 MPICXX  = mpicxx -std=c++11 -O3 -I. -fopenmp
 LDFLAGS	= -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
