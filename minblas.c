@@ -6,8 +6,7 @@
 #include <math.h>
 
 #ifdef CBLAS
-#include "cblas.h"
-#include "lapacke.h"
+#include "mkl.h"
 #endif
 
 int64_t FLOPS = 0;
