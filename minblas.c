@@ -329,7 +329,7 @@ void dtrsmr_left(int64_t m, int64_t n, const double* a, int64_t lda, double* b, 
 void dgemv(char ta, int64_t m, int64_t n, double alpha, const double* a, int64_t lda, const double* x, int64_t incx, double beta, double* y, int64_t incy) {
 #ifdef CBLAS
   if (ta == 'T' || ta == 't')
-    cblas_dgemv(CblasColMajor,CblasTrans, m, n, alpha, a, lda, x, incx, beta, y, incy);
+    cblas_dgemv(CblasColMajor, CblasTrans, m, n, alpha, a, lda, x, incx, beta, y, incy);
   else if (ta == 'N' || ta == 'n')
     cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, alpha, a, lda, x, incx, beta, y, incy);
 #else

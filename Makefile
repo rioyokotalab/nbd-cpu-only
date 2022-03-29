@@ -1,8 +1,8 @@
 
-CC	= mpiicc -O3 -I.
-CXX	= mpiicpc -std=c++11 -O3 -I. -fopenmp
-MPICXX	= mpiicpc -std=c++11 -O3 -I. -fopenmp
-LC	= -lm -lmkl_sequential -lmkl_core -lmkl_intel_lp64
+CC  = gcc -O3 -I. -DMKL_LP64 -I"${MKLROOT}/include
+CXX = g++ -std=c++11 -O3 -I. -fopenmp
+MPICXX  = mpicxx -std=c++11 -O3 -I. -fopenmp
+LDFLAGS	= -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
 
 all:
 	make lorasp h2 lra
@@ -39,15 +39,15 @@ lib: minblas linalg kernel build_tree basis umv h2mv solver dist
 
 lorasp: lorasp.cxx lib
 	$(CXX) -c lorasp.cxx
-	$(MPICXX) -o lorasp lorasp.o -L. -lnbd $(LC)
+	$(MPICXX) -o lorasp lorasp.o -L. -lnbd $(LDFLAGS)
 
 h2: h2_example.cxx lib
 	$(CXX) -c h2_example.cxx
-	$(MPICXX) -o h2_example h2_example.o -L. -lnbd $(LC)
+	$(MPICXX) -o h2_example h2_example.o -L. -lnbd $(LDFLAGS)
 
 lra: lra_example.cxx lib
 	$(CXX) -c lra_example.cxx
-	$(CXX) -o lra_example lra_example.o -L. -lnbd $(LC)
+	$(CXX) -o lra_example lra_example.o -L. -lnbd $(LDFLAGS)
 
 clean:
 	rm -f *.o *.a a.out lorasp h2_example lra_example
