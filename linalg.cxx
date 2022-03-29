@@ -99,7 +99,8 @@ void nbd::zeroVector(Vector& A) {
 
 void nbd::mmult(char ta, char tb, const Matrix& A, const Matrix& B, Matrix& C, double alpha, double beta) {
   int64_t k = (ta == 'N' || ta == 'n') ? A.N : A.M;
-  dgemm(ta, tb, C.M, C.N, k, alpha, A.A.data(), A.M, B.A.data(), B.M, beta, C.A.data(), C.M);
+  if (C.M > 0 && C.N > 0 && k > 0)
+    dgemm(ta, tb, C.M, C.N, k, alpha, A.A.data(), A.M, B.A.data(), B.M, beta, C.A.data(), C.M);
 }
 
 void nbd::msample(char ta, int64_t lenR, const Matrix& A, const double* R, Matrix& C) {
@@ -158,11 +159,13 @@ void nbd::invBasis(const Matrix& u, Matrix& uinv) {
 }
 
 void nbd::chol_decomp(Matrix& A) {
-  dpotrf(A.M, A.A.data(), A.M);
+  if (A.M > 0)
+    dpotrf(A.M, A.A.data(), A.M);
 }
 
 void nbd::trsm_lowerA(Matrix& A, const Matrix& L) {
-  dtrsmlt_right(A.M, A.N, L.A.data(), L.M, A.A.data(), A.M);
+  if (A.M > 0 && L.M > 0)
+    dtrsmlt_right(A.M, A.N, L.A.data(), L.M, A.A.data(), A.M);
 }
 
 void nbd::utav(char tb, const Matrix& U, const Matrix& A, const Matrix& VT, Matrix& C) {
@@ -179,15 +182,18 @@ void nbd::utav(char tb, const Matrix& U, const Matrix& A, const Matrix& VT, Matr
 }
 
 void nbd::axat(Matrix& A, Matrix& AT) {
-  for (int64_t j = 0; j < A.N; j++)
-    daxpy(A.M, 1., &AT.A[j], AT.M, &A.A[j * A.M], 1);
-  for (int64_t i = 0; i < A.M; i++)
-    dcopy(A.N, &A.A[i], A.M, &AT.A[i * AT.M], 1);
+  if (A.M > 0 && A.N > 0) {
+    for (int64_t j = 0; j < A.N; j++)
+      daxpy(A.M, 1., &AT.A[j], AT.M, &A.A[j * A.M], 1);
+    for (int64_t i = 0; i < A.M; i++)
+      dcopy(A.N, &A.A[i], A.M, &AT.A[i * AT.M], 1);
+  }
 }
 
 void nbd::madd(Matrix& A, const Matrix& B) {
   int64_t size = A.M * A.N;
-  daxpy(size, 1., &B.A[0], 1, &A.A[0], 1);
+  if (size > 0)
+    daxpy(size, 1., &B.A[0], 1, &A.A[0], 1);
 }
 
 void nbd::chol_solve(Vector& X, const Matrix& A) {
@@ -196,15 +202,18 @@ void nbd::chol_solve(Vector& X, const Matrix& A) {
 }
 
 void nbd::fw_solve(Vector& X, const Matrix& L) {
-  dtrsml_left(X.N, 1, L.A.data(), L.M, X.X.data(), X.N);
+  if (L.M > 0 && X.N > 0)
+    dtrsml_left(X.N, 1, L.A.data(), L.M, X.X.data(), X.N);
 }
 
 void nbd::bk_solve(Vector& X, const Matrix& L) {
-  dtrsmlt_left(X.N, 1, L.A.data(), L.M, X.X.data(), X.N);
+  if (L.M > 0 && X.N > 0)
+    dtrsmlt_left(X.N, 1, L.A.data(), L.M, X.X.data(), X.N);
 }
 
 void nbd::mvec(char ta, const Matrix& A, const Vector& X, Vector& B, double alpha, double beta) {
-  dgemv(ta, A.M, A.N, alpha, A.A.data(), A.M, X.X.data(), 1, beta, B.X.data(), 1);
+  if (A.M > 0 && A.N > 0)
+    dgemv(ta, A.M, A.N, alpha, A.A.data(), A.M, X.X.data(), 1, beta, B.X.data(), 1);
 }
 
 void nbd::pvc_fw(const Vector& X, const Matrix& Us, const Matrix& Uc, Vector& Xs, Vector& Xc) {

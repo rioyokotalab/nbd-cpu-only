@@ -19,10 +19,10 @@ int main(int argc, char* argv[]) {
 
   initComm(&argc, &argv);
 
-  int64_t Nbody = atol(argv[1]);
-  int64_t Ncrit = atol(argv[2]);
-  int64_t theta = atol(argv[3]);
-  int64_t dim = atol(argv[4]);
+  int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
+  int64_t Ncrit = argc > 2 ? atol(argv[2]) : 256;
+  int64_t theta = argc > 3 ? atol(argv[3]) : 1;
+  int64_t dim = argc > 4 ? atol(argv[4]) : 3;
   double repi = 200;
   //omp_set_num_threads(4);
   

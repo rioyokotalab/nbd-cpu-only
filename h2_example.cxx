@@ -15,8 +15,8 @@ int main(int argc, char* argv[]) {
 
   using namespace nbd;
 
-  int64_t m = argc > 1 ? atol(argv[1]) : 4096;
-  int64_t leaf = argc > 2 ? atol(argv[2]) : 128;
+  int64_t m = argc > 1 ? atol(argv[1]) : 8192;
+  int64_t leaf = argc > 2 ? atol(argv[2]) : 256;
   int64_t theta = argc > 3 ? atol(argv[3]) : 1;
   int64_t dim = argc > 4 ? atol(argv[4]) : 3;
   double repi = 200;
