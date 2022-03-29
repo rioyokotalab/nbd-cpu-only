@@ -74,7 +74,7 @@ void compress_using_aca(int m, int n, int r, double* a, int lda) {
       c[i + j * m] = a[i + j * lda];
 
   int64_t iters;
-  dlra(1.e-12, m, n, rp, c.data(), m, u.data(), m, v.data(), n, &iters, NULL);
+  dlra(1.e-12, m, n, rp, c.data(), u.data(), m, v.data(), n, &iters, NULL);
 
   for (int j = 0; j < n; j++) {
     for (int i = 0; i < m; i++) {
@@ -102,7 +102,7 @@ void compress_using_id(int m, int n, int r, double* a, int lda) {
       c[i + j * m] = a[i + j * lda];
 
   int64_t iters;
-  didrow(1.e-12, m, n, rp, c.data(), m, u.data(), m, pu.data(), &iters);
+  didrow(1.e-12, m, n, rp, c.data(), u.data(), m, pu.data(), &iters);
 
   for (int i = 0; i < iters; i++) {
     int row = pu[i];

@@ -185,7 +185,7 @@ void dorth(char ecoq, int64_t m, int64_t n, double* r, int64_t ldr, double* q, i
 
 void dpotrf(int64_t n, double* a, int64_t lda) {
 #ifdef CBLAS
-  LAPACKE_dpotrf(LAPACK_COL_MAJOR, n, a, lda);
+  LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', n, a, lda);
 #else
   for (int64_t i = 0; i < n; i++) {
     double p = a[i + i * lda];

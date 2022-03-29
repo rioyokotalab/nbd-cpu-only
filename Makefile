@@ -1,14 +1,14 @@
 
-CC	= mpicc -O3 -I.
-CXX	= mpicxx -std=c++11 -O3 -I. -fopenmp
-MPICXX	= mpicxx -std=c++11 -O3 -I. -fopenmp
-LC	= -lm
+CC	= mpiicc -O3 -I.
+CXX	= mpiicpc -std=c++11 -O3 -I. -fopenmp
+MPICXX	= mpiicpc -std=c++11 -O3 -I. -fopenmp
+LC	= -lm -lmkl_sequential -lmkl_core -lmkl_intel_lp64
 
 all:
 	make lorasp h2 lra
 
 minblas: minblas.c minblas.h
-	$(CC) -c minblas.c
+	$(CC) -c minblas.c -DCBLAS
 
 linalg: linalg.cxx linalg.hxx
 	$(CXX) -c linalg.cxx
@@ -39,15 +39,15 @@ lib: minblas linalg kernel build_tree basis umv h2mv solver dist
 
 lorasp: lorasp.cxx lib
 	$(CXX) -c lorasp.cxx
-	$(MPICXX) -o lorasp lorasp.o -L. -lnbd
+	$(MPICXX) -o lorasp lorasp.o -L. -lnbd $(LC)
 
 h2: h2_example.cxx lib
 	$(CXX) -c h2_example.cxx
-	$(MPICXX) -o h2_example h2_example.o -L. -lnbd
+	$(MPICXX) -o h2_example h2_example.o -L. -lnbd $(LC)
 
 lra: lra_example.cxx lib
 	$(CXX) -c lra_example.cxx
-	$(CXX) -o lra_example lra_example.o -L. -lnbd
+	$(CXX) -o lra_example lra_example.o -L. -lnbd $(LC)
 
 clean:
 	rm -f *.o *.a a.out lorasp h2_example lra_example
