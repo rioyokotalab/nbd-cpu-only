@@ -115,7 +115,7 @@ void dorth(char ecoq, int64_t m, int64_t n, double* r, int64_t ldr, double* q, i
 #ifdef CBLAS
   LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, r, ldr, TAU);
   for (int64_t i = 0; i < k; i++)
-    dcopy(m, &r[i * ldr], 1, &q[i * ldq], 1);
+    cblas_dcopy(m, &r[i * ldr], 1, &q[i * ldq], 1);
   LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, nq, k, q, ldq, TAU);
 #else
   for (int64_t x = 0; x < k; x++) {
