@@ -75,7 +75,7 @@ void nbd::orthoBase(double repi, Matrix& A, int64_t *rnk_out) {
   cMatrix(U, A.M, rank);
   cMatrix(V, A.N, rank);
 
-  dlra(prec ? repi : 0., A.M, A.N, rank, A.A.data(), A.M, U.A.data(), A.M, V.A.data(), A.N, rnk_out, NULL);
+  dlra(prec ? repi : 0., A.M, A.N, rank, A.A.data(), U.A.data(), A.M, V.A.data(), A.N, rnk_out, NULL);
   rank = *rnk_out;
 
   if (A.N < A.M)
@@ -86,7 +86,7 @@ void nbd::orthoBase(double repi, Matrix& A, int64_t *rnk_out) {
 void nbd::lraID(double repi, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out) {
   bool prec = repi < 1.;
   int64_t rank = prec ? std::min(A.M, A.N) : (int64_t)repi;
-  didrow(prec ? repi : 0., A.M, A.N, rank, A.A.data(), A.M, U.A.data(), A.M, arows, rnk_out);
+  didrow(prec ? repi : 0., A.M, A.N, rank, A.A.data(), U.A.data(), A.M, arows, rnk_out);
 }
 
 void nbd::zeroMatrix(Matrix& A) {

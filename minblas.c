@@ -5,9 +5,14 @@
 #include <stdlib.h>
 #include <math.h>
 
+#ifdef CBLAS
+#include "cblas.h"
+#include "lapacke.h"
+#endif
+
 int64_t FLOPS = 0;
 
-void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, int64_t lda, double* u, int64_t ldu, double* vt, int64_t ldvt, int64_t* rank, int64_t* piv) {
+void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, double* u, int64_t ldu, double* vt, int64_t ldvt, int64_t* rank, int64_t* piv) {
   double nrm = 0.;
   double epi2 = epi * epi;
   double n2 = 1.;
@@ -17,75 +22,51 @@ void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, int64_t lda, d
   while (i < k && (n2 > epi2 * nrm) && amax > 0) {
     amax = 0.;
     int64_t ymax = 0;
-    for (int64_t x = 0; x < n; x++) {
-      int64_t ybegin = x * lda;
-      int64_t yend = m + x * lda;
-      for (int64_t y = ybegin; y < yend; y++) {
-        double fa = fabs(a[y]);
-        if (fa > amax) {
-          amax = fa;
-          ymax = y;
-        }
-      }
-    }
+    didamax(m * n, a, 1, &ymax);
+    amax = fabs(a[ymax]);
 
     if (amax > 0.) {
       if (piv != NULL)
         piv[i] = ymax;
-      int64_t xp = ymax / lda;
-      int64_t yp = ymax - xp * lda;
+      int64_t xp = ymax / m;
+      int64_t yp = ymax - xp * m;
       double ap = 1. / a[ymax];
-      double* ui = u + i * ldu;
-      double* vi = vt + i * ldvt;
+      double* ui = &u[i * ldu];
+      double* vi = &vt[i * ldvt];
 
-      for (int64_t x = 0; x < n; x++) {
-        double ax = a[yp + x * lda];
-        vi[x] = ax;
-        a[yp + x * lda] = 0.;
-      }
-
-      for (int64_t y = 0; y < m; y++) {
-        double ay = a[y + xp * lda];
-        ui[y] = ay * ap;
-        a[y + xp * lda] = 0.;
-      }
+      dcopy(n, &a[yp], m, vi, 1);
+      dcopy(m, &a[xp * m], 1, ui, 1);
+      dscal(m, ap, ui, 1);
       ui[yp] = 1.;
 
       for (int64_t x = 0; x < n; x++) {
-        if (x == xp)
-          continue;
-        double ri = vi[x];
-        for (int64_t y = 0; y < m; y++) {
-          if (y == yp)
-            continue;
-          double lf = ui[y];
-          double e = a[y + x * lda];
-          e = e - lf * ri;
-          a[y + x * lda] = e;
-        }
+        double ri = -vi[x];
+        daxpy(m, ri, ui, 1, &a[x * m], 1);
       }
+
+      double zero = 0.;
+      dcopy(n, &zero, 0, &a[yp], m);
+      dcopy(m, &zero, 0, &a[xp * m], 1);
 
       if (epi2 > 0.) {
         double nrm_v = 0.;
-        double nrm_vi = 0.;
-        for (int64_t x = 0; x < n; x++) {
-          double vx = vi[x];
-          nrm_vi = nrm_vi + vx * vx;
-          for (int64_t j = 0; j < i; j++) {
-            double vj = vt[x + j * ldvt];
-            nrm_v = nrm_v + vx * vj;
-          }
-        }
-
         double nrm_u = 0.;
+        double nrm_vi = 0.;
         double nrm_ui = 0.;
-        for (int64_t y = 0; y < m; y++) {
-          double uy = ui[y];
-          nrm_ui = nrm_ui + uy * uy;
-          for (int64_t j = 0; j < i; j++) {
-            double uj = u[y + j * ldu];
-            nrm_u = nrm_u + uy * uj;
-          }
+
+        ddot(n, vi, 1, vi, 1, &nrm_vi);
+        ddot(m, ui, 1, ui, 1, &nrm_ui);
+
+        for (int64_t j = 0; j < i; j++) {
+          double* vj = &vt[j * ldvt];
+          double* uj = &u[j * ldu];
+          double nrm_vj = 0.;
+          double nrm_uj = 0.;
+
+          ddot(n, vi, 1, vj, 1, &nrm_vj);
+          ddot(m, ui, 1, uj, 1, &nrm_uj);
+          nrm_v = nrm_v + nrm_vj;
+          nrm_u = nrm_u + nrm_uj;
         }
 
         n2 = nrm_ui * nrm_vi;
@@ -96,24 +77,23 @@ void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, int64_t lda, d
   }
 
   *rank = i;
-  FLOPS = FLOPS + 2 * m * n * i;
   if (epi2 > 0 && i == k)
     fprintf(stderr, "LRA reached full iterations.\n");
 }
 
-void didrow(double epi, int64_t m, int64_t n, int64_t k, double* a, int64_t lda, double* x, int64_t ldx, int64_t* arow, int64_t* rank) {
+void didrow(double epi, int64_t m, int64_t n, int64_t k, double* a, double* x, int64_t ldx, int64_t* arow, int64_t* rank) {
   int64_t rnk;
   double* u = (double*)malloc(sizeof(double) * m * k);
   double* vt = (double*)malloc(sizeof(double)* n * k);
-  dlra(epi, m, n, k, a, lda, u, m, vt, n, &rnk, arow);
+  dlra(epi, m, n, k, a, u, m, vt, n, &rnk, arow);
   *rank = rnk;
 
   double* r = (double*)malloc(sizeof(double) * rnk * rnk);
   double* q = (double*)malloc(sizeof(double) * rnk * rnk);
   for (int64_t i = 0; i < rnk; i++) {
     int64_t ymax = arow[i];
-    int64_t xp = ymax / lda;
-    int64_t yp = ymax - xp * lda;
+    int64_t xp = ymax / m;
+    int64_t yp = ymax - xp * m;
     arow[i] = yp;
     dcopy(rnk, u + yp, m, r + i, rnk);
   }
@@ -130,7 +110,14 @@ void didrow(double epi, int64_t m, int64_t n, int64_t k, double* a, int64_t lda,
 void dorth(char ecoq, int64_t m, int64_t n, double* r, int64_t ldr, double* q, int64_t ldq) {
   int64_t k = m < n ? m : n;
   double* TAU = (double*)malloc(sizeof(double) * k);
+  int64_t nq = (ecoq == 'F' || ecoq == 'f') ? m : k;
 
+#ifdef CBLAS
+  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, r, ldr, TAU);
+  for (int64_t i = 0; i < k; i++)
+    dcopy(m, &r[i * ldr], 1, &q[i * ldq], 1);
+  LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, nq, k, q, ldq, TAU);
+#else
   for (int64_t x = 0; x < k; x++) {
     double nrmx = 0.;
     for (int64_t y = x; y < m; y++) {
@@ -167,7 +154,6 @@ void dorth(char ecoq, int64_t m, int64_t n, double* r, int64_t ldr, double* q, i
     }
   }
 
-  int64_t nq = (ecoq == 'F' || ecoq == 'f') ? m : k;
 
   for (int64_t x = 0; x < nq; x++) {
     for (int64_t y = 0; y < m; y++)
@@ -192,12 +178,15 @@ void dorth(char ecoq, int64_t m, int64_t n, double* r, int64_t ldr, double* q, i
       }
     }
   }
-
+#endif
   free(TAU);
   FLOPS = FLOPS + 2 * m * n * n;
 }
 
 void dpotrf(int64_t n, double* a, int64_t lda) {
+#ifdef CBLAS
+  LAPACKE_dpotrf(LAPACK_COL_MAJOR, n, a, lda);
+#else
   for (int64_t i = 0; i < n; i++) {
     double p = a[i + i * lda];
     if (p <= 0.)
@@ -218,10 +207,14 @@ void dpotrf(int64_t n, double* a, int64_t lda) {
       }
     }
   }
+#endif
   FLOPS = FLOPS + n * n * n / 3;
 }
 
 void dtrsmlt_right(int64_t m, int64_t n, const double* a, int64_t lda, double* b, int64_t ldb) {
+#ifdef CBLAS
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, m, n, 1., a, lda, b, ldb);
+#else
   for (int64_t i = 0; i < n; i++) {
     double p = a[i + i * lda];
     double invp = 1. / p;
@@ -237,10 +230,14 @@ void dtrsmlt_right(int64_t m, int64_t n, const double* a, int64_t lda, double* b
       }
     }
   }
+#endif
   FLOPS = FLOPS + n * m * n / 3;
 }
 
 void dtrsmr_right(int64_t m, int64_t n, const double* a, int64_t lda, double* b, int64_t ldb) {
+#ifdef CBLAS
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, m, n, 1., a, lda, b, ldb);
+#else
   for (int64_t i = 0; i < n; i++) {
     double p = a[i + i * lda];
     double invp = 1. / p;
@@ -256,10 +253,14 @@ void dtrsmr_right(int64_t m, int64_t n, const double* a, int64_t lda, double* b,
       }
     }
   }
+#endif
   FLOPS = FLOPS + n * m * n / 3;
 }
 
 void dtrsml_left(int64_t m, int64_t n, const double* a, int64_t lda, double* b, int64_t ldb) {
+#ifdef CBLAS
+  cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, m, n, 1., a, lda, b, ldb);
+#else
   for (int64_t i = 0; i < m; i++) {
     double p = a[i + i * lda];
     double invp = 1. / p;
@@ -275,10 +276,14 @@ void dtrsml_left(int64_t m, int64_t n, const double* a, int64_t lda, double* b, 
       }
     }
   }
+#endif
   FLOPS = FLOPS + m * n * m / 3;
 }
 
 void dtrsmlt_left(int64_t m, int64_t n, const double* a, int64_t lda, double* b, int64_t ldb) {
+#ifdef CBLAS
+  cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasTrans, CblasNonUnit, m, n, 1., a, lda, b, ldb);
+#else
   for (int64_t i = m - 1; i >= 0; i--) {
     double p = a[i + i * lda];
     double invp = 1. / p;
@@ -294,10 +299,14 @@ void dtrsmlt_left(int64_t m, int64_t n, const double* a, int64_t lda, double* b,
       }
     }
   }
+#endif
   FLOPS = FLOPS + m * n * m / 3;
 }
 
 void dtrsmr_left(int64_t m, int64_t n, const double* a, int64_t lda, double* b, int64_t ldb) {
+#ifdef CBLAS
+  cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, m, n, 1., a, lda, b, ldb);
+#else
   for (int64_t i = m - 1; i >= 0; i--) {
     double p = a[i + i * lda];
     double invp = 1. / p;
@@ -313,11 +322,17 @@ void dtrsmr_left(int64_t m, int64_t n, const double* a, int64_t lda, double* b, 
       }
     }
   }
+#endif
   FLOPS = FLOPS + m * n * m / 3;
 }
 
 void dgemv(char ta, int64_t m, int64_t n, double alpha, const double* a, int64_t lda, const double* x, int64_t incx, double beta, double* y, int64_t incy) {
-  
+#ifdef CBLAS
+  if (ta == 'T' || ta == 't')
+    cblas_dgemv(CblasColMajor,CblasTrans, m, n, alpha, a, lda, x, incx, beta, y, incy);
+  else if (ta == 'N' || ta == 'n')
+    cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, alpha, a, lda, x, incx, beta, y, incy);
+#else
   if (ta == 'T' || ta == 't') {
     int64_t lenx = m;
     int64_t leny = n;
@@ -360,11 +375,25 @@ void dgemv(char ta, int64_t m, int64_t n, double alpha, const double* a, int64_t
       y[i * incy] = e + s * alpha;
     }
   }
-
+#endif
   FLOPS = FLOPS + 2 * n * m;
 }
 
 void dgemm(char ta, char tb, int64_t m, int64_t n, int64_t k, double alpha, const double* a, int64_t lda, const double* b, int64_t ldb, double beta, double* c, int64_t ldc) {
+#ifdef CBLAS
+  if (ta == 'T' || ta == 't') {
+    if (tb == 'T' || tb == 't')
+      cblas_dgemm(CblasColMajor, CblasTrans, CblasTrans, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+    else if (tb == 'N' || tb == 'n')
+      cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+  }
+  else if (ta == 'N' || ta == 'n') {
+    if (tb == 'T' || tb == 't')
+      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+    else if (tb == 'N' || tb == 'n')
+      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+  }
+#else
   int64_t ma = k;
   int64_t na = m;
   if (ta == 'N' || ta == 'n') {
@@ -378,38 +407,78 @@ void dgemm(char ta, char tb, int64_t m, int64_t n, int64_t k, double alpha, cons
   else if (tb == 'N' || tb == 'n')
     for (int64_t i = 0; i < n; i++)
       dgemv(ta, ma, na, alpha, a, lda, b + i * ldb, 1, beta, c + i * ldc, 1);
+#endif
 }
 
 void dcopy(int64_t n, const double* x, int64_t incx, double* y, int64_t incy) {
+#ifdef CBLAS
+  cblas_dcopy(n, x, incx, y, incy);
+#else
   for (int64_t i = 0; i < n; i++)
     y[i * incy] = x[i * incx];
+#endif
 }
 
 void dscal(int64_t n, double alpha, double* x, int64_t incx) {
+#ifdef CBLAS
+  cblas_dscal(n, alpha, x, incx);
+#else
   if (alpha == 0.)
     for (int64_t i = 0; i < n; i++)
       x[i * incx] = 0.;
   else if (alpha != 1.)
     for (int64_t i = 0; i < n; i++)
       x[i * incx] = alpha * x[i * incx];
+#endif
   FLOPS = FLOPS + n;
 }
 
 void daxpy(int64_t n, double alpha, const double* x, int64_t incx, double* y, int64_t incy) {
+#ifdef CBLAS
+  cblas_daxpy(n, alpha, x, incx, y, incy);
+#else
   for (int64_t i = 0; i < n; i++)
     y[i * incy] = y[i * incy] + alpha * x[i * incx];
+#endif
   FLOPS = FLOPS + 2 * n;
 }
 
 void ddot(int64_t n, const double* x, int64_t incx, const double* y, int64_t incy, double* result) {
+#ifdef CBLAS
+  *result = cblas_ddot(n, x, incx, y, incy);
+#else
   double s = 0.;
   for (int64_t i = 0; i < n; i++)
     s = s + y[i * incy] * x[i * incx];
   *result = s;
+#endif
   FLOPS = FLOPS + 2 * n;
 }
 
+void didamax(int64_t n, const double* x, int64_t incx, int64_t* ida) {
+#ifdef CBLAS
+  *ida = cblas_idamax(n, x, incx);
+#else
+  if (n > 0) {
+    double amax = x[0];
+    int64_t ymax = 0;
+    for (int64_t i = 1; i < n; i++) {
+      double fa = fabs(x[i * incx]);
+      if (fa > amax) {
+        amax = fa;
+        ymax = i;
+      }
+    }
+    *ida = ymax;
+  }
+#endif
+  FLOPS = FLOPS + n;
+}
+
 void dnrm2(int64_t n, const double* x, int64_t incx, double* nrm_out) {
+#ifdef CBLAS
+  *nrm_out = cblas_dnrm2(n, x, incx);
+#else
   double nrm = 0.;
   for (int64_t i = 0; i < n; i++) {
     double e = x[i * incx];
@@ -417,6 +486,7 @@ void dnrm2(int64_t n, const double* x, int64_t incx, double* nrm_out) {
   }
   nrm = sqrt(nrm);
   *nrm_out = nrm;
+#endif
   FLOPS = FLOPS + 2 * n;
 }
 
