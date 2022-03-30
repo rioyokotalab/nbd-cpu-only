@@ -10,7 +10,6 @@
 #include <cmath>
 #include <iostream>
 #include <chrono>
-#include "mpi.h"
 #include "omp.h"
 
 using namespace nbd;
@@ -54,18 +53,10 @@ int main(int argc, char* argv[]) {
 
   SpDense sp;
   allocSpDense(sp, &rels[0], levels);
-  MPI_Barrier(MPI_COMM_WORLD);
-  auto start_time = std::chrono::system_clock::now();
+  double ftime;
+  startTimer(&ftime);
   factorSpDense(sp, lcleaf, A, epi, rank_max, &R[0], R.size());
-  MPI_Barrier(MPI_COMM_WORLD);
-  auto stop_time = std::chrono::system_clock::now();
-  double factor_time_process = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
-
-  double total_factor_time;
-  MPI_Reduce(&factor_time_process, &total_factor_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  int mpi_size;
-  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
-  total_factor_time = total_factor_time / mpi_size; 
+  stopTimer(&ftime);
 
   Vectors X, Xref;
   loadX(X, lcleaf, levels);
@@ -73,15 +64,10 @@ int main(int argc, char* argv[]) {
 
   RHSS rhs(levels + 1);
 
-  MPI_Barrier(MPI_COMM_WORLD);
-  auto start_solve = std::chrono::system_clock::now();
+  double stime;
+  startTimer(&stime);
   solveSpDense(&rhs[0], sp, X);
-  MPI_Barrier(MPI_COMM_WORLD);
-  auto  stop_solve = std::chrono::system_clock::now();
-  double solve_time_process = std::chrono::duration_cast<std::chrono::milliseconds>(stop_solve - start_solve).count();
-  double total_solve_time = 0;
-  MPI_Reduce(&solve_time_process, &total_solve_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  total_solve_time = total_solve_time / mpi_size;
+  stopTimer(&stime);
 
   DistributeVectorsList(rhs[levels].X, levels);
   for (int64_t i = 0; i < X.size(); i++)
@@ -89,19 +75,18 @@ int main(int argc, char* argv[]) {
   closeQuarter(X, rhs[levels].X, ef, lcleaf, dim, levels);
 
   int64_t mpi_rank;
-  commRank(&mpi_rank, NULL, NULL);
+  int64_t mpi_size;
+  commRank(&mpi_rank, &mpi_size, NULL);
   double err;
   solveRelErr(&err, X, Xref, levels);
-  //printf("%lld ERR: %e\n", mpi_rank, err);
 
   int64_t* flops = getFLOPS();
   double gf = flops[0] * 1.e-9;
-  //printf("%lld GFLOPS: %f\n", mpi_rank, gf);
 
   if (mpi_rank == 0) {
     std::cout << "LORASP: " << Nbody << "," << Ncrit << "," << theta << "," << dim
-	    << "," << mpi_size << "," << total_factor_time << ","
-	    << total_solve_time << "," << err << "," << gf << std::endl;
+	    << "," << mpi_size << "," << ftime << ","
+	    << stime << "," << err << "," << gf << std::endl;
 	    
   }
   closeComm();
