@@ -20,9 +20,9 @@ int main(int argc, char* argv[]) {
   int64_t theta = argc > 3 ? atol(argv[3]) : 1;
   int64_t dim = argc > 4 ? atol(argv[4]) : 3;
 
-  double lr_epi = 0;
+  double lr_epi = 1.e-12;
   double ds_epi = 1.e-4;
-  int64_t lr_max = 200;
+  int64_t lr_max = 150;
   int64_t rank_max = 40;
   int64_t sp_pts = 3000;
   //omp_set_num_threads(4);

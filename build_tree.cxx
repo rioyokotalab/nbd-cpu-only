@@ -213,7 +213,7 @@ void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, int64_t theta) {
       dX = dX + diff * diff;
     }
 
-    if (dX > theta * theta)
+    if (dX > theta)
       Ci->listFar.push_back(Cj);
     else {
       Ci->listNear.push_back(Cj);
