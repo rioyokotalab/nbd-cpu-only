@@ -183,21 +183,6 @@ void nbd::utav(char tb, const Matrix& U, const Matrix& A, const Matrix& VT, Matr
   }
 }
 
-void nbd::axat(Matrix& A, Matrix& AT) {
-  if (A.M > 0 && A.N > 0) {
-    for (int64_t j = 0; j < A.N; j++)
-      Cdaxpy(A.M, 1., &AT.A[j], AT.M, &A.A[j * A.M], 1);
-    for (int64_t i = 0; i < A.M; i++)
-      Cdcopy(A.N, &A.A[i], A.M, &AT.A[i * AT.M], 1);
-  }
-}
-
-void nbd::madd(Matrix& A, const Matrix& B) {
-  int64_t size = A.M * A.N;
-  if (size > 0)
-    Cdaxpy(size, 1., &B.A[0], 1, &A.A[0], 1);
-}
-
 void nbd::chol_solve(Vector& X, const Matrix& A) {
   fw_solve(X, A);
   bk_solve(X, A);

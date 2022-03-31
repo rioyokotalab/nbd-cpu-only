@@ -10,7 +10,6 @@ namespace nbd {
     Matrices A_cc;
     Matrices A_oc;
     Matrices A_oo;
-    Matrices S;
   };
 
   typedef std::vector<Node> Nodes;
@@ -22,8 +21,6 @@ namespace nbd {
   void factorAoc(Matrices& A_oc, const Matrices& A_cc, const CSC& rels);
 
   void schurCmplm(Matrices& S, const Matrices& A_oc, const CSC& rels);
-
-  void axatLocal(Matrices& A, const CSC& rels);
 
   void allocNodes(Nodes& nodes, const CSC rels[], int64_t levels);
 
