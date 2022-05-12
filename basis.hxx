@@ -18,7 +18,7 @@ namespace nbd {
 
   void sampleC2(Matrices& C2, const CSC& rels, const Matrices& A, const Matrices& C1, int64_t level);
 
-  void orthoBasis(double epi, int64_t mrank, Matrices& C, int64_t dims_o[], int64_t level);
+  void orthoBasis(double epi, Matrices& C, int64_t dims_o[], int64_t level);
 
   void allocBasis(Basis& basis, int64_t levels);
 

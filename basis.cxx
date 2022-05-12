@@ -52,14 +52,14 @@ void nbd::sampleC2(Matrices& C2, const CSC& rels, const Matrices& A, const Matri
   }
 }
 
-void nbd::orthoBasis(double epi, int64_t mrank, Matrices& C, int64_t dims_o[], int64_t level) {
+void nbd::orthoBasis(double epi, Matrices& C, int64_t dims_o[], int64_t level) {
   int64_t ibegin = 0;
   int64_t iend = C.size();
   selfLocalRange(ibegin, iend, level);
   int64_t nodes = iend - ibegin;
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++)
-    orthoBase(epi, mrank, C[i + ibegin], &dims_o[i + ibegin]);
+    orthoBase(epi, C[i + ibegin], &dims_o[i + ibegin]);
 }
 
 void nbd::allocBasis(Basis& basis, int64_t levels) {
@@ -240,8 +240,8 @@ void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, i
   int64_t len = basis.DIMS.size();
   for (int64_t i = 0; i < len; i++) {
     int64_t dim = basis.DIMS[i];
-    cMatrix(C1[i], dim, dim);
-    cMatrix(C2[i], dim, dim);
+    cMatrix(C1[i], dim, mrank);
+    cMatrix(C2[i], dim, mrank);
     zeroMatrix(C1[i]);
     zeroMatrix(C2[i]);
   }
@@ -249,7 +249,7 @@ void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, i
   sampleC1(C1, rels, A, R, lenR, level);
   DistributeMatricesList(C1, level);
   sampleC2(C2, rels, A, C1, level);
-  orthoBasis(epi, mrank, C2, &basis.DIMO[0], level);
+  orthoBasis(epi, C2, &basis.DIMO[0], level);
   DistributeDims(&basis.DIMO[0], level);
   allocUcUo(basis, C2, level);
   

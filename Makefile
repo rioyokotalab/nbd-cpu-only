@@ -1,8 +1,10 @@
 
-CC  = gcc -O3 -I. -DMKL_LP64 -I"${MKLROOT}/include"
+OPENBLAS_DIR = /opt/OpenBLAS
+
+CC  = gcc -O3 -I. -I"${OPENBLAS_DIR}/include"
 CXX = g++ -std=c++11 -O3 -I. -fopenmp
 MPICXX  = mpicxx -std=c++11 -O3 -I. -fopenmp
-LDFLAGS	= -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
+LDFLAGS	= -L"${OPENBLAS_DIR}/lib" -lopenblas -lm
 
 all:
 	make lorasp h2 lra
