@@ -121,45 +121,29 @@ void nbd::bucketSort(Bodies& bodies, int64_t buckets[], int64_t slices[], const 
   }
 }
 
-void iterNonLeaf(int64_t levels, Cells& cells, Cell* head, int64_t ncells, int64_t dim) {
-  if (levels > 0) {
-    levels = levels - 1;
-    int64_t ci = -1;
-    int64_t count = 0;
+void nbd::getBounds(const Body* bodies, int64_t nbodies, double R[], double C[], int64_t dim) {
+  std::vector<double> Xmin(dim), Xmax(dim);
+  for (int64_t d = 0; d < dim; d++) 
+    Xmin[d] = Xmax[d] = bodies[0].X[d];
+  for (int64_t i = 0; i < nbodies; i++) {
+    const Body* b = &bodies[i];
+    for (int64_t d = 0; d < dim; d++) 
+      Xmin[d] = std::fmin(b->X[d], Xmin[d]);
+    for (int64_t d = 0; d < dim; d++) 
+      Xmax[d] = std::fmax(b->X[d], Xmax[d]);
+  }
 
-    for (int64_t i = 0; i < ncells; i++) {
-      int64_t pi = (head[i].ZID) >> 1;
-      if (pi > ci) {
-        ci = pi;
-        cells.emplace_back();
-        Cell* tail = &cells.back();
-        tail->BODY = head[i].BODY;
-        tail->NBODY = head[i].NBODY;
-        tail->CHILD = head + i;
-        tail->NCHILD = 1;
-        tail->ZID = pi;
-        tail->LEVEL = levels;
-        getIX(tail->ZX, pi, dim);
-        count += 1;
-      }
-      else {
-        Cell* tail = &cells.back();
-        tail->NBODY = tail->NBODY + head[i].NBODY;
-        tail->NCHILD = tail->NCHILD + 1;
-      }
-    }
-
-    iterNonLeaf(levels, cells, head + ncells, count, dim);
+  for (int64_t d = 0; d < dim; d++) {
+    C[d] = (Xmin[d] + Xmax[d]) / 2;
+    R[d] = 1.e-7 + std::fabs(Xmin[d] - Xmax[d]) / 2;
   }
 }
 
 int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, const double dmin[], const double dmax[], int64_t dim) {
   int64_t nbody = bodies.size();
   int64_t levels = (int64_t)(std::log2(nbody / ncrit));
-  int64_t len = (int64_t)1 << levels;
-
-  cells.reserve(len * 2);
-  cells.resize(1);
+  int64_t nleaves = (int64_t)1 << levels;
+  cells.resize((nleaves << 1) - 1);
 
   std::vector<int64_t> slices(dim);
   for (int64_t d = 0; d < dim; d++)
@@ -167,34 +151,35 @@ int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, const double
   for (int64_t l = 0; l < levels; l++)
     slices[l % dim] <<= 1;
 
-  std::vector<int64_t> buckets(len);
+  std::vector<int64_t> buckets(nleaves);
   bucketSort(bodies, buckets.data(), slices.data(), dmin, dmax, dim);
 
   int64_t bcount = 0;
-  for (int64_t i = 0; i < len; i++)
-    if (buckets[i] > 0) {
-      cells.emplace_back();
-      Cell* ci = &cells.back();
-      ci->BODY = &bodies[bcount];
-      ci->NBODY = buckets[i];
-      ci->CHILD = NULL;
-      ci->NCHILD = 0;
-      ci->ZID = i;
-      ci->LEVEL = levels;
-      getIX(ci->ZX, i, dim);
-      bcount += buckets[i];
-    }
+  for (int64_t i = 0; i < nleaves; i++) {
+    Cell* ci = &cells[i + nleaves - 1];
+    ci->BODY = &bodies[bcount];
+    ci->NBODY = buckets[i];
+    ci->CHILD = NULL;
+    ci->NCHILD = 0;
+    ci->ZID = i;
+    ci->LEVEL = levels;
+    getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
+    bcount += buckets[i];
+  }
 
-  iterNonLeaf(levels, cells, &cells[1], cells.size() - 1, dim);
-  Cell* root = &cells.back();
-  cells[0].BODY = root->BODY;
-  cells[0].CHILD = root->CHILD;
-  cells[0].NBODY = root->NBODY;
-  cells[0].NCHILD = root->NCHILD;
-  cells[0].ZID = root->ZID;
-  cells[0].LEVEL = root->LEVEL;
-  getIX(cells[0].ZX, root->ZID, dim);
-  cells.pop_back();
+  for (int64_t i = nleaves - 2; i >= 0; i--) {
+    Cell* ci = &cells[i];
+    Cell* c0 = &cells[(i << 1) + 1];
+    Cell* c1 = &cells[(i << 1) + 2];
+    ci->BODY = c0->BODY;
+    ci->NBODY = c0->NBODY + c1->NBODY;
+    ci->CHILD = c0;
+    ci->NCHILD = 2;
+    ci->ZID = (c0->ZID) >> 1;
+    ci->LEVEL = (c0->LEVEL) - 1;
+    getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
+  }
+
   return levels;
 }
 
@@ -207,13 +192,17 @@ void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, int64_t theta) {
     for (Cell* cj = Cj->CHILD; cj != Cj->CHILD + Cj->NCHILD; cj++)
       getList(Ci, cj, dim, theta);
   else {
-    int64_t dX = 0;
+    double dC = 0.;
+    double dR = 0.;
     for (int64_t d = 0; d < dim; d++) {
-      int64_t diff = Ci->ZX[d] - Cj->ZX[d];
-      dX = dX + diff * diff;
+      double diff = Ci->C[d] - Cj->C[d];
+      double sum = Ci->R[d] + Cj->R[d];
+      dC = dC + diff * diff;
+      dR = dR + sum * sum;
     }
+    dR = dR * theta / 2.;
 
-    if (dX > theta)
+    if (dC > dR)
       Ci->listFar.push_back(Cj);
     else {
       Ci->listNear.push_back(Cj);

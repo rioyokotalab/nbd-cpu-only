@@ -16,8 +16,9 @@ namespace nbd {
     int64_t NBODY;
     Cell* CHILD;
     Body* BODY;
+    double R[3];
+    double C[3];
     int64_t ZID;
-    int64_t ZX[3];
     int64_t LEVEL;
     
     std::vector<Cell*> listFar;
@@ -45,6 +46,8 @@ namespace nbd {
   void getIX(int64_t iX[], int64_t index, int64_t dim);
 
   void bucketSort(Bodies& bodies, int64_t buckets[], int64_t slices[], const double dmin[], const double dmax[], int64_t dim);
+
+  void getBounds(const Body* bodies, int64_t nbodies, double R[], double C[], int64_t dim);
 
   int64_t buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, const double dmin[], const double dmax[], int64_t dim);
 
