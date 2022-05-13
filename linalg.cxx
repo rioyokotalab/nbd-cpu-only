@@ -79,7 +79,13 @@ void nbd::orthoBase(double epi, Matrix& A, int64_t *rnk_out) {
 
   if (A.N < A.M)
     cMatrix(A, A.M, A.M);
-  dorth('F', A.M, rank, U.A.data(), A.M, A.A.data(), A.M);
+  if (rank > 0)
+    dorth('F', A.M, rank, U.A.data(), A.M, A.A.data(), A.M);
+  else {
+    zeroMatrix(A);
+    double one = 1.;
+    Cdcopy(A.M, &one, 0, A.A.data(), A.M + 1);
+  }
 }
 
 void nbd::lraID(double epi, int64_t mrank, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out) {
@@ -133,12 +139,14 @@ void nbd::msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C) {
 }
 
 void nbd::minvl(const Matrix& A, Matrix& B) {
-  Matrix work;
-  cMatrix(work, A.M, A.N);
-  cpyMatToMat(A.M, A.N, A, work, 0, 0, 0, 0);
-  chol_decomp(work);
-  dtrsml_left(B.M, B.N, work.A.data(), A.M, B.A.data(), B.M);
-  dtrsmlt_left(B.M, B.N, work.A.data(), A.M, B.A.data(), B.M);
+  if (A.M > 0 && A.N > 0) {
+    Matrix work;
+    cMatrix(work, A.M, A.N);
+    cpyMatToMat(A.M, A.N, A, work, 0, 0, 0, 0);
+    chol_decomp(work);
+    dtrsml_left(B.M, B.N, work.A.data(), A.M, B.A.data(), B.M);
+    dtrsmlt_left(B.M, B.N, work.A.data(), A.M, B.A.data(), B.M);
+  }
 }
 
 void nbd::invBasis(const Matrix& u, Matrix& uinv) {
@@ -164,7 +172,7 @@ void nbd::chol_decomp(Matrix& A) {
 }
 
 void nbd::trsm_lowerA(Matrix& A, const Matrix& L) {
-  if (A.M > 0 && L.M > 0)
+  if (A.M > 0 && L.M > 0 && L.N > 0)
     dtrsmlt_right(A.M, A.N, L.A.data(), L.M, A.A.data(), A.M);
 }
 
@@ -182,8 +190,10 @@ void nbd::utav(char tb, const Matrix& U, const Matrix& A, const Matrix& VT, Matr
 }
 
 void nbd::chol_solve(Vector& X, const Matrix& A) {
-  fw_solve(X, A);
-  bk_solve(X, A);
+  if (A.M > 0 && X.N > 0) {
+    fw_solve(X, A);
+    bk_solve(X, A);
+  }
 }
 
 void nbd::fw_solve(Vector& X, const Matrix& L) {
