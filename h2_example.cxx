@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
   Bodies body(m);
   randomBodies(body, m, &my_min[0], &my_max[0], dim, 1234);
   Cells cell;
-  int64_t levels = buildTree(cell, body, leaf, &my_min[0], &my_max[0], dim);
+  int64_t levels = buildTree(cell, body, leaf, dim);
 
   initComm(&argc, &argv);
   traverse(cell, levels, dim, theta);

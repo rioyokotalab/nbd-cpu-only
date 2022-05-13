@@ -29,96 +29,13 @@ void nbd::randomBodies(Bodies& bodies, int64_t nbody, const double dmin[], const
   }
 }
 
-int64_t nbd::getIndex(const int64_t iX[], int64_t dim) {
-  std::vector<int64_t> jX(dim);
-  for (int64_t d = 0; d < dim; d++) {
-    jX[d] = iX[d];
-    if (iX[d] < 0)
-      return -1;
-  }
-
-  int run = 1;
-  int64_t l = 0;
-  int64_t index = 0;
-  while (run) {
-    run = 0;
-    for (int64_t d = 0; d < dim; d++) {
-      index += (jX[d] & 1) << (dim * l + d);
-      if (jX[d] >>= 1)
-        run = 1;
-    }
-    l++;
-  }
-  return index;
-}
-
-void nbd::getIX(int64_t iX[], int64_t index, int64_t dim) {
-  if (index < 0)
-    return;
-  int64_t l = 0;
-  for (int64_t d = 0; d < dim; d++)
-    iX[d] = 0;
-  while (index > 0) {
-    for (int64_t d = 0; d < dim; d++) {
-      iX[d] += (index & 1) << l;
-      index >>= 1;
-    }
-    l++;
-  }
-}
-
-void nbd::bucketSort(Bodies& bodies, int64_t buckets[], int64_t slices[], const double dmin[], const double dmax[], int64_t dim) {
-  int64_t nbody = bodies.size();
-  int64_t nboxes = 1;
-  std::vector<double> box_dim(dim);
-  std::vector<double> adj_dmin(dim);
-  for (int64_t d = 0; d < dim; d++) {
-    nboxes = nboxes * slices[d];
-    double adj_dmax = dmax[d] + 1.e-6;
-    adj_dmin[d] = dmin[d] - 1.e-6;
-    box_dim[d] = (adj_dmax - adj_dmin[d]) / slices[d];
-  }
-
-  std::fill(buckets, buckets + nboxes, 0);
-  std::vector<int64_t> bodies_i(nbody);
-  std::vector<int64_t> offsets(nboxes);
-  Bodies bodies_cpy(nbody);
-
-#pragma omp parallel for
-  for (int64_t i = 0; i < nbody; i++) {
-    std::vector<int64_t> Xi(dim);
-    const Body& bi = bodies[i];
-    for (int64_t d = 0; d < dim; d++)
-      Xi[d] = (int64_t)((bi.X[d] - adj_dmin[d]) / box_dim[d]);
-    int64_t ind = getIndex(Xi.data(), dim);
-    bodies_i[i] = ind;
-#pragma omp atomic
-    buckets[ind] = buckets[ind] + 1;
-  }
-
-  offsets[0] = 0;
-  for (int64_t i = 1; i < nboxes; i++)
-    offsets[i] = offsets[i - 1] + buckets[i - 1];
-
-#pragma omp parallel for ordered
-  for (int64_t i = 0; i < nbody; i++) {
-    int64_t bi = bodies_i[i];
-    int64_t offset_bi;
-#pragma omp ordered
-    { offset_bi = offsets[bi]; offsets[bi] = offset_bi + 1; }
-    const Body& src = bodies[i];
-    Body& tar = bodies_cpy[offset_bi];
-    for (int64_t d = 0; d < dim; d++)
-      tar.X[d] = src.X[d];
-    tar.B = src.B;
-  }
-
-#pragma omp parallel for
-  for (int64_t i = 0; i < nbody; i++) {
-    for (int64_t d = 0; d < dim; d++)
-      bodies[i].X[d] = bodies_cpy[i].X[d];
-    bodies[i].B = bodies_cpy[i].B;
-  }
+int64_t nbd::partition(Body* bodies, int64_t nbodies, int64_t sdim) {
+  auto comp = [sdim](const Body& b1, const Body& b2) -> bool {
+    return b1.X[sdim] < b2.X[sdim];
+  };
+  int64_t loc = nbodies / 2;
+  std::nth_element(bodies, bodies + loc, bodies + nbodies, comp);
+  return loc;
 }
 
 void nbd::getBounds(const Body* bodies, int64_t nbodies, double R[], double C[], int64_t dim) {
@@ -139,45 +56,51 @@ void nbd::getBounds(const Body* bodies, int64_t nbodies, double R[], double C[],
   }
 }
 
-int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, const double dmin[], const double dmax[], int64_t dim) {
+int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim) {
   int64_t nbody = bodies.size();
   int64_t levels = (int64_t)(std::log2(nbody / ncrit));
   int64_t nleaves = (int64_t)1 << levels;
-  cells.resize((nleaves << 1) - 1);
+  int64_t ncells = (nleaves << 1) - 1;
+  cells.resize(ncells);
 
-  std::vector<int64_t> slices(dim);
-  for (int64_t d = 0; d < dim; d++)
-    slices[d] = 1;
-  for (int64_t l = 0; l < levels; l++)
-    slices[l % dim] <<= 1;
+  Cell* root = &cells[0];
+  root->BODY = &bodies[0];
+  root->NBODY = nbody;
+  root->ZID = 0;
+  root->LEVEL = 0;
 
-  std::vector<int64_t> buckets(nleaves);
-  bucketSort(bodies, buckets.data(), slices.data(), dmin, dmax, dim);
-
-  int64_t bcount = 0;
-  for (int64_t i = 0; i < nleaves; i++) {
-    Cell* ci = &cells[i + nleaves - 1];
-    ci->BODY = &bodies[bcount];
-    ci->NBODY = buckets[i];
-    ci->CHILD = NULL;
-    ci->NCHILD = 0;
-    ci->ZID = i;
-    ci->LEVEL = levels;
-    getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
-    bcount += buckets[i];
-  }
-
-  for (int64_t i = nleaves - 2; i >= 0; i--) {
+  for (int64_t i = 0; i < ncells; i++) {
     Cell* ci = &cells[i];
-    Cell* c0 = &cells[(i << 1) + 1];
-    Cell* c1 = &cells[(i << 1) + 2];
-    ci->BODY = c0->BODY;
-    ci->NBODY = c0->NBODY + c1->NBODY;
-    ci->CHILD = c0;
-    ci->NCHILD = 2;
-    ci->ZID = (c0->ZID) >> 1;
-    ci->LEVEL = (c0->LEVEL) - 1;
     getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
+
+    if (ci->LEVEL < levels) {
+      int64_t sdim = 0;
+      double maxR = ci->R[0];
+      for (int64_t d = 1; d < dim; d++) {
+        if (ci->R[d] > maxR)
+        { sdim = d; maxR = ci->R[d]; }
+      }
+      int64_t loc = partition(ci->BODY, ci->NBODY, sdim);
+
+      Cell* c0 = &cells[(i << 1) + 1];
+      Cell* c1 = &cells[(i << 1) + 2];
+      ci->CHILD = c0;
+      ci->NCHILD = 2;
+
+      c0->BODY = ci->BODY;
+      c0->NBODY = loc;
+      c0->ZID = (ci->ZID) << 1;
+      c0->LEVEL = ci->LEVEL + 1;
+
+      c1->BODY = ci->BODY + loc;
+      c1->NBODY = ci->NBODY - loc;
+      c1->ZID = ((ci->ZID) << 1) + 1;
+      c1->LEVEL = ci->LEVEL + 1;
+    }
+    else {
+      ci->CHILD = NULL;
+      ci->NCHILD = 0;
+    }
   }
 
   return levels;

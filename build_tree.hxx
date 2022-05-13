@@ -41,15 +41,11 @@ namespace nbd {
 
   void randomBodies(Bodies& bodies, int64_t nbody, const double dmin[], const double dmax[], int64_t dim, int seed);
 
-  int64_t getIndex(const int64_t iX[], int64_t dim);
-
-  void getIX(int64_t iX[], int64_t index, int64_t dim);
-
-  void bucketSort(Bodies& bodies, int64_t buckets[], int64_t slices[], const double dmin[], const double dmax[], int64_t dim);
+  int64_t partition(Body* bodies, int64_t nbodies, int64_t sdim);
 
   void getBounds(const Body* bodies, int64_t nbodies, double R[], double C[], int64_t dim);
 
-  int64_t buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, const double dmin[], const double dmax[], int64_t dim);
+  int64_t buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim);
 
   void getList(Cell* Ci, Cell* Cj, int64_t dim, int64_t theta);
 

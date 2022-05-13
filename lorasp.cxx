@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
   Bodies body(Nbody);
   randomBodies(body, Nbody, &my_min[0], &my_max[0], dim, 1234);
   Cells cell;
-  int64_t levels = buildTree(cell, body, Ncrit, &my_min[0], &my_max[0], dim);
+  int64_t levels = buildTree(cell, body, Ncrit, dim);
   traverse(cell, levels, dim, theta);
   const Cell* lcleaf = &cell[0];
   lcleaf = findLocalAtLevel(lcleaf, levels);
