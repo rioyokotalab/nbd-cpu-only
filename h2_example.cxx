@@ -34,7 +34,10 @@ int main(int argc, char* argv[]) {
   std::vector<double> my_max(dim + 1, 1.);
 
   Bodies body(m);
-  randomBodies(body, m, &my_min[0], &my_max[0], dim, 1234);
+  //randomUniformBodies(body.data(), m, 0., 1., dim, 1234);
+  randomSurfaceBodies(body.data(), m, dim, 1234);
+  randomNeutralCharge(body.data(), m, 1., 0);
+
   Cells cell;
   int64_t levels = buildTree(cell, body, leaf, dim);
 

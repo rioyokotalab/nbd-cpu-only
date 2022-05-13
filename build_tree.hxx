@@ -39,7 +39,11 @@ namespace nbd {
 
   struct Base;
 
-  void randomBodies(Bodies& bodies, int64_t nbody, const double dmin[], const double dmax[], int64_t dim, int seed);
+  void randomUniformBodies(Body* bodies, int64_t nbodies, double dmin, double dmax, int64_t dim, int seed);
+
+  void randomSurfaceBodies(Body* bodies, int64_t nbodies, int64_t dim, int seed);
+
+  void randomNeutralCharge(Body* bodies, int64_t nbodies, double cmax, int seed);
 
   int64_t partition(Body* bodies, int64_t nbodies, int64_t sdim);
 

@@ -34,11 +34,11 @@ int main(int argc, char* argv[]) {
   for (int64_t i = 0; i < R.size(); i++)
     R[i] = -1. + 2. * ((double)std::rand() / RAND_MAX);
 
-  std::vector<double> my_min(dim + 1, 0.);
-  std::vector<double> my_max(dim + 1, 1.);
-
   Bodies body(Nbody);
-  randomBodies(body, Nbody, &my_min[0], &my_max[0], dim, 1234);
+  //randomUniformBodies(body.data(), Nbody, 0., 1., dim, 1234);
+  randomSurfaceBodies(body.data(), Nbody, dim, 1234);
+  randomNeutralCharge(body.data(), Nbody, 1., 0);
+
   Cells cell;
   int64_t levels = buildTree(cell, body, Ncrit, dim);
   traverse(cell, levels, dim, theta);

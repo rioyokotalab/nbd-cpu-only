@@ -11,22 +11,60 @@
 
 using namespace nbd;
 
-void nbd::randomBodies(Bodies& bodies, int64_t nbody, const double dmin[], const double dmax[], int64_t dim, int seed) {
+void nbd::randomUniformBodies(Body* bodies, int64_t nbodies, const double dmin, const double dmax, int64_t dim, int seed) {
   if (seed > 0)
     srand(seed);
 
-  std::vector<double> range(dim + 1);
-  for (int64_t d = 0; d <= dim; d++)
-    range[d] = dmax[d] - dmin[d];
-
-  for (int64_t i = 0; i < nbody; i++) {
+  double range = dmax - dmin;
+  for (int64_t i = 0; i < nbodies; i++)
     for (int64_t d = 0; d < dim; d++) {
-      double r = ((double)rand() / RAND_MAX) * range[d] + dmin[d];
+      double r = ((double)rand() / RAND_MAX) * range + dmin;
       bodies[i].X[d] = r;
     }
-    double r = ((double)rand() / RAND_MAX) * range[dim] + dmin[dim];
-    bodies[i].B = r;
+}
+
+void nbd::randomSurfaceBodies(Body* bodies, int64_t nbodies, int64_t dim, int seed) {
+  if (seed > 0)
+    srand(seed);
+
+  double pi = M_PI;
+  double pi2 = 2. * pi;
+
+  if (dim == 2)
+    for (int64_t i = 0; i < nbodies; i++) {
+      double theta = ((double)rand() / RAND_MAX) * pi2;
+      bodies[i].X[0] = std::cos(theta);
+      bodies[i].X[1] = std::sin(theta);
+    }
+  
+  if (dim == 3)
+    for (int64_t i = 0; i < nbodies; i++) {
+      double theta = ((double)rand() / RAND_MAX) * pi;
+      double phi = ((double)rand() / RAND_MAX) * pi2;
+      double cost = std::cos(theta);
+      double sint = std::sin(theta);
+      double cosp = std::cos(phi);
+      double sinp = std::sin(phi);
+      bodies[i].X[0] = sint * cosp;
+      bodies[i].X[1] = sint * sinp;
+      bodies[i].X[2] = cost;
+    }
+}
+
+void nbd::randomNeutralCharge(Body* bodies, int64_t nbodies, double cmax, int seed) {
+  if (seed > 0)
+    srand(seed);
+
+  double avg = 0.;
+  double cmax2 = cmax * 2;
+  for (int64_t i = 0; i < nbodies; i++) {
+    double c = ((double)rand() / RAND_MAX) * cmax2 - cmax;
+    bodies[i].B = c;
+    avg = avg + c;
   }
+  avg = avg / nbodies;
+  for (int64_t i = 0; i < nbodies; i++)
+    bodies[i].B = bodies[i].B - avg;
 }
 
 int64_t nbd::partition(Body* bodies, int64_t nbodies, int64_t sdim) {
