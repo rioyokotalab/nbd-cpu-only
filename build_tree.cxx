@@ -106,10 +106,10 @@ int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim)
   root->NBODY = nbody;
   root->ZID = 0;
   root->LEVEL = 0;
+  getBounds(root->BODY, root->NBODY, root->R, root->C, dim);
 
   for (int64_t i = 0; i < ncells; i++) {
     Cell* ci = &cells[i];
-    getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
 
     if (ci->LEVEL < levels) {
       int64_t sdim = 0;
@@ -134,6 +134,23 @@ int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim)
       c1->NBODY = ci->NBODY - loc;
       c1->ZID = ((ci->ZID) << 1) + 1;
       c1->LEVEL = ci->LEVEL + 1;
+
+      for (int64_t d = 0; d < dim; d++)
+        if (d == sdim) {
+          double med = (ci->BODY)[loc].X[d];
+          double Xmin = ci->C[d] - ci->R[d];
+          double Xmax = ci->C[d] + ci->R[d];
+          c0->C[d] = (Xmin + med) / 2;
+          c0->R[d] = (med - Xmin) / 2;
+          c1->C[d] = (med + Xmax) / 2;
+          c1->R[d] = (Xmax - med) / 2;
+        }
+        else {
+          c0->C[d] = ci->C[d];
+          c0->R[d] = ci->R[d];
+          c1->C[d] = ci->C[d];
+          c1->R[d] = ci->R[d];
+        }
     }
     else {
       ci->CHILD = NULL;
@@ -154,14 +171,15 @@ void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, int64_t theta) {
       getList(Ci, cj, dim, theta);
   else {
     double dC = 0.;
-    double dR = 0.;
+    double dRi = 0.;
+    double dRj = 0.;
     for (int64_t d = 0; d < dim; d++) {
       double diff = Ci->C[d] - Cj->C[d];
-      double sum = Ci->R[d] + Cj->R[d];
       dC = dC + diff * diff;
-      dR = dR + sum * sum;
+      dRi = dRi + Ci->R[d] * Ci->R[d];
+      dRj = dRj + Cj->R[d] * Cj->R[d];
     }
-    dR = dR * theta / 2.;
+    double dR = (dRi + dRj) * theta;
 
     if (dC > dR)
       Ci->listFar.push_back(Cj);

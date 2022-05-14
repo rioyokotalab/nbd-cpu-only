@@ -30,9 +30,6 @@ int main(int argc, char* argv[]) {
   EvalFunc fun = dim == 2 ? l2d() : l3d();
   fun.singularity = m * 1.e3;
 
-  std::vector<double> my_min(dim + 1, 0.);
-  std::vector<double> my_max(dim + 1, 1.);
-
   Bodies body(m);
   //randomUniformBodies(body.data(), m, 0., 1., dim, 1234);
   randomSurfaceBodies(body.data(), m, dim, 1234);
