@@ -22,8 +22,8 @@ int main(int argc, char* argv[]) {
   int64_t Ncrit = argc > 2 ? atol(argv[2]) : 256;
   int64_t theta = argc > 3 ? atol(argv[3]) : 1;
   int64_t dim = argc > 4 ? atol(argv[4]) : 3;
-  double epi = 1.e-4;
-  int64_t rank_max = 40;
+  double epi = 1.e-7;
+  int64_t rank_max = 90;
   //omp_set_num_threads(4);
   
   EvalFunc ef = dim == 2 ? l2d() : l3d();

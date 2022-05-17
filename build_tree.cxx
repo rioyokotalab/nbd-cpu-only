@@ -375,46 +375,6 @@ void nbd::childMultipoleSize(int64_t* size, const Cell& cell) {
 }
 
 
-void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
-  int64_t m;
-  childMultipoleSize(&m, *cell);
-
-  Bodies remote;
-  remoteBodies(remote, sp_pts, *cell, bodies, dim);
-  int64_t n = remote.size();
-
-  if (m > 0 && n > 0) {
-    std::vector<int64_t> cellm(m);
-    collectChildMultipoles(*cell, cellm.data());
-
-    int64_t rank = mrank;
-    rank = std::min(m, rank);
-    rank = std::min(n, rank);
-    Matrix a;
-    std::vector<int64_t> pa(rank);
-    cMatrix(a, m, n);
-    cMatrix(Base, m, rank);
-
-    M2Lmat_bodies(ef, m, n, cellm.data(), nullptr, cell->BODY, remote.data(), dim, a);
-
-    int64_t iters;
-    lraID(epi, rank, a, Base, pa.data(), &iters);
-
-    if (cell->Multipole.size() != iters)
-      cell->Multipole.resize(iters);
-    for (int64_t i = 0; i < iters; i++) {
-      int64_t ai = pa[i];
-      cell->Multipole[i] = cellm[ai];
-    }
-
-    if (iters != rank)
-      cMatrix(Base, m, iters);
-    cMatrix(Biv, iters, m);
-    invBasis(Base, Biv);
-  }
-}
-
-
 void nbd::relationsNear(CSC rels[], const Cells& cells) {
   int64_t levels = 0;
   int64_t len = cells.size();

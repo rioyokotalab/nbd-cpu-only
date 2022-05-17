@@ -68,19 +68,44 @@ void nbd::cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64
     std::copy(&v1.X[x1], &v1.X[x1] + n, &v2.X[x2]);
 }
 
-void nbd::orthoBase(double epi, Matrix& A, int64_t *rnk_out) {
-  Matrix U, V;
-  int64_t rank = std::min(A.M, A.N);
-  cMatrix(U, A.M, rank);
-  cMatrix(V, A.N, rank);
+void nbd::updateU(double epi, Matrix& A, const Matrix& U, int64_t *rnk_out) {
+  if (U.M > 0 && U.N > 0) {
+    int64_t m = U.M;
+    int64_t n = U.N;
+    Matrix a;
+    Matrix q;
+    Matrix uinv;
+    cMatrix(a, n, n);
+    cMatrix(q, n, n);
+    cMatrix(uinv, n, m);
 
-  dlra(epi, A.M, A.N, rank, A.A.data(), U.A.data(), A.M, V.A.data(), A.N, rnk_out, NULL);
-  rank = *rnk_out;
+    mmult('T', 'N', U, U, a, 1., 0.);
+    dorth('F', n, n, a.A.data(), n, q.A.data(), n);
+    mmult('T', 'T', q, U, uinv, 1., 0.);
+    dtrsmr_left(n, m, a.A.data(), n, uinv.A.data(), n);
+
+    Matrix work;
+    cMatrix(work, m, A.N);
+    mmult('T', 'N', uinv, A, work, 1., 0.);
+    mmult('N', 'N', U, work, A, -1., 1.);
+  }
+
+  Matrix u, vt;
+  int64_t rank = std::min(A.M, A.N);
+  rank = *rnk_out > 0 ? std::min(rank, *rnk_out) : rank;
+  cMatrix(u, A.M, rank + U.N);
+  cMatrix(vt, A.N, rank);
+
+  dlra(epi, A.M, A.N, rank, A.A.data(), u.A.data(), A.M, vt.A.data(), A.N, rnk_out, NULL);
+  rank = *rnk_out + U.N;
 
   if (A.N < A.M)
     cMatrix(A, A.M, A.M);
-  if (rank > 0)
-    dorth('F', A.M, rank, U.A.data(), A.M, A.A.data(), A.M);
+  if (rank > 0) {
+    if (U.N > 0)
+      cpyMatToMat(U.M, U.N, U, u, 0, 0, 0, rank - U.N);
+    dorth('F', A.M, rank, u.A.data(), A.M, A.A.data(), A.M);
+  }
   else {
     zeroMatrix(A);
     double one = 1.;

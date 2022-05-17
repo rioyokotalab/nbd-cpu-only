@@ -71,8 +71,6 @@ namespace nbd {
 
   void childMultipoleSize(int64_t* size, const Cell& cell);
 
-  void evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
-
   void relationsNear(CSC rels[], const Cells& cells);
 
   void evaluateLeafNear(Matrices& d, EvalFunc ef, const Cell* cell, int64_t dim, const CSC& csc);
