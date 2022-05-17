@@ -21,7 +21,7 @@ void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, double* u, int
   int64_t i = 0;
   while (i < k && (n2 > epi2 * nrm) && amax > 0) {
     amax = 0.;
-    int64_t ymax = 0;
+    int64_t ymax;
     Cidamax(m * n, a, 1, &ymax);
     amax = fabs(a[ymax]);
 

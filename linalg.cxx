@@ -3,6 +3,9 @@
 #include "linalg.hxx"
 #include "minblas.h"
 
+#include "cblas.h"
+#include "lapacke.h"
+
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -68,48 +71,51 @@ void nbd::cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64
     std::copy(&v1.X[x1], &v1.X[x1] + n, &v2.X[x2]);
 }
 
-void nbd::updateU(double epi, Matrix& A, const Matrix& U, int64_t *rnk_out) {
-  if (U.M > 0 && U.N > 0) {
-    int64_t m = U.M;
-    int64_t n = U.N;
-    Matrix a;
-    Matrix q;
-    Matrix uinv;
-    cMatrix(a, n, n);
-    cMatrix(q, n, n);
-    cMatrix(uinv, n, m);
-
-    mmult('T', 'N', U, U, a, 1., 0.);
-    dorth('F', n, n, a.A.data(), n, q.A.data(), n);
-    mmult('T', 'T', q, U, uinv, 1., 0.);
-    dtrsmr_left(n, m, a.A.data(), n, uinv.A.data(), n);
-
-    Matrix work;
-    cMatrix(work, m, A.N);
-    mmult('T', 'N', uinv, A, work, 1., 0.);
-    mmult('N', 'N', U, work, A, -1., 1.);
-  }
-
-  Matrix u, vt;
-  int64_t rank = std::min(A.M, A.N);
+void nbd::updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out) {
+  Matrix au, work;
+  int64_t m = A.M;
+  int64_t n = A.N + U.N;
+  int64_t rank = std::min(m, n);
   rank = *rnk_out > 0 ? std::min(rank, *rnk_out) : rank;
-  cMatrix(u, A.M, rank + U.N);
-  cMatrix(vt, A.N, rank);
+  cMatrix(au, m, n);
+  cMatrix(work, m, U.N);
+  cpyMatToMat(m, A.N, A, au, 0, 0, 0, 0);
+  cpyMatToMat(m, U.N, U, au, 0, 0, 0, A.N);
+  cpyMatToMat(m, U.N, U, work, 0, 0, 0, 0);
+  cMatrix(A, m, m);
 
-  dlra(epi, A.M, A.N, rank, A.A.data(), u.A.data(), A.M, vt.A.data(), A.N, rnk_out, NULL);
-  rank = *rnk_out + U.N;
+  Vector s, superb;
+  cVector(s, std::max(m, n));
+  cVector(superb, s.N + 1);
+  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', m, n, au.A.data(), m, s.X.data(), A.A.data(), m, NULL, n, superb.X.data());
 
-  if (A.N < A.M)
-    cMatrix(A, A.M, A.M);
-  if (rank > 0) {
-    if (U.N > 0)
-      cpyMatToMat(U.M, U.N, U, u, 0, 0, 0, rank - U.N);
-    dorth('F', A.M, rank, u.A.data(), A.M, A.A.data(), A.M);
+  if (epi > 0.) {
+    rank = 0;
+    double sepi = s.X[0] * epi;
+    while(s.X[rank] > sepi)
+      rank += 1;
   }
-  else {
-    zeroMatrix(A);
-    double one = 1.;
-    Cdcopy(A.M, &one, 0, A.A.data(), A.M + 1);
+  *rnk_out = rank;
+
+  cMatrix(U, rank, U.N);
+  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
+}
+
+void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
+  if (U.M > 0 && U.N > 0) {
+    int64_t m1 = R1.N;
+    int64_t m2 = R2.N;
+    int64_t n = U.N;
+    Matrix ru1, ru2;
+    cMatrix(ru1, R1.M, n);
+    cMatrix(ru2, R2.M, n);
+
+    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R1.M, n, m1, 1., R1.A.data(), R1.M, U.A.data(), U.M, 0., ru1.A.data(), R1.M);
+    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R2.M, n, m2, 1., R2.A.data(), R2.M, U.A.data() + m1, U.M, 0., ru2.A.data(), R2.M);
+
+    cMatrix(U, R1.M + R2.M, n);
+    cpyMatToMat(R1.M, n, ru1, U, 0, 0, 0, 0);
+    cpyMatToMat(R2.M, n, ru2, U, 0, 0, R1.M, 0);
   }
 }
 

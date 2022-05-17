@@ -142,6 +142,7 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
     int64_t gj = j + nbegin;
     int64_t cj0 = (gj << 1);
     int64_t cj1 = (gj << 1) + 1;
+    updateSubU(bsnext.Ulr[j], bsprev.Ulr[cj0], bsprev.Ulr[cj1]);
 
     for (int64_t ij = rels_up.CSC_COLS[j]; ij < rels_up.CSC_COLS[j + 1]; ij++) {
       int64_t i = rels_up.CSC_ROWS[ij];

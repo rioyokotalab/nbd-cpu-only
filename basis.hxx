@@ -10,6 +10,7 @@ namespace nbd {
     std::vector<int64_t> DIMO;
     Matrices Uc;
     Matrices Uo;
+    Matrices Ulr;
   };
 
   typedef std::vector<Base> Basis;
@@ -18,11 +19,11 @@ namespace nbd {
 
   void sampleC2(Matrices& C2, const CSC& rels, const Matrices& A, const Matrices& C1, int64_t level);
 
-  void orthoBasis(double epi, Matrices& C, const Matrices& U, int64_t dims_o[], int64_t level);
+  void orthoBasis(double epi, Matrices& C, Matrices& U, int64_t dims_o[], int64_t level);
 
   void allocBasis(Basis& basis, int64_t levels);
 
-  void evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
+  void evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
 
   void evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
 

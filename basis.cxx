@@ -52,14 +52,17 @@ void nbd::sampleC2(Matrices& C2, const CSC& rels, const Matrices& A, const Matri
   }
 }
 
-void nbd::orthoBasis(double epi, Matrices& C, const Matrices& U, int64_t dims_o[], int64_t level) {
+void nbd::orthoBasis(double epi, Matrices& C, Matrices& U, int64_t dims_o[], int64_t level) {
   int64_t ibegin = 0;
   int64_t iend = C.size();
   selfLocalRange(ibegin, iend, level);
   int64_t nodes = iend - ibegin;
+
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
-    updateU(epi, C[i + ibegin], U[i + ibegin], &dims_o[i + ibegin]);
+    int64_t ii = i + ibegin;
+    dims_o[ii] = 0;
+    updateU(epi, C[ii], U[ii], &dims_o[ii]);
   }
 }
 
@@ -72,10 +75,11 @@ void nbd::allocBasis(Basis& basis, int64_t levels) {
     basis[i].DIMO.resize(nodes);
     basis[i].Uo.resize(nodes);
     basis[i].Uc.resize(nodes);
+    basis[i].Ulr.resize(nodes);
   }
 }
 
-void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
+void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
   int64_t m;
   childMultipoleSize(&m, *cell);
 
@@ -108,20 +112,22 @@ void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Matrix& Biv, Cell* cell, cons
 
     if (iters != rank)
       cMatrix(Base, m, iters);
-    cMatrix(Biv, iters, m);
-    invBasis(Base, Biv);
   }
 }
 
 void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
+  int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
-  int64_t iend = basis.DIMS.size();
+  int64_t iend = xlen;
   selfLocalRange(ibegin, iend, level);
   int64_t nodes = iend - ibegin;
 
   int64_t len = 0;
   std::vector<Cell*> leaves(nodes);
   findCellsAtLevelModify(&leaves[0], &len, cell, level);
+
+  std::vector<int64_t>& dims = basis.DIMS;
+  std::vector<int64_t>& dimo = basis.DIMO;
 
 #pragma omp parallel for
   for (int64_t i = 0; i < len; i++) {
@@ -130,30 +136,26 @@ void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, con
     int64_t box_i = ii;
     neighborsILocal(box_i, ii, level);
 
-    evaluateBasis(ef, basis.Uo[box_i], basis.Uc[box_i], ci, bodies, epi, mrank, sp_pts, dim);
+    evaluateBasis(ef, basis.Ulr[box_i], ci, bodies, epi, mrank, sp_pts, dim);
     int64_t ni;
     childMultipoleSize(&ni, *ci);
     int64_t mi = ci->Multipole.size();
-    basis.DIMS[box_i] = ni;
-    basis.DIMO[box_i] = mi;
+    dims[box_i] = ni;
+    dimo[box_i] = mi;
   }
 
-  DistributeDims(&basis.DIMS[0], level);
-  DistributeDims(&basis.DIMO[0], level);
+  DistributeDims(&dims[0], level);
+  DistributeDims(&dimo[0], level);
 
-  int64_t xlen = basis.DIMS.size();
   for (int64_t i = 0; i < xlen; i++) {
-    int64_t m = basis.DIMS[i];
-    int64_t n = basis.DIMO[i];
+    int64_t m = dims[i];
+    int64_t n = dimo[i];
     int64_t msize = m * n;
-    if (msize > 0 && (i < ibegin || i >= iend)) {
-      cMatrix(basis.Uo[i], m, n);
-      cMatrix(basis.Uc[i], n, m);
-    }
+    if (msize > 0 && (i < ibegin || i >= iend))
+      cMatrix(basis.Ulr[i], m, n);
   }
 
-  DistributeMatricesList(basis.Uo, level);
-  DistributeMatricesList(basis.Uc, level);
+  DistributeMatricesList(basis.Ulr, level);
 }
 
 void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
@@ -275,14 +277,12 @@ void nbd::allocUcUo(Base& basis, const Matrices& C, int64_t level) {
 void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, int64_t mrank, const double* R, int64_t lenR, int64_t level) {
   Matrices C1(basis.DIMS.size());
   Matrices C2(basis.DIMS.size());
-  Matrices U(basis.DIMS.size());
 
   int64_t len = basis.DIMS.size();
   for (int64_t i = 0; i < len; i++) {
     int64_t dim = basis.DIMS[i];
     cMatrix(C1[i], dim, mrank);
     cMatrix(C2[i], dim, mrank);
-    cMatrix(U[i], 0, 0);
     zeroMatrix(C1[i]);
     zeroMatrix(C2[i]);
   }
@@ -290,7 +290,7 @@ void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, i
   sampleC1(C1, rels, A, R, lenR, level);
   DistributeMatricesList(C1, level);
   sampleC2(C2, rels, A, C1, level);
-  orthoBasis(epi, C2, U, &basis.DIMO[0], level);
+  orthoBasis(epi, C2, basis.Ulr, &basis.DIMO[0], level);
   DistributeDims(&basis.DIMO[0], level);
   allocUcUo(basis, C2, level);
   

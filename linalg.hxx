@@ -36,9 +36,9 @@ namespace nbd {
 
   void cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64_t x2);
 
-  void updateU(double epi, Matrix& A, const Matrix& U, int64_t *rnk_out);
+  void updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out);
 
-  void subBase(Matrix& A, const Matrix& U);
+  void updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2);
 
   void lraID(double epi, int64_t mrank, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out);
 
