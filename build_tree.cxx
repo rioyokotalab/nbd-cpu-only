@@ -11,6 +11,12 @@
 
 using namespace nbd;
 
+void nbd::loadBodiesArray(Body* bodies, int64_t nbodies, const double arr[], int64_t dim) {
+  for (int64_t i = 0; i < nbodies; i++)
+    for (int64_t d = 0; d < dim; d++)
+      bodies[i].X[d] = arr[i * dim + d];
+}
+
 void nbd::randomUniformBodies(Body* bodies, int64_t nbodies, const double dmin, const double dmax, int64_t dim, int seed) {
   if (seed > 0)
     srand(seed);

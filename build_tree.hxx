@@ -39,6 +39,8 @@ namespace nbd {
 
   struct Base;
 
+  void loadBodiesArray(Body* bodies, int64_t nbodies, const double arr[], int64_t dim);
+
   void randomUniformBodies(Body* bodies, int64_t nbodies, double dmin, double dmax, int64_t dim, int seed);
 
   void randomSurfaceBodies(Body* bodies, int64_t nbodies, int64_t dim, int seed);

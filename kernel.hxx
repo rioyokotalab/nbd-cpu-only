@@ -22,6 +22,8 @@ namespace nbd {
 
   EvalFunc l3d();
 
+  EvalFunc yukawa3d();
+
   void eval(EvalFunc ef, const Body* bi, const Body* bj, int64_t dim, double* out);
 
   void P2P(EvalFunc ef, const Cell* ci, const Cell* cj, int64_t dim, const Vector& X, Vector& B);

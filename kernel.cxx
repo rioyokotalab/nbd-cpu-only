@@ -35,6 +35,16 @@ EvalFunc nbd::l3d() {
   return ef;
 }
 
+EvalFunc nbd::yukawa3d() {
+  EvalFunc ef;
+  ef.r2f = [](double& r2, double singularity, double alpha) -> void {
+    double r = std::sqrt(r2);
+    r2 = r2 == 0 ? singularity : (std::exp(-alpha * r) / r);
+  };
+  ef.singularity = 1.e6;
+  ef.alpha = 1.;
+  return ef;
+}
 
 void nbd::eval(EvalFunc ef, const Body* bi, const Body* bj, int64_t dim, double* out) {
   double& r2 = *out;

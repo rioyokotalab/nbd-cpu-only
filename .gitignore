@@ -346,8 +346,9 @@ healthchecksdb
 
 # Linux Build files
 *.o
-*.a 
+*.a
 a.out
+*.dat
 
 # CMake files
 CMakeFiles/
