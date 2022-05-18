@@ -53,7 +53,7 @@ namespace nbd {
 
   int64_t buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim);
 
-  void getList(Cell* Ci, Cell* Cj, int64_t dim, int64_t theta);
+  void getList(Cell* Ci, Cell* Cj, int64_t dim, double theta);
 
   void findCellsAtLevel(const Cell* cells[], int64_t* len, const Cell* cell, int64_t level);
 

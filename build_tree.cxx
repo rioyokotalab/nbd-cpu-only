@@ -141,22 +141,8 @@ int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim)
       c1->ZID = ((ci->ZID) << 1) + 1;
       c1->LEVEL = ci->LEVEL + 1;
 
-      for (int64_t d = 0; d < dim; d++)
-        if (d == sdim) {
-          double med = (ci->BODY)[loc].X[d];
-          double Xmin = ci->C[d] - ci->R[d];
-          double Xmax = ci->C[d] + ci->R[d];
-          c0->C[d] = (Xmin + med) / 2;
-          c0->R[d] = (med - Xmin) / 2;
-          c1->C[d] = (med + Xmax) / 2;
-          c1->R[d] = (Xmax - med) / 2;
-        }
-        else {
-          c0->C[d] = ci->C[d];
-          c0->R[d] = ci->R[d];
-          c1->C[d] = ci->C[d];
-          c1->R[d] = ci->R[d];
-        }
+      getBounds(c0->BODY, c0->NBODY, c0->R, c0->C, dim);
+      getBounds(c1->BODY, c1->NBODY, c1->R, c1->C, dim);
     }
     else {
       ci->CHILD = NULL;
@@ -168,7 +154,7 @@ int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim)
 }
 
 
-void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, int64_t theta) {
+void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, double theta) {
   if (Ci->LEVEL < Cj->LEVEL)
     for (Cell* ci = Ci->CHILD; ci != Ci->CHILD + Ci->NCHILD; ci++)
       getList(ci, Cj, dim, theta);
@@ -177,15 +163,14 @@ void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, int64_t theta) {
       getList(Ci, cj, dim, theta);
   else {
     double dC = 0.;
-    double dRi = 0.;
-    double dRj = 0.;
+    double dR = 0.;
     for (int64_t d = 0; d < dim; d++) {
       double diff = Ci->C[d] - Cj->C[d];
+      double sum = Ci->R[d] + Cj->R[d];
       dC = dC + diff * diff;
-      dRi = dRi + Ci->R[d] * Ci->R[d];
-      dRj = dRj + Cj->R[d] * Cj->R[d];
+      dR = dR + sum * sum;
     }
-    double dR = (dRi + dRj) * theta;
+    dR = dR * theta;
 
     if (dC > dR)
       Ci->listFar.push_back(Cj);
@@ -417,6 +402,7 @@ void nbd::relationsNear(CSC rels[], const Cells& cells) {
         csc.CSC_ROWS.emplace_back((c.listNear[j])->ZID);
       csc.NNZ = csc.NNZ + ent;
     }
+    //printf("%d %d %f %f %f\n", c.ZID, c.listNear.size(), c.R[0], c.R[1], c.R[2]);
   }
 
   for (int64_t i = 0; i <= levels; i++) {
