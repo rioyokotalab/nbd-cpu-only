@@ -8,6 +8,7 @@ namespace nbd {
   struct Base {
     std::vector<int64_t> DIMS;
     std::vector<int64_t> DIMO;
+    std::vector<int64_t> DIML;
     Matrices Uc;
     Matrices Uo;
     Matrices Ulr;
@@ -37,6 +38,6 @@ namespace nbd {
 
   void sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, int64_t mrank, const double* R, int64_t lenR, int64_t level);
 
-  void nextBasisDims(Base& bsnext, const Base& bsprev, int64_t nlevel);
+  void nextBasisDims(Base& bsnext, const int64_t dimo[], int64_t nlevel);
 
 };

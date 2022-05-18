@@ -134,7 +134,7 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
   Matrices& Mup = Anext.A;
   const Matrices& Mlow = Aprev.A_oo;
 
-  nextBasisDims(bsnext, bsprev, nlevel);
+  nextBasisDims(bsnext, bsprev.DIMO.data(), nlevel);
   allocA(Mup, rels_up, &bsnext.DIMS[0], nlevel);
   int64_t nbegin = rels_up.CBGN;
 #pragma omp parallel for
@@ -183,6 +183,20 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
   int64_t clevel = nlevel + 1;
   if (rels_low.N == rels_up.N)
     butterflySumA(Mup, clevel);
+
+  DistributeDims(&bsnext.DIMS[0], nlevel);
+  DistributeDims(&bsnext.DIML[0], nlevel);
+
+  int64_t xlen = bsnext.DIMS.size();
+  for (int64_t i = 0; i < xlen; i++) {
+    int64_t m = bsnext.DIMS[i];
+    int64_t n = bsnext.DIML[i];
+    int64_t msize = m * n;
+    if (msize > 0 && (i < nbegin || i >= (nbegin + rels_up.N)))
+      cMatrix(bsnext.Ulr[i], m, n);
+  }
+
+  DistributeMatricesList(bsnext.Ulr, nlevel);
 }
 
 

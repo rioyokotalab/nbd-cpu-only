@@ -56,7 +56,7 @@ int main(int argc, char* argv[]) {
 
   double ctime;
   startTimer(&ctime);
-  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, 1.e-11, 140, 3000, dim);
+  //evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, 1.e-11, 140, 3000, dim);
   stopTimer(&ctime);
 
   double ftime;

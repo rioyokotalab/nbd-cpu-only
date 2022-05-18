@@ -73,6 +73,7 @@ void nbd::allocBasis(Basis& basis, int64_t levels) {
     neighborContentLength(nodes, i);
     basis[i].DIMS.resize(nodes);
     basis[i].DIMO.resize(nodes);
+    basis[i].DIML.resize(nodes);
     basis[i].Uo.resize(nodes);
     basis[i].Uc.resize(nodes);
     basis[i].Ulr.resize(nodes);
@@ -127,7 +128,7 @@ void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, con
   findCellsAtLevelModify(&leaves[0], &len, cell, level);
 
   std::vector<int64_t>& dims = basis.DIMS;
-  std::vector<int64_t>& dimo = basis.DIMO;
+  std::vector<int64_t>& diml = basis.DIML;
 
 #pragma omp parallel for
   for (int64_t i = 0; i < len; i++) {
@@ -141,15 +142,15 @@ void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, con
     childMultipoleSize(&ni, *ci);
     int64_t mi = ci->Multipole.size();
     dims[box_i] = ni;
-    dimo[box_i] = mi;
+    diml[box_i] = mi;
   }
 
   DistributeDims(&dims[0], level);
-  DistributeDims(&dimo[0], level);
+  DistributeDims(&diml[0], level);
 
   for (int64_t i = 0; i < xlen; i++) {
     int64_t m = dims[i];
-    int64_t n = dimo[i];
+    int64_t n = diml[i];
     int64_t msize = m * n;
     if (msize > 0 && (i < ibegin || i >= iend))
       cMatrix(basis.Ulr[i], m, n);
@@ -218,7 +219,7 @@ void nbd::evaluateBaseAll(EvalFunc ef, Base basis[], Cells& cells, int64_t level
   for (int64_t i = levels; i >= 0; i--) {
     Cell* vlocal = findLocalAtLevelModify(&cells[0], i);
     if (i != levels) {
-      nextBasisDims(basis[i], basis[i + 1], i);
+      nextBasisDims(basis[i], basis[i + 1].DIML.data(), i);
       writeRemoteCoupling(basis[i], vlocal, i);
     }
     evaluateLocal(ef, basis[i], vlocal, i, bodies, epi, mrank, sp_pts, dim);
@@ -260,9 +261,11 @@ void nbd::allocUcUo(Base& basis, const Matrices& C, int64_t level) {
     int64_t dim = basis.DIMS[i];
     int64_t dim_o = basis.DIMO[i];
     int64_t dim_c = dim - dim_o;
+    int64_t dim_l = basis.DIML[i];
 
     Matrix& Uo_i = basis.Uo[i];
     Matrix& Uc_i = basis.Uc[i];
+    Matrix& Ul_i = basis.Ulr[i];
     cMatrix(Uo_i, dim, dim_o);
     cMatrix(Uc_i, dim, dim_c);
 
@@ -270,6 +273,9 @@ void nbd::allocUcUo(Base& basis, const Matrices& C, int64_t level) {
       const Matrix& U = C[i];
       cpyMatToMat(dim, dim_o, U, Uo_i, 0, 0, 0, 0);
       cpyMatToMat(dim, dim_c, U, Uc_i, 0, dim_o, 0, 0);
+    }
+    else {
+      cMatrix(Ul_i, dim_o, dim_l);
     }
   }
 }
@@ -291,22 +297,23 @@ void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, i
   DistributeMatricesList(C1, level);
   sampleC2(C2, rels, A, C1, level);
   orthoBasis(epi, C2, basis.Ulr, &basis.DIMO[0], level);
+  DistributeDims(&basis.DIML[0], level);
   DistributeDims(&basis.DIMO[0], level);
   allocUcUo(basis, C2, level);
   
   DistributeMatricesList(basis.Uc, level);
   DistributeMatricesList(basis.Uo, level);
+  DistributeMatricesList(basis.Ulr, level);
 }
 
 
-void nbd::nextBasisDims(Base& bsnext, const Base& bsprev, int64_t nlevel) {
+void nbd::nextBasisDims(Base& bsnext, const int64_t dimo[], int64_t nlevel) {
   int64_t ibegin = 0;
   int64_t iend = bsnext.DIMS.size();
   selfLocalRange(ibegin, iend, nlevel);
   int64_t nboxes = iend - ibegin;
 
   int64_t* dims = &bsnext.DIMS[0];
-  const int64_t* dimo = &bsprev.DIMO[0];
   int64_t clevel = nlevel + 1;
 
   for (int64_t i = 0; i < nboxes; i++) {
