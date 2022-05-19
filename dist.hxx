@@ -15,13 +15,13 @@ namespace nbd {
 
   void selfLocalRange(int64_t& ibegin, int64_t& iend, int64_t level);
 
-  void iLocal(char ngrm, int64_t& ilocal, int64_t iglobal, int64_t level);
+  void iLocal(int64_t& ilocal, int64_t iglobal, int64_t level);
 
-  void iGlobal(char ngrm, int64_t& iglobal, int64_t ilocal, int64_t level);
+  void iGlobal(int64_t& iglobal, int64_t ilocal, int64_t level);
 
-  void contentLength(char ngrm, int64_t& len, int64_t level);
+  void contentLength(int64_t& len, int64_t level);
 
-  void locateCOMM(char ngrm, int64_t level, int64_t* my_ind, int64_t* my_rank, int64_t* nboxes, int64_t** comms, int64_t* comms_len);
+  void locateCOMM(int64_t level, int64_t* my_ind, int64_t* my_rank, int64_t* nboxes, int64_t** comms, int64_t* comms_len);
 
   void locateButterflyCOMM(int64_t level, int64_t* my_ind, int64_t* my_rank, int64_t* my_twi, int64_t* twi_rank);
 

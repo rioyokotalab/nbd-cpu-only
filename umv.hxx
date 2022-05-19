@@ -7,14 +7,18 @@ namespace nbd {
 
   struct Node {
     Matrices A;
+    Matrices S;
     Matrices A_cc;
     Matrices A_oc;
     Matrices A_oo;
+    Matrices S_oo;
   };
 
   typedef std::vector<Node> Nodes;
 
   void splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matrices& U, const Matrices& V, int64_t level);
+
+  void splitS(Matrices& S_out, const CSC& rels, const Matrices& S, const Matrices& U, const Matrices& V, int64_t level);
 
   void factorAcc(Matrices& A_cc, const CSC& rels);
 

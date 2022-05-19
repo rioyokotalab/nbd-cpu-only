@@ -31,16 +31,16 @@ void nbd::svAccFw(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t le
   Vector* xlocal = &Xc[ibegin];
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     const Matrix& A_ii = A_cc[ii];
     fw_solve(xlocal[i], A_ii);
 
-    for (int64_t yi = rels.CSC_COLS[i]; yi < rels.CSC_COLS[i + 1]; yi++) {
-      int64_t y = rels.CSC_ROWS[yi];
+    for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++) {
+      int64_t y = rels.ROWS_NEAR[yi];
       const Matrix& A_yi = A_cc[yi];
       if (y > i + lbegin) {
         int64_t box_y = y;
-        iLocal('N', box_y, y, level);
+        iLocal(box_y, y, level);
         mvec('N', A_yi, xlocal[i], Xc[box_y], -1., 1.);
       }
     }
@@ -57,18 +57,18 @@ void nbd::svAccBk(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t le
 
   Vector* xlocal = &Xc[ibegin];
   for (int64_t i = rels.N - 1; i >= 0; i--) {
-    for (int64_t yi = rels.CSC_COLS[i]; yi < rels.CSC_COLS[i + 1]; yi++) {
-      int64_t y = rels.CSC_ROWS[yi];
+    for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++) {
+      int64_t y = rels.ROWS_NEAR[yi];
       const Matrix& A_yi = A_cc[yi];
       if (y > i + lbegin) {
         int64_t box_y = y;
-        iLocal('N', box_y, y, level);
+        iLocal(box_y, y, level);
         mvec('T', A_yi, Xc[box_y], xlocal[i], -1., 1.);
       }
     }
 
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     const Matrix& A_ii = A_cc[ii];
     bk_solve(xlocal[i], A_ii);
   }
@@ -82,10 +82,10 @@ void nbd::svAocFw(Vectors& Xo, const Vectors& Xc, const Matrices& A_oc, const CS
   const Vector* xlocal = &Xc[ibegin];
 
   for (int64_t x = 0; x < rels.N; x++)
-    for (int64_t yx = rels.CSC_COLS[x]; yx < rels.CSC_COLS[x + 1]; yx++) {
-      int64_t y = rels.CSC_ROWS[yx];
+    for (int64_t yx = rels.COLS_NEAR[x]; yx < rels.COLS_NEAR[x + 1]; yx++) {
+      int64_t y = rels.ROWS_NEAR[yx];
       int64_t box_y = y;
-      iLocal('N', box_y, y, level);
+      iLocal(box_y, y, level);
       const Matrix& A_yx = A_oc[yx];
       mvec('N', A_yx, xlocal[x], Xo[box_y], -1., 1.);
     }
@@ -98,10 +98,10 @@ void nbd::svAocBk(Vectors& Xc, const Vectors& Xo, const Matrices& A_oc, const CS
   Vector* xlocal = &Xc[ibegin];
 
   for (int64_t x = 0; x < rels.N; x++)
-    for (int64_t yx = rels.CSC_COLS[x]; yx < rels.CSC_COLS[x + 1]; yx++) {
-      int64_t y = rels.CSC_ROWS[yx];
+    for (int64_t yx = rels.COLS_NEAR[x]; yx < rels.COLS_NEAR[x + 1]; yx++) {
+      int64_t y = rels.ROWS_NEAR[yx];
       int64_t box_y = y;
-      iLocal('N', box_y, y, level);
+      iLocal(box_y, y, level);
       const Matrix& A_yx = A_oc[yx];
       mvec('T', A_yx, Xo[box_y], xlocal[x], -1., 1.);
     }
@@ -171,7 +171,7 @@ void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D, doubl
   int64_t levels = sp.Levels;
   fillDimsFromCell(sp.Basis[levels], local, levels);
 
-  int64_t nnz = sp.Rels[levels].NNZ;
+  int64_t nnz = sp.Rels[levels].NNZ_NEAR;
   bool cless = true;
   for (int64_t i = 0; i < nnz; i++) {
     Matrix& Ai = sp.D[levels].A[i];
@@ -201,7 +201,7 @@ void nbd::solveH2(RHS st[], MatVec vx[], const SpDense sps[], EvalFunc ef, const
     int64_t xlen = (int64_t)1 << (levels - 1);
     int64_t ibegin = 0;
     int64_t iend = xlen;
-    contentLength('N', xlen, levels - 1);
+    contentLength(xlen, levels - 1);
     selfLocalRange(ibegin, iend, levels - 1);
 
     Vectors Xi(xlen);

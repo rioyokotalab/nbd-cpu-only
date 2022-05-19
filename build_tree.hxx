@@ -32,10 +32,13 @@ namespace nbd {
   struct CSC {
     int64_t M;
     int64_t N;
-    int64_t NNZ;
+    int64_t NNZ_NEAR;
+    int64_t NNZ_FAR;
     int64_t CBGN;
-    std::vector<int64_t> CSC_COLS;
-    std::vector<int64_t> CSC_ROWS;
+    std::vector<int64_t> COLS_NEAR;
+    std::vector<int64_t> ROWS_NEAR;
+    std::vector<int64_t> COLS_FAR;
+    std::vector<int64_t> ROWS_FAR;
   };
 
   struct Base;
@@ -70,15 +73,15 @@ namespace nbd {
 
   void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
 
-  void writeChildMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen);
-
   void childMultipoleSize(int64_t* size, const Cell& cell);
 
   void relationsNear(CSC rels[], const Cells& cells);
 
   void evaluateLeafNear(Matrices& d, EvalFunc ef, const Cell* cell, int64_t dim, const CSC& csc);
 
-  void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j);
+  void evaluateFar(Matrices& s, EvalFunc ef, const Cell* cell, int64_t dim, const CSC& csc, int64_t level);
+
+  void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
   void evaluateNear(Matrices d[], EvalFunc ef, const Cells& cells, int64_t dim, const CSC rels[], const Base base[], int64_t levels);
 

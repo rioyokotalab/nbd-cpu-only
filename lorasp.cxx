@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
   std::vector<CSC> rels(levels + 1);
   relationsNear(&rels[0], cell);
 
-  Matrices A(rels[levels].NNZ);
+  Matrices A(rels[levels].NNZ_NEAR);
   evaluateLeafNear(A, ef, &cell[0], dim, rels[levels]);
 
   SpDense sp;

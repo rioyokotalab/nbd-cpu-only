@@ -15,8 +15,8 @@ void nbd::sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, const doubl
   for (int64_t j = 0; j < rels.N; j++) {
     Matrix& cj = C1[j + ibegin];
 
-    for (int64_t ij = rels.CSC_COLS[j]; ij < rels.CSC_COLS[j + 1]; ij++) {
-      int64_t i = rels.CSC_ROWS[ij];
+    for (int64_t ij = rels.COLS_NEAR[j]; ij < rels.COLS_NEAR[j + 1]; ij++) {
+      int64_t i = rels.ROWS_NEAR[ij];
       if (i == j + lbegin)
         continue;
       const Matrix& Aij = A[ij];
@@ -24,7 +24,7 @@ void nbd::sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, const doubl
     }
 
     int64_t jj;
-    lookupIJ(jj, rels, j + lbegin, j + lbegin);
+    lookupIJ('N', jj, rels, j + lbegin, j + lbegin);
     const Matrix& Ajj = A[jj];
     minvl(Ajj, cj);
   }
@@ -39,12 +39,12 @@ void nbd::sampleC2(Matrices& C2, const CSC& rels, const Matrices& A, const Matri
   for (int64_t j = 0; j < rels.N; j++) {
     Matrix& cj = C2[j + ibegin];
 
-    for (int64_t ij = rels.CSC_COLS[j]; ij < rels.CSC_COLS[j + 1]; ij++) {
-      int64_t i = rels.CSC_ROWS[ij];
+    for (int64_t ij = rels.COLS_NEAR[j]; ij < rels.COLS_NEAR[j + 1]; ij++) {
+      int64_t i = rels.ROWS_NEAR[ij];
       if (i == j + lbegin)
         continue;
       int64_t box_i = i;
-      iLocal('N', box_i, i, level);
+      iLocal(box_i, i, level);
 
       const Matrix& Aij = A[ij];
       msample_m('T', Aij, C1[box_i], cj);
@@ -71,7 +71,7 @@ void nbd::allocBasis(Basis& basis, int64_t levels) {
   basis.resize(levels + 1);
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = (int64_t)1 << i;
-    contentLength('N', nodes, i);
+    contentLength(nodes, i);
     basis[i].DIMS.resize(nodes);
     basis[i].DIMO.resize(nodes);
     basis[i].DIML.resize(nodes);
@@ -136,7 +136,7 @@ void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, con
     Cell* ci = leaves[i];
     int64_t ii = ci->ZID;
     int64_t box_i = ii;
-    iLocal('N', box_i, ii, level);
+    iLocal(box_i, ii, level);
 
     evaluateBasis(ef, basis.Ulr[box_i], ci, bodies, epi, mrank, sp_pts, dim);
     int64_t ni;
@@ -183,7 +183,7 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
     const Cell* ci = leaves[i];
     int64_t ii = ci->ZID;
     int64_t box_i = ii;
-    iLocal('N', box_i, ii, level);
+    iLocal(box_i, ii, level);
 
     int64_t offset_i = offsets[box_i];
     std::copy(ci->Multipole.begin(), ci->Multipole.end(), &mps_comm[offset_i]);
@@ -201,7 +201,7 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
     Cell* ci = *iter;
     int64_t ii = ci->ZID;
     int64_t box_i = ii;
-    iLocal('N', box_i, ii, level);
+    iLocal(box_i, ii, level);
 
     int64_t offset_i = offsets[box_i];
     int64_t end_i = offset_i + basis.DIML[box_i];
@@ -247,7 +247,7 @@ void nbd::fillDimsFromCell(Base& basis, const Cell* cell, int64_t level) {
     const Cell* ci = leaves[i];
     int64_t ii = ci->ZID;
     int64_t box_i = ii;
-    iLocal('N', box_i, ii, level);
+    iLocal(box_i, ii, level);
 
     int64_t ni;
     childMultipoleSize(&ni, *ci);
@@ -326,14 +326,14 @@ void nbd::nextBasisDims(Base& bsnext, const int64_t dimo[], int64_t nlevel) {
   for (int64_t i = 0; i < nboxes; i++) {
     int64_t nloc = i + ibegin;
     int64_t nrnk = nloc;
-    iGlobal('N', nrnk, nloc, nlevel);
+    iGlobal(nrnk, nloc, nlevel);
 
     int64_t c0rnk = nrnk << 1;
     int64_t c1rnk = (nrnk << 1) + 1;
     int64_t c0 = c0rnk;
     int64_t c1 = c1rnk;
-    iLocal('N', c0, c0rnk, clevel);
-    iLocal('N', c1, c1rnk, clevel);
+    iLocal(c0, c0rnk, clevel);
+    iLocal(c1, c1rnk, clevel);
 
     dims[nloc] = c0 >= 0 ? dimo[c0] : 0;
     dims[nloc] = dims[nloc] + (c1 >= 0 ? dimo[c1] : 0);

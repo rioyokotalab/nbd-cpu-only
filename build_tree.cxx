@@ -352,35 +352,6 @@ void nbd::collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
   }
 }
 
-void nbd::writeChildMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen) {
-  if (cell.NCHILD > 0) {
-    int64_t max = 0;
-    int64_t count = 0;
-    for (int64_t i = 0; i < cell.NCHILD; i++) {
-      Cell& c = cell.CHILD[i];
-      int64_t begin = count;
-      max = max + c.NBODY;
-      while (count < mlen && multipoles[count] < max)
-        count++;
-      int64_t len = count - begin;
-      if (c.Multipole.size() != len)
-        c.Multipole.resize(len);
-    }
-
-    count = 0;
-    for (int64_t i = 0; i < cell.NCHILD; i++) {
-      Cell& c = cell.CHILD[i];
-      int64_t loc = c.BODY - cell.BODY;
-      int64_t len = c.Multipole.size();
-      for (int64_t n = 0; n < len; n++) {
-        int64_t nloc = multipoles[count] - loc;
-        c.Multipole[n] = nloc;
-        count += 1;
-      }
-    }
-  }
-}
-
 void nbd::childMultipoleSize(int64_t* size, const Cell& cell) {
   if (cell.NCHILD > 0) {
     int64_t s = 0;
@@ -410,10 +381,14 @@ void nbd::relationsNear(CSC rels[], const Cells& cells) {
 
     csc.M = (int64_t)1 << i;
     csc.N = mpi_boxes;
-    csc.CSC_COLS.resize(mpi_boxes + 1);
-    std::fill(csc.CSC_COLS.begin(), csc.CSC_COLS.end(), 0);
-    csc.CSC_ROWS.clear();
-    csc.NNZ = 0;
+    csc.COLS_NEAR.resize(mpi_boxes + 1);
+    csc.COLS_FAR.resize(mpi_boxes + 1);
+    std::fill(csc.COLS_NEAR.begin(), csc.COLS_NEAR.end(), 0);
+    std::fill(csc.COLS_FAR.begin(), csc.COLS_FAR.end(), 0);
+    csc.ROWS_NEAR.clear();
+    csc.ROWS_FAR.clear();
+    csc.NNZ_NEAR = 0;
+    csc.NNZ_FAR = 0;
     csc.CBGN = (mpi_rank >> mpi_dups) * mpi_boxes;
   }
 
@@ -424,20 +399,30 @@ void nbd::relationsNear(CSC rels[], const Cells& cells) {
     int64_t n = c.ZID - csc.CBGN;
     if (n >= 0 && n < csc.N) {
       int64_t ent = c.listNear.size();
-      csc.CSC_COLS[n] = ent;
+      csc.COLS_NEAR[n] = ent;
       for (int64_t j = 0; j < ent; j++)
-        csc.CSC_ROWS.emplace_back((c.listNear[j])->ZID);
-      csc.NNZ = csc.NNZ + ent;
+        csc.ROWS_NEAR.emplace_back((c.listNear[j])->ZID);
+      csc.NNZ_NEAR = csc.NNZ_NEAR + ent;
+
+      ent = c.listFar.size();
+      csc.COLS_FAR[n] = ent;
+      for (int64_t j = 0; j < ent; j++)
+        csc.ROWS_FAR.emplace_back((c.listFar[j])->ZID);
+      csc.NNZ_FAR = csc.NNZ_FAR + ent;
     }
   }
 
   for (int64_t i = 0; i <= levels; i++) {
     CSC& csc = rels[i];
-    int64_t count = 0;
+    int64_t count_n = 0;
+    int64_t count_f = 0;
     for (int64_t j = 0; j <= csc.N; j++) {
-      int64_t ent = csc.CSC_COLS[j];
-      csc.CSC_COLS[j] = count;
-      count = count + ent;
+      int64_t ent_n = csc.COLS_NEAR[j];
+      int64_t ent_f = csc.COLS_FAR[j];
+      csc.COLS_NEAR[j] = count_n;
+      csc.COLS_FAR[j] = count_f;
+      count_n = count_n + ent_n;
+      count_f = count_f + ent_f;
     }
   }
 }
@@ -450,20 +435,46 @@ void nbd::evaluateLeafNear(Matrices& d, EvalFunc ef, const Cell* cell, int64_t d
     int64_t n = cell->ZID - csc.CBGN;
     if (n >= 0 && n < csc.N) {
       int64_t len = cell->listNear.size();
-      int64_t off = csc.CSC_COLS[n];
-      for (int64_t i = 0; i < len; i++)
+      int64_t off = csc.COLS_NEAR[n];
+      for (int64_t i = 0; i < len; i++) {
+        cMatrix(d[off + i], cell->listNear[i]->NBODY, cell->NBODY);
         P2Pmat(ef, cell->listNear[i], cell, dim, d[off + i]);
+      }
     }
   }
 }
 
-void nbd::lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
+void nbd::evaluateFar(Matrices& s, EvalFunc ef, const Cell* cell, int64_t dim, const CSC& csc, int64_t level) {
+  if (cell->LEVEL < level)
+    for (int64_t i = 0; i < cell->NCHILD; i++)
+      evaluateFar(s, ef, cell->CHILD + i, dim, csc, level);
+  else {
+    int64_t n = cell->ZID - csc.CBGN;
+    if (n >= 0 && n < csc.N) {
+      int64_t len = cell->listFar.size();
+      int64_t off = csc.COLS_FAR[n];
+      for (int64_t i = 0; i < len; i++) {
+        cMatrix(s[off + i], cell->listFar[i]->Multipole.size(), cell->Multipole.size());
+        M2Lmat(ef, cell->listFar[i], cell, dim, s[off + i]);
+      }
+    }
+  }
+}
+
+void nbd::lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
   int64_t lj = j - rels.CBGN;
   if (lj < 0 || lj >= rels.N)
   { ij = -1; return; }
-  int64_t k = std::distance(rels.CSC_ROWS.data(), 
-    std::find(rels.CSC_ROWS.data() + rels.CSC_COLS[lj], rels.CSC_ROWS.data() + rels.CSC_COLS[lj + 1], i));
-  ij = (k < rels.CSC_COLS[lj + 1]) ? k : -1;
+  if (NoF == 'N' || NoF == 'n') {
+    int64_t k = std::distance(rels.ROWS_NEAR.data(), 
+      std::find(rels.ROWS_NEAR.data() + rels.COLS_NEAR[lj], rels.ROWS_NEAR.data() + rels.COLS_NEAR[lj + 1], i));
+    ij = (k < rels.COLS_NEAR[lj + 1]) ? k : -1;
+  }
+  else if (NoF == 'F' || NoF == 'f') {
+    int64_t k = std::distance(rels.ROWS_FAR.data(), 
+      std::find(rels.ROWS_FAR.data() + rels.COLS_FAR[lj], rels.ROWS_FAR.data() + rels.COLS_FAR[lj + 1], i));
+    ij = (k < rels.COLS_FAR[lj + 1]) ? k : -1;
+  }
 }
 
 
@@ -481,7 +492,7 @@ void writeIntermediate(Matrix& d, EvalFunc ef, const Cell* ci, const Cell* cj, i
       int64_t mi = cii->Multipole.size();
       const std::vector<Cell*>& cii_m2l = cii->listFar;
       int64_t box_i = cii->ZID;
-      iLocal('N', box_i, cii->ZID, cii->LEVEL);
+      iLocal(box_i, cii->ZID, cii->LEVEL);
       const Matrix* u = box_i >= 0 ? &uc[box_i] : nullptr;
 
       int64_t x_off = 0;
@@ -489,7 +500,7 @@ void writeIntermediate(Matrix& d, EvalFunc ef, const Cell* ci, const Cell* cj, i
         const Cell* cjj = cj->CHILD + j;
         int64_t mj = cjj->Multipole.size();
         int64_t box_j = cjj->ZID;
-        iLocal('N', box_j, cjj->ZID, cjj->LEVEL);
+        iLocal(box_j, cjj->ZID, cjj->LEVEL);
         const Matrix* vt = box_j >= 0 ? &uc[box_j] : nullptr;
 
         Matrix m2l;
@@ -503,7 +514,7 @@ void writeIntermediate(Matrix& d, EvalFunc ef, const Cell* ci, const Cell* cj, i
           int64_t zii = cii->ZID;
           int64_t zjj = cjj->ZID;
           int64_t ij;
-          lookupIJ(ij, cscc, zii, zjj);
+          lookupIJ('N', ij, cscc, zii, zjj);
           if (ij >= 0 && u != nullptr && vt != nullptr) {
             utav('T', *u, dc[ij], *vt, m2l);
             cpyMatToMat(mi, mj, m2l, d, 0, 0, y_off, x_off);
@@ -528,7 +539,7 @@ void evaluateIntermediate(EvalFunc ef, const Cell* c, int64_t dim, const CSC* cs
       const Cell* ci = c->listNear[i];
       int64_t zi = ci->ZID;
       int64_t ij;
-      lookupIJ(ij, *csc, zi, zj);
+      lookupIJ('N', ij, *csc, zi, zj);
       if (ij >= 0)
         writeIntermediate((*d)[ij], ef, ci, c, dim, d[1], base[1].Uc, csc[1]);
     }
@@ -539,7 +550,7 @@ void nbd::evaluateNear(Matrices d[], EvalFunc ef, const Cells& cells, int64_t di
   Matrices& dleaf = d[levels];
   const CSC& cleaf = rels[levels];
   for (int64_t i = 0; i <= levels; i++)
-    d[i].resize(rels[i].NNZ);
+    d[i].resize(rels[i].NNZ_NEAR);
   evaluateLeafNear(dleaf, ef, &cells[0], dim, cleaf);
   for (int64_t i = levels - 1; i >= 0; i--) {
     evaluateIntermediate(ef, &cells[0], dim, &rels[i], &base[i], &d[i], i);
@@ -550,7 +561,7 @@ void nbd::evaluateNear(Matrices d[], EvalFunc ef, const Cells& cells, int64_t di
 
 void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
-  contentLength('N', xlen, level);
+  contentLength(xlen, level);
   X.resize(xlen);
 
   int64_t ibegin = 0;
@@ -566,7 +577,7 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   for (int64_t i = 0; i < len; i++) {
     const Cell* ci = cells[i];
     int64_t li = ci->ZID;
-    iLocal('N', li, ci->ZID, level);
+    iLocal(li, ci->ZID, level);
     Vector& Xi = X[li];
     cVector(Xi, ci->NBODY);
     dims[li] = ci->NBODY;

@@ -13,11 +13,27 @@ void nbd::splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matr
 
 #pragma omp parallel for
   for (int64_t x = 0; x < rels.N; x++) {
-    for (int64_t yx = rels.CSC_COLS[x]; yx < rels.CSC_COLS[x + 1]; yx++) {
-      int64_t y = rels.CSC_ROWS[yx];
+    for (int64_t yx = rels.COLS_NEAR[x]; yx < rels.COLS_NEAR[x + 1]; yx++) {
+      int64_t y = rels.ROWS_NEAR[yx];
       int64_t box_y = y;
-      iLocal('N', box_y, y, level);
+      iLocal(box_y, y, level);
       utav('N', U[box_y], A[yx], vlocal[x], A_out[yx]);
+    }
+  }
+}
+
+void nbd::splitS(Matrices& S_out, const CSC& rels, const Matrices& S, const Matrices& U, const Matrices& V, int64_t level) {
+  int64_t ibegin = 0, iend;
+  selfLocalRange(ibegin, iend, level);
+  const Matrix* vlocal = &V[ibegin];
+
+#pragma omp parallel for
+  for (int64_t x = 0; x < rels.N; x++) {
+    for (int64_t yx = rels.COLS_FAR[x]; yx < rels.COLS_FAR[x + 1]; yx++) {
+      int64_t y = rels.ROWS_FAR[yx];
+      int64_t box_y = y;
+      iLocal(box_y, y, level);
+      utav('T', U[box_y], S[yx], vlocal[x], S_out[yx]);
     }
   }
 }
@@ -27,12 +43,12 @@ void nbd::factorAcc(Matrices& A_cc, const CSC& rels) {
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     Matrix& A_ii = A_cc[ii];
     chol_decomp(A_ii);
 
-    for (int64_t yi = rels.CSC_COLS[i]; yi < rels.CSC_COLS[i + 1]; yi++) {
-      int64_t y = rels.CSC_ROWS[yi];
+    for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++) {
+      int64_t y = rels.ROWS_NEAR[yi];
       if (y > i + lbegin)
         trsm_lowerA(A_cc[yi], A_ii);
     }
@@ -44,9 +60,9 @@ void nbd::factorAoc(Matrices& A_oc, const Matrices& A_cc, const CSC& rels) {
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     const Matrix& A_ii = A_cc[ii];
-    for (int64_t yi = rels.CSC_COLS[i]; yi < rels.CSC_COLS[i + 1]; yi++)
+    for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++)
       trsm_lowerA(A_oc[yi], A_ii);
   }
 }
@@ -56,7 +72,7 @@ void nbd::schurCmplm(Matrices& S, const Matrices& A_oc, const CSC& rels) {
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     const Matrix& A_ii = A_oc[ii];
     Matrix& S_i = S[ii];
     mmult('N', 'T', A_ii, A_ii, S_i, -1., 1.);
@@ -67,11 +83,14 @@ void nbd::schurCmplm(Matrices& S, const Matrices& A_oc, const CSC& rels) {
 void nbd::allocNodes(Nodes& nodes, const CSC rels[], int64_t levels) {
   nodes.resize(levels + 1);
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t nnz = rels[i].NNZ;
+    int64_t nnz = rels[i].NNZ_NEAR;
     nodes[i].A.resize(nnz);
     nodes[i].A_cc.resize(nnz);
     nodes[i].A_oc.resize(nnz);
     nodes[i].A_oo.resize(nnz);
+    int64_t nnz_f = rels[i].NNZ_FAR;
+    nodes[i].S.resize(nnz_f);
+    nodes[i].S_oo.resize(nnz_f);
   }
 }
 
@@ -83,10 +102,10 @@ void nbd::allocA(Matrices& A, const CSC& rels, const int64_t dims[], int64_t lev
     int64_t box_j = ibegin + j;
     int64_t nbodies_j = dims[box_j];
 
-    for (int64_t ij = rels.CSC_COLS[j]; ij < rels.CSC_COLS[j + 1]; ij++) {
-      int64_t i = rels.CSC_ROWS[ij];
+    for (int64_t ij = rels.COLS_NEAR[j]; ij < rels.COLS_NEAR[j + 1]; ij++) {
+      int64_t i = rels.ROWS_NEAR[ij];
       int64_t box_i = i;
-      iLocal('N', box_i, i, level);
+      iLocal(box_i, i, level);
       int64_t nbodies_i = dims[box_i];
 
       Matrix& A_ij = A[ij];
@@ -105,16 +124,24 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
     int64_t dimo_j = dimo[box_j];
     int64_t dimc_j = dims[box_j] - dimo_j;
 
-    for (int64_t ij = rels.CSC_COLS[j]; ij < rels.CSC_COLS[j + 1]; ij++) {
-      int64_t i = rels.CSC_ROWS[ij];
+    for (int64_t ij = rels.COLS_NEAR[j]; ij < rels.COLS_NEAR[j + 1]; ij++) {
+      int64_t i = rels.ROWS_NEAR[ij];
       int64_t box_i = i;
-      iLocal('N', box_i, i, level);
+      iLocal(box_i, i, level);
       int64_t dimo_i = dimo[box_i];
       int64_t dimc_i = dims[box_i] - dimo_i;
 
       cMatrix(n.A_cc[ij], dimc_i, dimc_j);
       cMatrix(n.A_oc[ij], dimo_i, dimc_j);
       cMatrix(n.A_oo[ij], dimo_i, dimo_j);
+    }
+
+    for (int64_t ij = rels.COLS_FAR[j]; ij < rels.COLS_FAR[j + 1]; ij++) {
+      int64_t i = rels.ROWS_FAR[ij];
+      int64_t box_i = i;
+      iLocal(box_i, i, level);
+      int64_t dimo_i = dimo[box_i];
+      cMatrix(n.S_oo[ij], dimo_i, dimo_j);
     }
   }
 }
@@ -126,6 +153,7 @@ void nbd::factorNode(Node& n, Base& basis, const CSC& rels, double epi, int64_t 
   splitA(n.A_cc, rels, n.A, basis.Uc, basis.Uc, level);
   splitA(n.A_oc, rels, n.A, basis.Uo, basis.Uc, level);
   splitA(n.A_oo, rels, n.A, basis.Uo, basis.Uo, level);
+  splitS(n.A_oo, rels, n.S, basis.Ulr, basis.Ulr, level);
 
   factorAcc(n.A_cc, rels);
   factorAoc(n.A_oc, n.A_cc, rels);
@@ -151,20 +179,20 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
     int64_t lj = gj;
     int64_t lj0 = cj0;
     int64_t lj1 = cj1;
-    iLocal('N', lj, gj, nlevel);
-    iLocal('N', lj0, cj0, clevel);
-    iLocal('N', lj1, cj1, clevel);
+    iLocal(lj, gj, nlevel);
+    iLocal(lj0, cj0, clevel);
+    iLocal(lj1, cj1, clevel);
     updateSubU(bsnext.Ulr[lj], bsprev.Ulr[lj0], bsprev.Ulr[lj1]);
 
-    for (int64_t ij = rels_up.CSC_COLS[j]; ij < rels_up.CSC_COLS[j + 1]; ij++) {
-      int64_t i = rels_up.CSC_ROWS[ij];
+    for (int64_t ij = rels_up.COLS_NEAR[j]; ij < rels_up.COLS_NEAR[j + 1]; ij++) {
+      int64_t i = rels_up.ROWS_NEAR[ij];
       int64_t ci0 = i << 1;
       int64_t ci1 = (i << 1) + 1;
       int64_t i00, i01, i10, i11;
-      lookupIJ(i00, rels_low, ci0, cj0);
-      lookupIJ(i01, rels_low, ci0, cj1);
-      lookupIJ(i10, rels_low, ci1, cj0);
-      lookupIJ(i11, rels_low, ci1, cj1);
+      lookupIJ('N', i00, rels_low, ci0, cj0);
+      lookupIJ('N', i01, rels_low, ci0, cj1);
+      lookupIJ('N', i10, rels_low, ci1, cj0);
+      lookupIJ('N', i11, rels_low, ci1, cj1);
 
       if (i00 >= 0) {
         const Matrix& m00 = Mlow[i00];
