@@ -2,8 +2,9 @@
 
 #include "linalg.hxx"
 
-#include "cblas.h"
-#include "lapacke.h"
+#include "mkl.h"
+//#include "cblas.h"
+//#include "lapacke.h"
 
 #include <cmath>
 #include <algorithm>
