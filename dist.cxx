@@ -12,8 +12,8 @@ using namespace nbd;
 struct Communicator {
   int64_t SELF_I;
   int64_t TWIN_I;
-  std::vector<int64_t> NGB_RNKS;
-  std::vector<int64_t> COMM_RNKS;
+  std::vector<int64_t> NGB;
+  std::vector<int64_t> NGB_COMM;
 };
 
 int64_t MPI_RANK = 0;
@@ -33,7 +33,6 @@ void nbd::initComm(int* argc, char** argv[]) {
   MPI_RANK = rank;
   MPI_SIZE = size;
   MPI_LEVELS = (int64_t)std::log2(size);
-  COMMS.resize(MPI_LEVELS + 1);
 
   prog_time = MPI_Wtime();
   tot_time = 0.;
@@ -46,9 +45,10 @@ void nbd::closeComm() {
     printf("Program %f s. Time in communication: %f s.\n", prog, tot_time);
   }
 
-  for (int64_t i = 0; i <= MPI_LEVELS; i++) {
-    COMMS[i].NGB_RNKS.clear();
-    COMMS[i].COMM_RNKS.clear();
+  int64_t len = COMMS.size();
+  for (int64_t i = 0; i < len; i++) {
+    COMMS[i].NGB.clear();
+    COMMS[i].NGB_COMM.clear();
   }
   COMMS.clear();
   MPI_Finalize();
@@ -64,8 +64,11 @@ void nbd::commRank(int64_t* mpi_rank, int64_t* mpi_size, int64_t* mpi_levels) {
 }
 
 void nbd::configureComm(int64_t level, const int64_t ngbs[], int64_t ngbs_len) {
-  if (level <= MPI_LEVELS && level >= 0) {
-    int64_t lvl_diff = MPI_LEVELS - level;
+  if (level >= COMMS.size()) {
+    COMMS.resize(level + 1);
+  }
+  if (ngbs) {
+    int64_t lvl_diff = level < MPI_LEVELS ? MPI_LEVELS - level : 0;
     int64_t my_rank = MPI_RANK >> lvl_diff;
     Communicator& gi = COMMS[level];
 
@@ -76,11 +79,11 @@ void nbd::configureComm(int64_t level, const int64_t ngbs[], int64_t ngbs_len) {
       int64_t twi = std::distance(ngbs, std::find(ngbs, ngbs + ngbs_len, my_twin));
       gi.SELF_I = self;
       gi.TWIN_I = twi == ngbs_len ? -1 : twi;
-      gi.NGB_RNKS.resize(ngbs_len);
-      gi.COMM_RNKS.resize(ngbs_len);
+      gi.NGB.resize(ngbs_len);
+      gi.NGB_COMM.resize(ngbs_len);
       for (int64_t i = 0; i < ngbs_len; i++) {
-        gi.NGB_RNKS[i] = ngbs[i];
-        gi.COMM_RNKS[i] = (ngbs[i] << lvl_diff) | mask;
+        gi.NGB[i] = ngbs[i];
+        gi.NGB_COMM[i] = (ngbs[i] << lvl_diff) | mask;
       }
     }
   }
@@ -90,90 +93,101 @@ void nbd::selfLocalRange(int64_t& ibegin, int64_t& iend, int64_t level) {
   if (level >= 0) {
     int64_t lvl_diff = level - MPI_LEVELS;
     int64_t boxes = lvl_diff > 0 ? ((int64_t)1 << lvl_diff) : 1;
-    const Communicator& gi = lvl_diff > 0 ? COMMS[MPI_LEVELS] : COMMS[level];
+    const Communicator& gi = COMMS[level];
     ibegin = gi.SELF_I * boxes;
     iend = gi.SELF_I * boxes + boxes;
   }
 }
 
-void nbd::neighborsILocal(int64_t& ilocal, int64_t iglobal, int64_t level) {
+void nbd::iLocal(char ngrm, int64_t& ilocal, int64_t iglobal, int64_t level) {
   if (level >= 0) {
     int64_t lvl_diff = level - MPI_LEVELS;
     int64_t boxes = lvl_diff > 0 ? ((int64_t)1 << lvl_diff) : 1;
     int64_t box_rank = iglobal / boxes;
     int64_t i_rank = iglobal - box_rank * boxes;
 
-    const Communicator& gi = lvl_diff > 0 ? COMMS[MPI_LEVELS] : COMMS[level];
-    const int64_t* ngbs = &gi.NGB_RNKS[0];
-    int64_t ngbs_len = gi.NGB_RNKS.size();
+    const Communicator& gi = COMMS[level];
+    const int64_t* list;
+    int64_t list_len;
+    if (ngrm == 'N' || ngrm == 'n') {
+      list = gi.NGB.data();
+      list_len = gi.NGB.size();
+    }
 
-    int64_t box_ind = std::distance(ngbs, std::find(ngbs, ngbs + ngbs_len, box_rank));
-    ilocal = (box_ind < ngbs_len) ? (box_ind * boxes + i_rank) : -1;
+    int64_t box_ind = std::distance(list, std::find(list, list + list_len, box_rank));
+    ilocal = (box_ind < list_len) ? (box_ind * boxes + i_rank) : -1;
   }
 }
 
-void nbd::neighborsIGlobal(int64_t& iglobal, int64_t ilocal, int64_t level) {
+void nbd::iGlobal(char ngrm, int64_t& iglobal, int64_t ilocal, int64_t level) {
   if (level >= 0) {
     int64_t lvl_diff = level - MPI_LEVELS;
     int64_t boxes = lvl_diff > 0 ? ((int64_t)1 << lvl_diff) : 1;
     int64_t box_ind = ilocal / boxes;
     int64_t i_rank = ilocal - box_ind * boxes;
 
-    const Communicator& gi = lvl_diff > 0 ? COMMS[MPI_LEVELS] : COMMS[level];
-    const int64_t* ngbs = &gi.NGB_RNKS[0];
-    int64_t ngbs_len = gi.NGB_RNKS.size();
+    const Communicator& gi = COMMS[level];
+    const int64_t* list;
+    int64_t list_len;
+    if (ngrm == 'N' || ngrm == 'n') {
+      list = gi.NGB.data();
+      list_len = gi.NGB.size();
+    }
 
-    iglobal = (box_ind < ngbs_len) ? (ngbs[box_ind] * boxes + i_rank) : -1;
+    iglobal = (box_ind < list_len) ? (list[box_ind] * boxes + i_rank) : -1;
   }
 }
 
-void nbd::neighborContentLength(int64_t& len, int64_t level) {
+void nbd::contentLength(char ngrm, int64_t& len, int64_t level) {
   if (level >= 0) {
     int64_t lvl_diff = level - MPI_LEVELS;
     int64_t boxes = lvl_diff > 0 ? ((int64_t)1 << lvl_diff) : 1;
-    const Communicator& gi = lvl_diff > 0 ? COMMS[MPI_LEVELS] : COMMS[level];
-    int64_t ngbs_len = gi.NGB_RNKS.size();
-    len = boxes * ngbs_len;
+    const Communicator& gi = COMMS[level];
+    int64_t list_len;
+    if (ngrm == 'N' || ngrm == 'n') {
+      list_len = gi.NGB.size();
+    }
+    len = boxes * list_len;
   }
 }
 
-void nbd::locateCOMM(int64_t level, int64_t* my_ind, int64_t* my_rank, int64_t* nboxes, int64_t** ngbs, int64_t* ngbs_len) {
+void nbd::locateCOMM(char ngrm, int64_t level, int64_t* my_ind, int64_t* my_rank, int64_t* nboxes, int64_t** comms, int64_t* comms_len) {
   if (level >= 0) {
     int64_t lvl_diff = level - MPI_LEVELS;
     int64_t boxes = lvl_diff > 0 ? ((int64_t)1 << lvl_diff) : 1;
-    Communicator& gi = lvl_diff > 0 ? COMMS[MPI_LEVELS] : COMMS[level];
+    Communicator& gi = COMMS[level];
     
     if (my_ind)
       *my_ind = gi.SELF_I;
     if (my_rank)
-      *my_rank = gi.COMM_RNKS[gi.SELF_I];
+      *my_rank = gi.NGB_COMM[gi.SELF_I];
     if (nboxes)
       *nboxes = boxes;
-    if (ngbs)
-      *ngbs = &gi.COMM_RNKS[0];
-    if (ngbs_len)
-      *ngbs_len = gi.COMM_RNKS.size();
+    if (comms)
+      *comms = &gi.NGB_COMM[0];
+    if (comms_len)
+      *comms_len = gi.NGB_COMM.size();
   }
 }
 
 void nbd::locateButterflyCOMM(int64_t level, int64_t* my_ind, int64_t* my_rank, int64_t* my_twi, int64_t* twi_rank) {
   if (level >= 0) {
-    Communicator& gi = level > MPI_LEVELS ? COMMS[MPI_LEVELS] : COMMS[level];
+    Communicator& gi = COMMS[level];
     
     if (my_ind)
       *my_ind = gi.SELF_I;
     if (my_rank)
-      *my_rank = gi.COMM_RNKS[gi.SELF_I];
+      *my_rank = gi.NGB_COMM[gi.SELF_I];
     if (my_twi)
       *my_twi = gi.TWIN_I;
     if (twi_rank)
-      *twi_rank = gi.TWIN_I == -1 ? -1 : gi.COMM_RNKS[gi.TWIN_I];
+      *twi_rank = gi.TWIN_I == -1 ? -1 : gi.NGB_COMM[gi.TWIN_I];
   }
 }
 
 void nbd::DistributeVectorsList(Vectors& lis, int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
   std::vector<MPI_Request> requests(ngbs_len);
 
   std::vector<int64_t> LENS(ngbs_len);
@@ -248,7 +262,7 @@ void nbd::DistributeVectorsList(Vectors& lis, int64_t level) {
 
 void nbd::DistributeMatricesList(Matrices& lis, int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
   std::vector<MPI_Request> requests(ngbs_len);
 
   std::vector<int64_t> LENS(ngbs_len);
@@ -324,7 +338,7 @@ void nbd::DistributeMatricesList(Matrices& lis, int64_t level) {
 
 void nbd::DistributeDims(int64_t dims[], int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
   std::vector<MPI_Request> requests(ngbs_len);
 
   const int64_t* my_data = &dims[my_ind * nboxes];
@@ -355,7 +369,7 @@ void nbd::DistributeDims(int64_t dims[], int64_t level) {
 
 void nbd::DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
   std::vector<int64_t> sizes(ngbs_len);
   std::vector<int64_t> offsets(ngbs_len);
 
@@ -432,7 +446,6 @@ void nbd::butterflyUpdateMultipoles(int64_t multipoles[], int64_t my_dim, int64_
 }
 
 
-
 void nbd::butterflySumA(Matrices& A, int64_t level) {
   int64_t my_ind, my_rank, my_twi, rm_rank;
   locateButterflyCOMM(level, &my_ind, &my_rank, &my_twi, &rm_rank);
@@ -481,7 +494,7 @@ void nbd::butterflySumA(Matrices& A, int64_t level) {
 
 void nbd::sendFwSubstituted(const Vectors& X, int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
 
   std::vector<MPI_Request> requests(ngbs_len);
   std::vector<double*> DATA(ngbs_len);
@@ -527,7 +540,7 @@ void nbd::sendFwSubstituted(const Vectors& X, int64_t level) {
 
 void nbd::sendBkSubstituted(const Vectors& X, int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
   int64_t LEN = 0;
 
   int64_t lbegin = my_ind * nboxes;
@@ -557,7 +570,7 @@ void nbd::sendBkSubstituted(const Vectors& X, int64_t level) {
 
 void nbd::recvFwSubstituted(Vectors& X, int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
   int64_t LEN = 0;
 
   int64_t lbegin = my_ind * nboxes;
@@ -587,7 +600,7 @@ void nbd::recvFwSubstituted(Vectors& X, int64_t level) {
 
 void nbd::recvBkSubstituted(Vectors& X, int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
 
   std::vector<MPI_Request> requests(ngbs_len);
   std::vector<double*> DATA(ngbs_len);
@@ -640,7 +653,7 @@ void nbd::recvBkSubstituted(Vectors& X, int64_t level) {
 
 void nbd::distributeSubstituted(Vectors& X, int64_t level) {
   int64_t my_ind, my_rank, nboxes, *ngbs, ngbs_len;
-  locateCOMM(level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
+  locateCOMM('N', level, &my_ind, &my_rank, &nboxes, &ngbs, &ngbs_len);
   std::vector<MPI_Request> requests(ngbs_len);
 
   std::vector<int64_t> LENS(ngbs_len);

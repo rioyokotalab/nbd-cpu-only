@@ -7,6 +7,7 @@
 #include <random>
 #include <numeric>
 #include <algorithm>
+#include <set>
 #include <cstdio>
 
 using namespace nbd;
@@ -257,22 +258,46 @@ Cell* nbd::findLocalAtLevelModify(Cell* cell, int64_t level) {
 
 void nbd::traverse(Cells& cells, int64_t levels, int64_t dim, int64_t theta) {
   getList(&cells[0], &cells[0], dim, theta);
+  int64_t mpi_size;
   int64_t mpi_levels;
-  commRank(NULL, NULL, &mpi_levels);
+  commRank(NULL, &mpi_size, &mpi_levels);
 
+  configureComm(levels, NULL, 0);
   const Cell* local = &cells[0];
-  for (int64_t i = 0; i <= mpi_levels; i++) {
+  for (int64_t i = 0; i <= levels; i++) {
     local = findLocalAtLevel(local, i);
-    if (local != nullptr) {
-      int64_t nlen = local->listNear.size();
-      std::vector<int64_t> ngbs(nlen);
-      for (int64_t n = 0; n < nlen; n++) {
-        Cell* c = (local->listNear)[n];
-        ngbs[n] = c->ZID;
-      }
+    int64_t nodes = i > mpi_levels ? (int64_t)1 << (i - mpi_levels) : 1;
 
-      configureComm(i, &ngbs[0], nlen);
+    int64_t len = 0;
+    std::vector<const Cell*> leaves(nodes);
+    findCellsAtLevel(&leaves[0], &len, local, i);
+    std::set<int64_t> ngbs;
+
+    for (int64_t n = 0; n < len; n++) {
+      const Cell* c = leaves[n];
+      int64_t nlen = c->listNear.size();
+      for (int64_t j = 0; j < nlen; j++) {
+        const Cell* cj = (c->listNear)[j];
+        int64_t ngb = (cj->ZID) / nodes;
+        ngbs.emplace(ngb);
+      }
+      int64_t flen = c->listFar.size();
+      for (int64_t j = 0; j < flen; j++) {
+        const Cell* cj = (c->listFar)[j];
+        int64_t ngb = (cj->ZID) / nodes;
+        ngbs.emplace(ngb);
+      }
     }
+
+    int64_t size = ngbs.size();
+    std::vector<int64_t> ngbs_v(size);
+    std::set<int64_t>::iterator iter = ngbs.begin();
+    for (int64_t n = 0; n < size; n++) {
+      ngbs_v[n] = *iter;
+      iter = std::next(iter);
+    }
+
+    configureComm(i, &ngbs_v[0], size);
   }
 }
 
@@ -325,7 +350,7 @@ void nbd::collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
   }
 }
 
-void nbd::writeChildMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen) {
+void nbd::writeMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen) {
   if (cell.NCHILD > 0) {
     int64_t max = 0;
     int64_t count = 0;
@@ -402,7 +427,6 @@ void nbd::relationsNear(CSC rels[], const Cells& cells) {
         csc.CSC_ROWS.emplace_back((c.listNear[j])->ZID);
       csc.NNZ = csc.NNZ + ent;
     }
-    //printf("%d %d %f %f %f\n", c.ZID, c.listNear.size(), c.R[0], c.R[1], c.R[2]);
   }
 
   for (int64_t i = 0; i <= levels; i++) {
@@ -455,7 +479,7 @@ void writeIntermediate(Matrix& d, EvalFunc ef, const Cell* ci, const Cell* cj, i
       int64_t mi = cii->Multipole.size();
       const std::vector<Cell*>& cii_m2l = cii->listFar;
       int64_t box_i = cii->ZID;
-      neighborsILocal(box_i, cii->ZID, cii->LEVEL);
+      iLocal('N', box_i, cii->ZID, cii->LEVEL);
       const Matrix* u = box_i >= 0 ? &uc[box_i] : nullptr;
 
       int64_t x_off = 0;
@@ -463,7 +487,7 @@ void writeIntermediate(Matrix& d, EvalFunc ef, const Cell* ci, const Cell* cj, i
         const Cell* cjj = cj->CHILD + j;
         int64_t mj = cjj->Multipole.size();
         int64_t box_j = cjj->ZID;
-        neighborsILocal(box_j, cjj->ZID, cjj->LEVEL);
+        iLocal('N', box_j, cjj->ZID, cjj->LEVEL);
         const Matrix* vt = box_j >= 0 ? &uc[box_j] : nullptr;
 
         Matrix m2l;
@@ -524,7 +548,7 @@ void nbd::evaluateNear(Matrices d[], EvalFunc ef, const Cells& cells, int64_t di
 
 void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
-  neighborContentLength(xlen, level);
+  contentLength('N', xlen, level);
   X.resize(xlen);
 
   int64_t ibegin = 0;
@@ -540,7 +564,7 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   for (int64_t i = 0; i < len; i++) {
     const Cell* ci = cells[i];
     int64_t li = ci->ZID;
-    neighborsILocal(li, ci->ZID, level);
+    iLocal('N', li, ci->ZID, level);
     Vector& Xi = X[li];
     cVector(Xi, ci->NBODY);
     dims[li] = ci->NBODY;

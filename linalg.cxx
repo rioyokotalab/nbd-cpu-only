@@ -72,8 +72,8 @@ void nbd::cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64
 }
 
 void nbd::updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out) {
-  Matrix au, work;
   int64_t m = A.M;
+  Matrix au, work;
   int64_t n = A.N + U.N;
   int64_t rank = std::min(m, n);
   rank = *rnk_out > 0 ? std::min(rank, *rnk_out) : rank;
@@ -97,8 +97,10 @@ void nbd::updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out) {
   }
   *rnk_out = rank;
 
-  cMatrix(U, rank, U.N);
-  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
+  if (rank > 0 && U.N > 0) {
+    cMatrix(U, rank, U.N);
+    cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
+  }
 }
 
 void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {

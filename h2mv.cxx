@@ -39,13 +39,13 @@ void nbd::horizontalPass(Vectors& B, const Vectors& X, EvalFunc ef, const Cell* 
     const Cell* ci = cells[i];
     int64_t lislen = ci->listNear.size();
     int64_t li = ci->ZID;
-    neighborsILocal(li, ci->ZID, level);
+    iLocal('N', li, ci->ZID, level);
     Vector& Bi = B[li];
 
     for (int64_t j = 0; j < lislen; j++) {
       const Cell* cj = ci->listNear[j];
       int64_t lj = cj->ZID;
-      neighborsILocal(lj, cj->ZID, level);
+      iLocal('N', lj, cj->ZID, level);
       const Vector& Xj = X[lj];
       M2Lc(ef, ci, cj, dim, Xj, Bi);
     }
@@ -66,13 +66,13 @@ void nbd::closeQuarter(Vectors& B, const Vectors& X, EvalFunc ef, const Cell* ce
     const Cell* ci = cells[i];
     int64_t lislen = ci->listNear.size();
     int64_t li = ci->ZID;
-    neighborsILocal(li, ci->ZID, level);
+    iLocal('N', li, ci->ZID, level);
     Vector& Bi = B[li];
 
     for (int64_t j = 0; j < lislen; j++) {
       const Cell* cj = ci->listNear[j];
       int64_t lj = cj->ZID;
-      neighborsILocal(lj, cj->ZID, level);
+      iLocal('N', lj, cj->ZID, level);
       const Vector& Xj = X[lj];
       P2P(ef, ci, cj, dim, Xj, Bi);
     }
@@ -92,8 +92,8 @@ void nbd::permuteAndMerge(char fwbk, Vectors& px, Vectors& nx, int64_t nlevel) {
   int64_t pboxes = pend - ploc;
   int64_t nbegin = 0;
   int64_t pbegin = 0;
-  neighborsIGlobal(nbegin, nloc, nlevel);
-  neighborsIGlobal(pbegin, ploc, plevel);
+  iGlobal('N', nbegin, nloc, nlevel);
+  iGlobal('N', pbegin, ploc, plevel);
 
   if (fwbk == 'F' || fwbk == 'f') {
     for (int64_t i = 0; i < nboxes; i++) {
@@ -229,7 +229,7 @@ void nbd::h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t d
     const Cell* ci = cells[i];
     int64_t lislen = ci->listNear.size();
     int64_t li = ci->ZID;
-    neighborsILocal(li, ci->ZID, levels);
+    iLocal('N', li, ci->ZID, levels);
     Vector& Bi = B[li];
     cVector(Bi, ci->NBODY);
     P2P(ef, ci, root, dim, X, Bi);

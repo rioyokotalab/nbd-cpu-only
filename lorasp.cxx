@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
   int64_t Ncrit = argc > 2 ? atol(argv[2]) : 256;
-  double theta = argc > 3 ? atof(argv[3]) : 1.;
+  double theta = argc > 3 ? atof(argv[3]) : 1;
   int64_t dim = argc > 4 ? atol(argv[4]) : 3;
   double epi = 1.e-5;
   int64_t rank_max = 40;

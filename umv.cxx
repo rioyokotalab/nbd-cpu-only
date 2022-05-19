@@ -16,7 +16,7 @@ void nbd::splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matr
     for (int64_t yx = rels.CSC_COLS[x]; yx < rels.CSC_COLS[x + 1]; yx++) {
       int64_t y = rels.CSC_ROWS[yx];
       int64_t box_y = y;
-      neighborsILocal(box_y, y, level);
+      iLocal('N', box_y, y, level);
       utav('N', U[box_y], A[yx], vlocal[x], A_out[yx]);
     }
   }
@@ -86,7 +86,7 @@ void nbd::allocA(Matrices& A, const CSC& rels, const int64_t dims[], int64_t lev
     for (int64_t ij = rels.CSC_COLS[j]; ij < rels.CSC_COLS[j + 1]; ij++) {
       int64_t i = rels.CSC_ROWS[ij];
       int64_t box_i = i;
-      neighborsILocal(box_i, i, level);
+      iLocal('N', box_i, i, level);
       int64_t nbodies_i = dims[box_i];
 
       Matrix& A_ij = A[ij];
@@ -108,7 +108,7 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
     for (int64_t ij = rels.CSC_COLS[j]; ij < rels.CSC_COLS[j + 1]; ij++) {
       int64_t i = rels.CSC_ROWS[ij];
       int64_t box_i = i;
-      neighborsILocal(box_i, i, level);
+      iLocal('N', box_i, i, level);
       int64_t dimo_i = dimo[box_i];
       int64_t dimc_i = dims[box_i] - dimo_i;
 
@@ -151,9 +151,9 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
     int64_t lj = gj;
     int64_t lj0 = cj0;
     int64_t lj1 = cj1;
-    neighborsILocal(lj, gj, nlevel);
-    neighborsILocal(lj0, cj0, clevel);
-    neighborsILocal(lj1, cj1, clevel);
+    iLocal('N', lj, gj, nlevel);
+    iLocal('N', lj0, cj0, clevel);
+    iLocal('N', lj1, cj1, clevel);
     updateSubU(bsnext.Ulr[lj], bsprev.Ulr[lj0], bsprev.Ulr[lj1]);
 
     for (int64_t ij = rels_up.CSC_COLS[j]; ij < rels_up.CSC_COLS[j + 1]; ij++) {

@@ -40,7 +40,7 @@ void nbd::svAccFw(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t le
       const Matrix& A_yi = A_cc[yi];
       if (y > i + lbegin) {
         int64_t box_y = y;
-        neighborsILocal(box_y, y, level);
+        iLocal('N', box_y, y, level);
         mvec('N', A_yi, xlocal[i], Xc[box_y], -1., 1.);
       }
     }
@@ -62,7 +62,7 @@ void nbd::svAccBk(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t le
       const Matrix& A_yi = A_cc[yi];
       if (y > i + lbegin) {
         int64_t box_y = y;
-        neighborsILocal(box_y, y, level);
+        iLocal('N', box_y, y, level);
         mvec('T', A_yi, Xc[box_y], xlocal[i], -1., 1.);
       }
     }
@@ -85,7 +85,7 @@ void nbd::svAocFw(Vectors& Xo, const Vectors& Xc, const Matrices& A_oc, const CS
     for (int64_t yx = rels.CSC_COLS[x]; yx < rels.CSC_COLS[x + 1]; yx++) {
       int64_t y = rels.CSC_ROWS[yx];
       int64_t box_y = y;
-      neighborsILocal(box_y, y, level);
+      iLocal('N', box_y, y, level);
       const Matrix& A_yx = A_oc[yx];
       mvec('N', A_yx, xlocal[x], Xo[box_y], -1., 1.);
     }
@@ -101,7 +101,7 @@ void nbd::svAocBk(Vectors& Xc, const Vectors& Xo, const Matrices& A_oc, const CS
     for (int64_t yx = rels.CSC_COLS[x]; yx < rels.CSC_COLS[x + 1]; yx++) {
       int64_t y = rels.CSC_ROWS[yx];
       int64_t box_y = y;
-      neighborsILocal(box_y, y, level);
+      iLocal('N', box_y, y, level);
       const Matrix& A_yx = A_oc[yx];
       mvec('T', A_yx, Xo[box_y], xlocal[x], -1., 1.);
     }
@@ -201,7 +201,7 @@ void nbd::solveH2(RHS st[], MatVec vx[], const SpDense sps[], EvalFunc ef, const
     int64_t xlen = (int64_t)1 << (levels - 1);
     int64_t ibegin = 0;
     int64_t iend = xlen;
-    neighborContentLength(xlen, levels - 1);
+    contentLength('N', xlen, levels - 1);
     selfLocalRange(ibegin, iend, levels - 1);
 
     Vectors Xi(xlen);
