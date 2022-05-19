@@ -15,6 +15,7 @@ namespace nbd {
     int64_t NCHILD;
     int64_t NBODY;
     Cell* CHILD;
+    Cell* SIBL;
     Body* BODY;
     double R[3];
     double C[3];
@@ -69,7 +70,7 @@ namespace nbd {
 
   void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
 
-  void writeMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen);
+  void writeChildMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen);
 
   void childMultipoleSize(int64_t* size, const Cell& cell);
 

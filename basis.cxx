@@ -213,12 +213,23 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
 }
 
 void nbd::evaluateBaseAll(EvalFunc ef, Base basis[], Cells& cells, int64_t levels, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
+  int64_t mpi_levels;
+  commRank(NULL, NULL, &mpi_levels);
+
   for (int64_t i = levels; i >= 0; i--) {
     Cell* vlocal = findLocalAtLevelModify(&cells[0], i);
     evaluateLocal(ef, basis[i], vlocal, i, bodies, epi, mrank, sp_pts, dim);
     writeRemoteCoupling(basis[i], vlocal, i);
-    if (i != 0)
-      nextBasisDims(basis[i - 1], basis[i].DIML.data(), i - 1);
+    
+    if (i <= mpi_levels && i > 0) {
+      int64_t mlen = vlocal->Multipole.size();
+      int64_t msib;
+      butterflyUpdateDims(mlen, &msib, i);
+      Cell* vsib = vlocal->SIBL;
+      if (vsib->Multipole.size() != msib)
+        vsib->Multipole.resize(msib);
+      butterflyUpdateMultipoles(vlocal->Multipole.data(), mlen, vsib->Multipole.data(), msib, i);
+    }
   }
 }
 

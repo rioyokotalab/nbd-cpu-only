@@ -33,7 +33,9 @@ namespace nbd {
 
   void DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64_t level);
 
-  void butterflyUpdateMultipoles(int64_t multipoles[], int64_t my_dim, int64_t mlen, int64_t level);
+  void butterflyUpdateDims(int64_t my_dim, int64_t* rm_dim, int64_t level);
+
+  void butterflyUpdateMultipoles(const int64_t multipoles[], int64_t my_dim, int64_t rm[], int64_t rm_dim, int64_t level);
 
   void butterflySumA(Matrices& A, int64_t level);
 

@@ -132,11 +132,13 @@ int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim)
       ci->CHILD = c0;
       ci->NCHILD = 2;
 
+      c0->SIBL = c1;
       c0->BODY = ci->BODY;
       c0->NBODY = loc;
       c0->ZID = (ci->ZID) << 1;
       c0->LEVEL = ci->LEVEL + 1;
 
+      c1->SIBL = c0;
       c1->BODY = ci->BODY + loc;
       c1->NBODY = ci->NBODY - loc;
       c1->ZID = ((ci->ZID) << 1) + 1;
@@ -350,7 +352,7 @@ void nbd::collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
   }
 }
 
-void nbd::writeMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen) {
+void nbd::writeChildMultipoles(Cell& cell, const int64_t multipoles[], int64_t mlen) {
   if (cell.NCHILD > 0) {
     int64_t max = 0;
     int64_t count = 0;

@@ -418,31 +418,34 @@ void nbd::DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64
   tot_time = tot_time + etime;
 }
 
-
-void nbd::butterflyUpdateMultipoles(int64_t multipoles[], int64_t my_dim, int64_t mlen, int64_t level) {
+void nbd::butterflyUpdateDims(int64_t my_dim, int64_t* rm_dim, int64_t level) {
   int64_t my_ind, my_rank, my_twi, rm_rank;
   locateButterflyCOMM(level, &my_ind, &my_rank, &my_twi, &rm_rank);
 
   MPI_Request request;
-  int64_t* DATA;
 
-  DATA = (int64_t*)malloc(sizeof(int64_t) * mlen);
-  int64_t rm_dim = mlen - my_dim;
-  int64_t offset = my_rank < rm_rank ? my_dim : 0;
+  double stime = MPI_Wtime();
+  int tag = 4;
+  MPI_Isend(&my_dim, 1, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, &request);
+  MPI_Recv(rm_dim, 1, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  MPI_Wait(&request, MPI_STATUS_IGNORE);
+  double etime = MPI_Wtime() - stime;
+  tot_time = tot_time + etime;
+}
+
+void nbd::butterflyUpdateMultipoles(const int64_t multipoles[], int64_t my_dim, int64_t rm[], int64_t rm_dim, int64_t level) {
+  int64_t my_ind, my_rank, my_twi, rm_rank;
+  locateButterflyCOMM(level, &my_ind, &my_rank, &my_twi, &rm_rank);
+
+  MPI_Request request;
 
   double stime = MPI_Wtime();
   int tag = 4;
   MPI_Isend(multipoles, (int)my_dim, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, &request);
-  MPI_Recv(&DATA[offset], (int)rm_dim, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  MPI_Recv(rm, (int)rm_dim, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   MPI_Wait(&request, MPI_STATUS_IGNORE);
   double etime = MPI_Wtime() - stime;
   tot_time = tot_time + etime;
-
-  offset = my_rank < rm_rank ? 0 : rm_dim;
-  std::copy(multipoles, multipoles + my_dim, &DATA[offset]);
-  std::copy(DATA, DATA + mlen, multipoles);
-
-  free(DATA);
 }
 
 
