@@ -2,8 +2,6 @@
 
 #include "solver.hxx"
 #include "dist.hxx"
-#include "h2mv.hxx"
-#include "minblas.h"
 
 #include <random>
 #include <cstdio>
@@ -24,7 +22,7 @@ int main(int argc, char* argv[]) {
   double theta = argc > 3 ? atof(argv[3]) : 1;
   int64_t dim = argc > 4 ? atol(argv[4]) : 3;
   double epi = 1.e-5;
-  int64_t rank_max = 40;
+  int64_t rank_max = 60;
   //omp_set_num_threads(4);
   
   EvalFunc ef = yukawa3d();
@@ -98,13 +96,10 @@ int main(int argc, char* argv[]) {
   double err;
   solveRelErr(&err, rhs[levels].X, Xref, levels);
 
-  int64_t* flops = getFLOPS();
-  double gf = flops[0] * 1.e-9;
-
   if (mpi_rank == 0) {
     std::cout << "LORASP: " << Nbody << "," << Ncrit << "," << theta << "," << dim
 	    << "," << mpi_size << "," << ftime << ","
-	    << stime << "," << err << "," << gf << std::endl;
+	    << stime << "," << err << std::endl;
   }
   closeComm();
   return 0;

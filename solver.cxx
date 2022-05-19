@@ -14,11 +14,15 @@ void nbd::basisXoc(char fwbk, RHS& vx, const Base& basis, int64_t level) {
   Vectors& Xc = vx.Xc;
 
   if (fwbk == 'F' || fwbk == 'f')
-    for (int64_t i = lbegin; i < lend; i++)
-      pvc_fw(X[i], basis.Uo[i], basis.Uc[i], Xo[i], Xc[i]);
+    for (int64_t i = lbegin; i < lend; i++) {
+      mvec('T', basis.Uc[i], X[i], Xc[i], 1., 0.);
+      mvec('T', basis.Uo[i], X[i], Xo[i], 1., 0.);
+    }
   else if (fwbk == 'B' || fwbk == 'b')
-    for (int64_t i = lbegin; i < lend; i++)
-      pvc_bk(Xo[i], Xc[i], basis.Uo[i], basis.Uc[i], X[i]);
+    for (int64_t i = lbegin; i < lend; i++) {
+      mvec('N', basis.Uc[i], Xc[i], X[i], 1., 0.);
+      mvec('N', basis.Uo[i], Xo[i], X[i], 1., 1.);
+    }
 }
 
 
@@ -107,6 +111,63 @@ void nbd::svAocBk(Vectors& Xc, const Vectors& Xo, const Matrices& A_oc, const CS
     }
 }
 
+void nbd::permuteAndMerge(char fwbk, Vectors& px, Vectors& nx, int64_t nlevel) {
+  int64_t plevel = nlevel + 1;
+  int64_t nloc = 0;
+  int64_t nend = (int64_t)1 << nlevel;
+  int64_t ploc = 0;
+  int64_t pend = (int64_t)1 << plevel;
+  selfLocalRange(nloc, nend, nlevel);
+  selfLocalRange(ploc, pend, plevel);
+
+  int64_t nboxes = nend - nloc;
+  int64_t pboxes = pend - ploc;
+  int64_t nbegin = 0;
+  int64_t pbegin = 0;
+  iGlobal(nbegin, nloc, nlevel);
+  iGlobal(pbegin, ploc, plevel);
+
+  if (fwbk == 'F' || fwbk == 'f') {
+    for (int64_t i = 0; i < nboxes; i++) {
+      int64_t p = (i + nbegin) << 1;
+      int64_t c0 = p - pbegin;
+      int64_t c1 = p + 1 - pbegin;
+      Vector& x0 = nx[i + nloc];
+
+      if (c0 >= 0 && c0 < pboxes) {
+        const Vector& x1 = px[c0 + ploc];
+        cpyVecToVec(x1.N, x1, x0, 0, 0);
+      }
+
+      if (c1 >= 0 && c1 < pboxes) {
+        const Vector& x2 = px[c1 + ploc];
+        cpyVecToVec(x2.N, x2, x0, 0, x0.N - x2.N);
+      }
+    }
+
+    if (nboxes == pboxes)
+      butterflySumX(nx, plevel);
+  }
+  else if (fwbk == 'B' || fwbk == 'b') {
+    for (int64_t i = 0; i < nboxes; i++) {
+      int64_t p = (i + nbegin) << 1;
+      int64_t c0 = p - pbegin;
+      int64_t c1 = p + 1 - pbegin;
+      const Vector& x0 = nx[i + nloc];
+
+      if (c0 >= 0 && c0 < pboxes) {
+        Vector& x1 = px[c0 + ploc];
+        cpyVecToVec(x1.N, x0, x1, 0, 0);
+      }
+
+      if (c1 >= 0 && c1 < pboxes) {
+        Vector& x2 = px[c1 + ploc];
+        cpyVecToVec(x2.N, x0, x2, x0.N - x2.N, 0);
+      }
+    }
+  }
+}
+
 void nbd::allocRightHandSides(RHS st[], const Base base[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = base[i].DIMS.size();
@@ -190,49 +251,6 @@ void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D, doubl
 void nbd::solveSpDense(RHS st[], const SpDense& sp, const Vectors& X) {
   allocRightHandSides(st, &sp.Basis[0], sp.Levels);
   solveA(st, &sp.D[0], &sp.Basis[0], sp.Rels, X, sp.Levels);
-}
-
-void nbd::solveH2(RHS st[], MatVec vx[], const SpDense sps[], EvalFunc ef, const Cell* root, const Base basis[], int64_t dim, const Vectors& X, int64_t levels) {
-  solveSpDense(st, sps[levels], X);
-
-  if (levels > 0) {
-    h2MatVecLR(vx, ef, root, basis, dim, st[levels].X, levels);
-
-    int64_t xlen = (int64_t)1 << (levels - 1);
-    int64_t ibegin = 0;
-    int64_t iend = xlen;
-    contentLength(xlen, levels - 1);
-    selfLocalRange(ibegin, iend, levels - 1);
-
-    Vectors Xi(xlen);
-    for (int64_t i = 0; i < xlen; i++) {
-      const Vector& vi = vx[levels - 1].B[i];
-      if (Xi[i].N != vi.N)
-        cVector(Xi[i], vi.N);
-      if (i >= ibegin && i < iend)
-        cpyVecToVec(vi.N, vi, Xi[i], 0, 0);
-    }
-
-    solveH2(st, vx, sps, ef, root, basis, dim, Xi, levels - 1);
-    h2MatVecLR(vx, ef, root, basis, dim, st[levels - 1].X, levels - 1);
-
-    for (int64_t i = ibegin; i < iend; i++) {
-      Vector& vi = vx[levels - 1].B[i];
-      vaxpby(vi, Xi[i].X.data(), 1., -1.);
-    }
-    permuteAndMerge('B', vx[levels].L, vx[levels - 1].B, levels - 1);
-    interTrans('D', vx[levels], basis[levels].Uo, levels);
-
-    ibegin = 0;
-    iend = (int64_t)1 << levels;
-    selfLocalRange(ibegin, iend, levels);
-    for (int64_t i = ibegin; i < iend; i++) {
-      Vector& vi = vx[levels].B[i];
-      vaxpby(vi, X[i].X.data(), 1., -1.);
-    }
-
-    solveSpDense(st, sps[levels], vx[levels].B);
-  }
 }
 
 void nbd::solveRelErr(double* err_out, const Vectors& X, const Vectors& ref, int64_t level) {

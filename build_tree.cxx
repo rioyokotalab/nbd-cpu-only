@@ -478,87 +478,6 @@ void nbd::lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j)
 }
 
 
-void writeIntermediate(Matrix& d, EvalFunc ef, const Cell* ci, const Cell* cj, int64_t dim, const Matrices& dc, const Matrices& uc, const CSC& cscc) {
-  int64_t m, n;
-  childMultipoleSize(&m, *ci);
-  childMultipoleSize(&n, *cj);
-  if (m > 0 && n > 0) {
-    cMatrix(d, m, n);
-    zeroMatrix(d);
-
-    int64_t y_off = 0;
-    for (int64_t i = 0; i < ci->NCHILD; i++) {
-      const Cell* cii = ci->CHILD + i;
-      int64_t mi = cii->Multipole.size();
-      const std::vector<Cell*>& cii_m2l = cii->listFar;
-      int64_t box_i = cii->ZID;
-      iLocal(box_i, cii->ZID, cii->LEVEL);
-      const Matrix* u = box_i >= 0 ? &uc[box_i] : nullptr;
-
-      int64_t x_off = 0;
-      for (int64_t j = 0; j < cj->NCHILD; j++) {
-        const Cell* cjj = cj->CHILD + j;
-        int64_t mj = cjj->Multipole.size();
-        int64_t box_j = cjj->ZID;
-        iLocal(box_j, cjj->ZID, cjj->LEVEL);
-        const Matrix* vt = box_j >= 0 ? &uc[box_j] : nullptr;
-
-        Matrix m2l;
-        cMatrix(m2l, mi, mj);
-
-        if (std::find(cii_m2l.begin(), cii_m2l.end(), cjj) != cii_m2l.end()) {
-          M2Lmat(ef, cii, cjj, dim, m2l);
-          cpyMatToMat(mi, mj, m2l, d, 0, 0, y_off, x_off);
-        }
-        else {
-          int64_t zii = cii->ZID;
-          int64_t zjj = cjj->ZID;
-          int64_t ij;
-          lookupIJ('N', ij, cscc, zii, zjj);
-          if (ij >= 0 && u != nullptr && vt != nullptr) {
-            utav('T', *u, dc[ij], *vt, m2l);
-            cpyMatToMat(mi, mj, m2l, d, 0, 0, y_off, x_off);
-          }
-        }
-        x_off = x_off + mj;
-      }
-      y_off = y_off + mi;
-    }
-  }
-}
-
-void evaluateIntermediate(EvalFunc ef, const Cell* c, int64_t dim, const CSC* csc, const Base* base, Matrices* d, int64_t level) {
-  if (c->LEVEL < level)
-    for (int64_t i = 0; i < c->NCHILD; i++)
-      evaluateIntermediate(ef, c->CHILD + i, dim, csc, base, d, level);
-
-  if (c->LEVEL == level) {
-    int64_t zj = c->ZID;
-    int64_t lnear = c->listNear.size();
-    for (int64_t i = 0; i < lnear; i++) {
-      const Cell* ci = c->listNear[i];
-      int64_t zi = ci->ZID;
-      int64_t ij;
-      lookupIJ('N', ij, *csc, zi, zj);
-      if (ij >= 0)
-        writeIntermediate((*d)[ij], ef, ci, c, dim, d[1], base[1].Uc, csc[1]);
-    }
-  }
-}
-
-void nbd::evaluateNear(Matrices d[], EvalFunc ef, const Cells& cells, int64_t dim, const CSC rels[], const Base base[], int64_t levels) {
-  Matrices& dleaf = d[levels];
-  const CSC& cleaf = rels[levels];
-  for (int64_t i = 0; i <= levels; i++)
-    d[i].resize(rels[i].NNZ_NEAR);
-  evaluateLeafNear(dleaf, ef, &cells[0], dim, cleaf);
-  for (int64_t i = levels - 1; i >= 0; i--) {
-    evaluateIntermediate(ef, &cells[0], dim, &rels[i], &base[i], &d[i], i);
-    if (rels[i].N == rels[i + 1].N)
-      butterflySumA(d[i], i + 1);
-  }
-}
-
 void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
   contentLength(xlen, level);
@@ -592,4 +511,26 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
     if (X[i].N != dims[i])
       cVector(X[i], dims[i]);
   DistributeVectorsList(X, level);
+}
+
+void nbd::h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t dim, int64_t levels) {
+  Vector X;
+  cVector(X, root->NBODY);
+  for (int64_t i = 0; i < root->NBODY; i++)
+    X.X[i] = root->BODY[i].B;
+
+  int64_t len = 0;
+  std::vector<const Cell*> cells((int64_t)1 << levels);
+  const Cell* local = findLocalAtLevel(root, levels);
+  findCellsAtLevel(&cells[0], &len, local, levels);
+
+  for (int64_t i = 0; i < len; i++) {
+    const Cell* ci = cells[i];
+    int64_t lislen = ci->listNear.size();
+    int64_t li = ci->ZID;
+    iLocal(li, ci->ZID, levels);
+    Vector& Bi = B[li];
+    cVector(Bi, ci->NBODY);
+    P2P(ef, ci, root, dim, X, Bi);
+  }
 }

@@ -83,9 +83,9 @@ namespace nbd {
 
   void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
-  void evaluateNear(Matrices d[], EvalFunc ef, const Cells& cells, int64_t dim, const CSC rels[], const Base base[], int64_t levels);
-
   void loadX(Vectors& X, const Cell* cell, int64_t level);
+  
+  void h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t dim, int64_t levels);
 
 }
 
