@@ -2,6 +2,8 @@
 #include "umv.hxx"
 #include "dist.hxx"
 
+#include <cstdio>
+
 using namespace nbd;
 
 void nbd::splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matrices& U, const Matrices& V, int64_t level) {
@@ -135,14 +137,24 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
   const Matrices& Mlow = Aprev.A_oo;
 
   nextBasisDims(bsnext, bsprev.DIMO.data(), nlevel);
+  DistributeDims(&bsnext.DIML[0], nlevel);
   allocA(Mup, rels_up, &bsnext.DIMS[0], nlevel);
   int64_t nbegin = rels_up.CBGN;
+  int64_t clevel = nlevel + 1;
+
 #pragma omp parallel for
   for (int64_t j = 0; j < rels_up.N; j++) {
     int64_t gj = j + nbegin;
     int64_t cj0 = (gj << 1);
     int64_t cj1 = (gj << 1) + 1;
-    updateSubU(bsnext.Ulr[j], bsprev.Ulr[cj0], bsprev.Ulr[cj1]);
+
+    int64_t lj = gj;
+    int64_t lj0 = cj0;
+    int64_t lj1 = cj1;
+    neighborsILocal(lj, gj, nlevel);
+    neighborsILocal(lj0, cj0, clevel);
+    neighborsILocal(lj1, cj1, clevel);
+    updateSubU(bsnext.Ulr[lj], bsprev.Ulr[lj0], bsprev.Ulr[lj1]);
 
     for (int64_t ij = rels_up.CSC_COLS[j]; ij < rels_up.CSC_COLS[j + 1]; ij++) {
       int64_t i = rels_up.CSC_ROWS[ij];
@@ -180,19 +192,15 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
     }
   }
   
-  int64_t clevel = nlevel + 1;
   if (rels_low.N == rels_up.N)
     butterflySumA(Mup, clevel);
-
-  DistributeDims(&bsnext.DIMS[0], nlevel);
-  DistributeDims(&bsnext.DIML[0], nlevel);
 
   int64_t xlen = bsnext.DIMS.size();
   for (int64_t i = 0; i < xlen; i++) {
     int64_t m = bsnext.DIMS[i];
     int64_t n = bsnext.DIML[i];
     int64_t msize = m * n;
-    if (msize > 0 && (i < nbegin || i >= (nbegin + rels_up.N)))
+    if (msize > 0 && (bsnext.Ulr[i].M != m || bsnext.Ulr[i].N != n))
       cMatrix(bsnext.Ulr[i], m, n);
   }
 

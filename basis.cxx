@@ -62,7 +62,9 @@ void nbd::orthoBasis(double epi, Matrices& C, Matrices& U, int64_t dims_o[], int
   for (int64_t i = 0; i < nodes; i++) {
     int64_t ii = i + ibegin;
     dims_o[ii] = 0;
+    //printf("before %d %d %d %d %d\n", ii, C[ii].M, C[ii].N, U[ii].M, U[ii].N);
     updateU(epi, C[ii], U[ii], &dims_o[ii]);
+    //printf("after %d %d %d %d %d\n", ii, C[ii].M, C[ii].N, U[ii].M, U[ii].N);
   }
 }
 
@@ -190,7 +192,7 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
 
       int64_t ni;
       childMultipoleSize(&ni, *ci);
-      if (ni != basis.DIMS[box_i])
+      if (ni != basis.DIMS[box_i] && ni > 0)
         butterflyUpdateMultipoles(&mps_comm[offset_i], ni, basis.DIMS[box_i], level + 1);
 
       int64_t nlen = ci->listNear.size();
