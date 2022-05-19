@@ -67,6 +67,8 @@ int main(int argc, char* argv[]) {
   double ctime;
   startTimer(&ctime);
   evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, 1.e-11, 140, 3000, dim);
+  for (int64_t i = 0; i <= levels; i++)
+    evaluateFar(sp.D[i].S, ef, &cell[0], dim, rels[i], i);
   stopTimer(&ctime);
 
   double ftime;
@@ -78,23 +80,23 @@ int main(int argc, char* argv[]) {
   loadX(X, lcleaf, levels);
   loadX(Xref, lcleaf, levels);
 
+  Vectors B(X.size());
+  h2MatVecReference(B, ef, &cell[0], dim, levels);
+
   RHSS rhs(levels + 1);
 
   double stime;
   startTimer(&stime);
-  solveSpDense(&rhs[0], sp, X);
+  solveSpDense(&rhs[0], sp, B);
   stopTimer(&stime);
 
   DistributeVectorsList(rhs[levels].X, levels);
-  for (int64_t i = 0; i < X.size(); i++)
-    zeroVector(X[i]);
-  closeQuarter(X, rhs[levels].X, ef, lcleaf, dim, levels);
 
   int64_t mpi_rank;
   int64_t mpi_size;
   commRank(&mpi_rank, &mpi_size, NULL);
   double err;
-  solveRelErr(&err, X, Xref, levels);
+  solveRelErr(&err, rhs[levels].X, Xref, levels);
 
   int64_t* flops = getFLOPS();
   double gf = flops[0] * 1.e-9;
@@ -103,7 +105,6 @@ int main(int argc, char* argv[]) {
     std::cout << "LORASP: " << Nbody << "," << Ncrit << "," << theta << "," << dim
 	    << "," << mpi_size << "," << ftime << ","
 	    << stime << "," << err << "," << gf << std::endl;
-	    
   }
   closeComm();
   return 0;

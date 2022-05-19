@@ -63,7 +63,6 @@ void nbd::orthoBasis(double epi, Matrices& C, Matrices& U, int64_t dims_o[], int
     int64_t ii = i + ibegin;
     dims_o[ii] = 0;
     updateU(epi, C[ii], U[ii], &dims_o[ii]);
-    //printf("%d %d %d\n", ii, C[ii].M, dims_o[ii]);
   }
 }
 

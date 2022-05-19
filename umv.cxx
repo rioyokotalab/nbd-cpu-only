@@ -100,17 +100,38 @@ void nbd::allocA(Matrices& A, const CSC& rels, const int64_t dims[], int64_t lev
 
   for (int64_t j = 0; j < rels.N; j++) {
     int64_t box_j = ibegin + j;
-    int64_t nbodies_j = dims[box_j];
+    int64_t n_j = dims[box_j];
 
     for (int64_t ij = rels.COLS_NEAR[j]; ij < rels.COLS_NEAR[j + 1]; ij++) {
       int64_t i = rels.ROWS_NEAR[ij];
       int64_t box_i = i;
       iLocal(box_i, i, level);
-      int64_t nbodies_i = dims[box_i];
+      int64_t n_i = dims[box_i];
 
       Matrix& A_ij = A[ij];
-      cMatrix(A_ij, nbodies_i, nbodies_j);
+      cMatrix(A_ij, n_i, n_j);
       zeroMatrix(A_ij);
+    }
+  }
+}
+
+void nbd::allocS(Matrices& S, const CSC& rels, const int64_t diml[], int64_t level) {
+  int64_t ibegin = 0, iend;
+  selfLocalRange(ibegin, iend, level);
+
+  for (int64_t j = 0; j < rels.N; j++) {
+    int64_t box_j = ibegin + j;
+    int64_t n_j = diml[box_j];
+
+    for (int64_t ij = rels.COLS_FAR[j]; ij < rels.COLS_FAR[j + 1]; ij++) {
+      int64_t i = rels.ROWS_FAR[ij];
+      int64_t box_i = i;
+      iLocal(box_i, i, level);
+      int64_t n_i = diml[box_i];
+
+      Matrix& S_ij = S[ij];
+      cMatrix(S_ij, n_i, n_j);
+      zeroMatrix(S_ij);
     }
   }
 }
@@ -153,7 +174,7 @@ void nbd::factorNode(Node& n, Base& basis, const CSC& rels, double epi, int64_t 
   splitA(n.A_cc, rels, n.A, basis.Uc, basis.Uc, level);
   splitA(n.A_oc, rels, n.A, basis.Uo, basis.Uc, level);
   splitA(n.A_oo, rels, n.A, basis.Uo, basis.Uo, level);
-  splitS(n.A_oo, rels, n.S, basis.Ulr, basis.Ulr, level);
+  splitS(n.S_oo, rels, n.S, basis.Ulr, basis.Ulr, level);
 
   factorAcc(n.A_cc, rels);
   factorAoc(n.A_oc, n.A_cc, rels);
@@ -163,6 +184,7 @@ void nbd::factorNode(Node& n, Base& basis, const CSC& rels, double epi, int64_t 
 void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Aprev, const Base& bsprev, const CSC& rels_low, int64_t nlevel) {
   Matrices& Mup = Anext.A;
   const Matrices& Mlow = Aprev.A_oo;
+  const Matrices& Slow = Aprev.S_oo;
 
   nextBasisDims(bsnext, bsprev.DIMO.data(), nlevel);
   DistributeDims(&bsnext.DIML[0], nlevel);
@@ -213,6 +235,35 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
 
       if (i11 >= 0) {
         const Matrix& m11 = Mlow[i11];
+        int64_t ybegin = Mup[ij].M - m11.M;
+        int64_t xbegin = Mup[ij].N - m11.N;
+        cpyMatToMat(m11.M, m11.N, m11, Mup[ij], 0, 0, ybegin, xbegin);
+      }
+
+      lookupIJ('F', i00, rels_low, ci0, cj0);
+      lookupIJ('F', i01, rels_low, ci0, cj1);
+      lookupIJ('F', i10, rels_low, ci1, cj0);
+      lookupIJ('F', i11, rels_low, ci1, cj1);
+
+      if (i00 >= 0) {
+        const Matrix& m00 = Slow[i00];
+        cpyMatToMat(m00.M, m00.N, m00, Mup[ij], 0, 0, 0, 0);
+      }
+
+      if (i01 >= 0) {
+        const Matrix& m01 = Slow[i01];
+        int64_t xbegin = Mup[ij].N - m01.N;
+        cpyMatToMat(m01.M, m01.N, m01, Mup[ij], 0, 0, 0, xbegin);
+      }
+
+      if (i10 >= 0) {
+        const Matrix& m10 = Slow[i10];
+        int64_t ybegin = Mup[ij].M - m10.M;
+        cpyMatToMat(m10.M, m10.N, m10, Mup[ij], 0, 0, ybegin, 0);
+      }
+
+      if (i11 >= 0) {
+        const Matrix& m11 = Slow[i11];
         int64_t ybegin = Mup[ij].M - m11.M;
         int64_t xbegin = Mup[ij].N - m11.N;
         cpyMatToMat(m11.M, m11.N, m11, Mup[ij], 0, 0, ybegin, xbegin);
