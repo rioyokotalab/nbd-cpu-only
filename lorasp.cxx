@@ -16,14 +16,14 @@ int main(int argc, char* argv[]) {
 
   const char* DATA = argv[1];
   int64_t Nbody = argc > 2 ? atol(argv[2]) : 8192;
-  int64_t Nleaf = argc > 3 ? atol(argv[3]) : 256;
+  int64_t Nleaf = argc > 3 ? atol(argv[3]) : 32;
   double theta = argc > 4 ? atof(argv[4]) : 1;
   int64_t dim = 3;
 
-  double fac_epi = 1.e-5;
+  double fac_epi = 1.e-7;
   int64_t fac_rank_max = 50;
-  double lr_epi = 1.e-10;
-  int64_t lr_rank_max = 150;
+  double lr_epi = 1.e-12;
+  int64_t lr_rank_max = 100;
   int64_t sp_pts = 4000;
 
   int64_t mpi_rank;
@@ -40,7 +40,6 @@ int main(int argc, char* argv[]) {
   
   Bodies body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
-  std::fill(buckets.begin(), buckets.end(), 0);
   readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
   //randomSurfaceBodies(body.data(), Nbody, dim, 1234);
   randomNeutralCharge(body.data(), Nbody, 1., 0);

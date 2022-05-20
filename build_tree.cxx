@@ -172,6 +172,8 @@ void nbd::readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodie
     count = count + 1;
   }
   file.close();
+  if (count > 0)
+    buckets[bucket_i - 1] = count;
 }
 
 void nbd::buildTreeBuckets(Cells& cells, Body* bodies, int64_t nbodies, const int64_t buckets[], int64_t levels, int64_t dim) {

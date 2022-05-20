@@ -12,7 +12,7 @@ EvalFunc nbd::l3d() {
   ef.r2f = [](double& r2, double singularity, double alpha) -> void {
     r2 = 1. / (std::sqrt(r2) + singularity);
   };
-  ef.singularity = 1.e-8;
+  ef.singularity = 1.e-6;
   ef.alpha = 1.;
   return ef;
 }
@@ -23,7 +23,7 @@ EvalFunc nbd::yukawa3d() {
     double r = std::sqrt(r2);
     r2 = std::exp(-alpha * r) / (r + singularity);
   };
-  ef.singularity = 1.e-8;
+  ef.singularity = 1.e-6;
   ef.alpha = 1.;
   return ef;
 }

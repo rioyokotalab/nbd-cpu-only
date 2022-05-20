@@ -1,10 +1,7 @@
 
-OPENBLAS_DIR = /opt/OpenBLAS
-
-CC  = gcc -O3 -I. -I"${OPENBLAS_DIR}/include"
-CXX = g++ -std=c++11 -O3 -I. -I"${OPENBLAS_DIR}/include" -fopenmp
-MPICXX  = mpicxx -std=c++11 -O3 -I. -fopenmp
-LDFLAGS	= -L"${OPENBLAS_DIR}/lib" -lopenblas -lm
+CXX = FCC -std=c++11 -O3 -I. -Kfast,openmp -SSL2
+MPICXX  = mpiFCC -std=c++11 -O3 -I. -Kfast,openmp -SSL2
+LDFLAGS	= -lm
 
 all:
 	make lorasp
