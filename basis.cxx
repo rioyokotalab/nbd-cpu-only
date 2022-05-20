@@ -155,7 +155,6 @@ void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, con
     if (msize > 0 && (i < ibegin || i >= iend))
       cMatrix(basis.Ulr[i], m, n);
   }
-
   DistributeMatricesList(basis.Ulr, level);
 }
 
@@ -274,14 +273,12 @@ void nbd::allocUcUo(Base& basis, const Matrices& C, int64_t level) {
     Matrix& Ul_i = basis.Ulr[i];
     cMatrix(Uo_i, dim, dim_o);
     cMatrix(Uc_i, dim, dim_c);
+    cMatrix(Ul_i, dim_o, dim_l);
 
     if (i >= lbegin && i < lend) {
       const Matrix& U = C[i];
       cpyMatToMat(dim, dim_o, U, Uo_i, 0, 0, 0, 0);
       cpyMatToMat(dim, dim_c, U, Uc_i, 0, dim_o, 0, 0);
-    }
-    else {
-      cMatrix(Ul_i, dim_o, dim_l);
     }
   }
 }

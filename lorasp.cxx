@@ -20,9 +20,9 @@ int main(int argc, char* argv[]) {
   double theta = argc > 4 ? atof(argv[4]) : 1;
   int64_t dim = 3;
 
-  double fac_epi = 1.e-11;
+  double fac_epi = 1.e-7;
   int64_t fac_rank_max = 50;
-  double lr_epi = 1.e-11;
+  double lr_epi = 1.e-10;
   int64_t lr_rank_max = 50;
   int64_t sp_pts = 2000;
 

@@ -84,22 +84,20 @@ void nbd::updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out) {
   cMatrix(A, m, m);
 
   Vector s, superb;
-  cVector(s, std::max(m, n));
+  cVector(s, std::min(m, n));
   cVector(superb, s.N + 1);
-  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', m, n, au.A.data(), m, s.X.data(), A.A.data(), m, NULL, n, superb.X.data());
+  int info = LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', m, n, au.A.data(), m, s.X.data(), A.A.data(), m, NULL, n, superb.X.data());
 
   if (epi > 0.) {
     rank = 0;
     double sepi = s.X[0] * epi;
-    while(s.X[rank] > sepi)
+    while(rank < s.N && s.X[rank] > sepi)
       rank += 1;
   }
   *rnk_out = rank;
 
-  if (rank > 0 && U.N > 0) {
-    cMatrix(U, rank, U.N);
-    cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
-  }
+  cMatrix(U, rank, U.N);
+  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
 }
 
 void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
@@ -129,12 +127,11 @@ void nbd::lraID(double epi, int64_t lenR, Matrix& A, Matrix& U, int64_t arows[],
   Vector s, superb;
   cVector(s, rank);
   cVector(superb, s.N + 1);
-  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A.M, rank, U.A.data(), A.M, s.X.data(), NULL, A.M, NULL, rank, superb.X.data());
-
+  int info = LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A.M, rank, U.A.data(), A.M, s.X.data(), NULL, A.M, NULL, rank, superb.X.data());
   if (epi > 0.) {
     rank = 0;
     double sepi = s.X[0] * epi;
-    while(s.X[rank] > sepi)
+    while(rank < s.N && s.X[rank] > sepi)
       rank += 1;
   }
   *rnk_out = rank;
@@ -144,7 +141,9 @@ void nbd::lraID(double epi, int64_t lenR, Matrix& A, Matrix& U, int64_t arows[],
   cblas_dcopy(A.M * rank, U.A.data(), 1, A.A.data(), 1);
 
   std::vector<int> ipiv(rank);
-  LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, rank, A.A.data(), A.M, ipiv.data());
+  info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, rank, A.A.data(), A.M, ipiv.data());
+  if (info > 0)
+    rank = info - 1;
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A.M, rank, 1., A.A.data(), A.M, U.A.data(), A.M);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A.M, rank, 1., A.A.data(), A.M, U.A.data(), A.M);
 
@@ -155,7 +154,6 @@ void nbd::lraID(double epi, int64_t lenR, Matrix& A, Matrix& U, int64_t arows[],
     std::iter_swap(&rows[i], &rows[ri]);
     arows[i] = rows[i];
   }
-
 }
 
 void nbd::zeroMatrix(Matrix& A) {
