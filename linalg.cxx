@@ -96,8 +96,10 @@ void nbd::updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out) {
   }
   *rnk_out = rank;
 
-  cMatrix(U, rank, U.N);
-  cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
+  if (U.N > 0 && rank > 0) {
+    cMatrix(U, rank, U.N);
+    cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
+  }
 }
 
 void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
