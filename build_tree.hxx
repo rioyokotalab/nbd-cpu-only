@@ -43,8 +43,6 @@ namespace nbd {
 
   struct Base;
 
-  void loadBodiesArray(Body* bodies, int64_t nbodies, const double arr[], int64_t dim);
-
   void randomUniformBodies(Body* bodies, int64_t nbodies, double dmin, double dmax, int64_t dim, int seed);
 
   void randomSurfaceBodies(Body* bodies, int64_t nbodies, int64_t dim, int seed);
@@ -55,7 +53,11 @@ namespace nbd {
 
   void getBounds(const Body* bodies, int64_t nbodies, double R[], double C[], int64_t dim);
 
-  int64_t buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim);
+  int64_t buildTree(Cells& cells, Bodies& bodies, int64_t levels, int64_t dim);
+
+  void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim);
+
+  void buildTreeBuckets(Cells& cells, Body* bodies, int64_t nbodies, const int64_t buckets[], int64_t levels, int64_t dim);
 
   void getList(Cell* Ci, Cell* Cj, int64_t dim, double theta);
 

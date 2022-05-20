@@ -16,10 +16,6 @@ namespace nbd {
     double alpha;
   };
 
-  EvalFunc r2();
-
-  EvalFunc l2d();
-
   EvalFunc l3d();
 
   EvalFunc yukawa3d();

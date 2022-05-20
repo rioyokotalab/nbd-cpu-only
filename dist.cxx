@@ -42,7 +42,7 @@ void nbd::closeComm() {
   if (MPI_RANK == 0) {
     double end = MPI_Wtime();
     double prog = end - prog_time;
-    printf("Program %f s. Time in communication: %f s.\n", prog, tot_time);
+    printf("Program: %f s. COMM: %f s.\n", prog, tot_time);
   }
 
   int64_t len = COMMS.size();
@@ -771,21 +771,17 @@ void nbd::butterflySumX(Vectors& X, int64_t level) {
   free(RM_DATA);
 }
 
-void nbd::startTimer(double* wtime) {
-  int mpi_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+void nbd::startTimer(double* wtime, double* cmtime) {
   MPI_Barrier(MPI_COMM_WORLD);
-  if (mpi_rank == 0)
-    *wtime = MPI_Wtime();
+  *wtime = MPI_Wtime();
+  *cmtime = tot_time;
 }
 
-void nbd::stopTimer(double* wtime) {
-  int mpi_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+void nbd::stopTimer(double* wtime, double* cmtime) {
   MPI_Barrier(MPI_COMM_WORLD);
-  if (mpi_rank == 0) {
-    double stime = *wtime;
-    double etime = MPI_Wtime();
-    *wtime = etime - stime;
-  }
+  double stime = *wtime;
+  double scmtime = *cmtime;
+  double etime = MPI_Wtime();
+  *wtime = etime - stime;
+  *cmtime = tot_time - scmtime;
 }

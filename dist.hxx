@@ -51,8 +51,8 @@ namespace nbd {
 
   void butterflySumX(Vectors& X, int64_t level);
 
-  void startTimer(double* wtime);
+  void startTimer(double* wtime, double* cmtime);
 
-  void stopTimer(double* wtime);
+  void stopTimer(double* wtime, double* cmtime);
 
 };

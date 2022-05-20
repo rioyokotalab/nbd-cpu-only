@@ -8,15 +8,10 @@
 #include <numeric>
 #include <algorithm>
 #include <set>
-#include <cstdio>
+#include <iostream>
+#include <fstream>
 
 using namespace nbd;
-
-void nbd::loadBodiesArray(Body* bodies, int64_t nbodies, const double arr[], int64_t dim) {
-  for (int64_t i = 0; i < nbodies; i++)
-    for (int64_t d = 0; d < dim; d++)
-      bodies[i].X[d] = arr[i * dim + d];
-}
 
 void nbd::randomUniformBodies(Body* bodies, int64_t nbodies, const double dmin, const double dmax, int64_t dim, int seed) {
   if (seed > 0)
@@ -101,9 +96,8 @@ void nbd::getBounds(const Body* bodies, int64_t nbodies, double R[], double C[],
   }
 }
 
-int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim) {
+int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t levels, int64_t dim) {
   int64_t nbody = bodies.size();
-  int64_t levels = (int64_t)(std::log2(nbody / ncrit));
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = (nleaves << 1) - 1;
   cells.resize(ncells);
@@ -156,6 +150,72 @@ int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t ncrit, int64_t dim)
   return levels;
 }
 
+
+void nbd::readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim) {
+  std::ifstream file;
+  file.open(fname, std::ios_base::in);
+
+  int64_t count = 0;
+  int64_t bucket_i = 1;
+  for (int64_t i = 0; i < nbodies; i++) {
+    double* arr = bodies[i].X;
+    for (int64_t d = 0; d < dim; d++)
+      file >> arr[d];
+    
+    int64_t loc;
+    file >> loc;
+    if (loc > bucket_i) {
+      buckets[bucket_i - 1] = count;
+      count = 0;
+      bucket_i = loc;
+    }
+    count = count + 1;
+  }
+  file.close();
+}
+
+void nbd::buildTreeBuckets(Cells& cells, Body* bodies, int64_t nbodies, const int64_t buckets[], int64_t levels, int64_t dim) {
+  int64_t nleaves = (int64_t)1 << levels;
+  int64_t ncells = (nleaves << 1) - 1;
+  cells.resize(ncells);
+
+  int64_t ileaf = nleaves - 1;
+  int64_t offset = 0;
+  for (int64_t i = 0; i < nleaves; i++) {
+    Cell* ci = &cells[ileaf + i];
+    ci->CHILD = NULL;
+    ci->NCHILD = 0;
+    ci->BODY = bodies + offset;
+    ci->NBODY = buckets[i];
+    ci->SIBL = NULL;
+    ci->ZID = i;
+    ci->LEVEL = levels;
+    ci->listNear.clear();
+    ci->listFar.clear();
+    ci->Multipole.clear();
+    getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
+    offset = offset + ci->NBODY;
+  }
+
+  for (int64_t i = ileaf - 1; i >= 0; i--) {
+    Cell* ci = &cells[i];
+    Cell* c0 = &cells[(i << 1) + 1];
+    Cell* c1 = &cells[(i << 1) + 2];
+    ci->CHILD = c0;
+    ci->NCHILD = 2;
+    ci->BODY = c0->BODY;
+    ci->NBODY = c0->NBODY + c1->NBODY;
+    ci->SIBL = NULL;
+    ci->ZID = (c0->ZID) >> 1;
+    ci->LEVEL = c0->LEVEL - 1;
+    ci->listNear.clear();
+    ci->listFar.clear();
+    ci->Multipole.clear();
+    getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
+    c0->SIBL = c1;
+    c1->SIBL = c0;
+  }
+}
 
 void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, double theta) {
   if (Ci->LEVEL < Cj->LEVEL)

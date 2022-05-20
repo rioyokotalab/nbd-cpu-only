@@ -3,8 +3,6 @@
 #include "linalg.hxx"
 
 #include "mkl.h"
-//#include "cblas.h"
-//#include "lapacke.h"
 
 #include <cmath>
 #include <algorithm>
@@ -283,8 +281,9 @@ void nbd::minvl(const Matrix& A, Matrix& B) {
     Matrix work;
     cMatrix(work, A.M, A.N);
     cpyMatToMat(A.M, A.N, A, work, 0, 0, 0, 0);
-    chol_decomp(work);
-    LAPACKE_dpotrs(LAPACK_COL_MAJOR, 'L', A.M, B.N, work.A.data(), A.M, B.A.data(), B.M);
+    std::vector<int> ipiv(A.M);
+    int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, A.N, work.A.data(), A.M, ipiv.data());
+    LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', A.M, B.N, work.A.data(), A.M, ipiv.data(), B.A.data(), B.M);
   }
 }
 

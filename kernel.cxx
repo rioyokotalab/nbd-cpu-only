@@ -7,30 +7,12 @@
 
 using namespace nbd;
 
-EvalFunc nbd::r2() {
-  EvalFunc ef;
-  ef.r2f = [](double& r2, double singularity, double alpha) -> void {};
-  ef.singularity = 0.;
-  ef.alpha = 1.;
-  return ef;
-}
-
-EvalFunc nbd::l2d() {
-  EvalFunc ef;
-  ef.r2f = [](double& r2, double singularity, double alpha) -> void {
-    r2 = r2 == 0 ? singularity : std::log(std::sqrt(r2));
-  };
-  ef.singularity = 1.e6;
-  ef.alpha = 1.;
-  return ef;
-}
-
 EvalFunc nbd::l3d() {
   EvalFunc ef;
   ef.r2f = [](double& r2, double singularity, double alpha) -> void {
-    r2 = r2 == 0 ? singularity : 1. / std::sqrt(r2);
+    r2 = 1. / (std::sqrt(r2) + singularity);
   };
-  ef.singularity = 1.e6;
+  ef.singularity = 1.e-8;
   ef.alpha = 1.;
   return ef;
 }
@@ -39,9 +21,9 @@ EvalFunc nbd::yukawa3d() {
   EvalFunc ef;
   ef.r2f = [](double& r2, double singularity, double alpha) -> void {
     double r = std::sqrt(r2);
-    r2 = r2 == 0 ? singularity : (std::exp(-alpha * r) / r);
+    r2 = std::exp(-alpha * r) / (r + singularity);
   };
-  ef.singularity = 1.e6;
+  ef.singularity = 1.e-8;
   ef.alpha = 1.;
   return ef;
 }

@@ -7,9 +7,6 @@
 #include <cstdio>
 #include <cmath>
 #include <iostream>
-#include <fstream>
-#include <chrono>
-#include "omp.h"
 
 using namespace nbd;
 
@@ -17,38 +14,40 @@ int main(int argc, char* argv[]) {
 
   initComm(&argc, &argv);
 
-  int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
-  int64_t Ncrit = argc > 2 ? atol(argv[2]) : 256;
-  double theta = argc > 3 ? atof(argv[3]) : 1;
-  int64_t dim = argc > 4 ? atol(argv[4]) : 3;
-  double epi = 1.e-5;
-  int64_t rank_max = 60;
-  //omp_set_num_threads(4);
+  const char* DATA = argv[1];
+  int64_t Nbody = argc > 2 ? atol(argv[2]) : 8192;
+  int64_t Nleaf = argc > 3 ? atol(argv[3]) : 256;
+  double theta = argc > 4 ? atof(argv[4]) : 1;
+  int64_t dim = 3;
+
+  double fac_epi = 1.e-5;
+  int64_t fac_rank_max = 50;
+  double lr_epi = 1.e-10;
+  int64_t lr_rank_max = 150;
+  int64_t sp_pts = 4000;
+
+  int64_t mpi_rank;
+  int64_t mpi_size;
+  int64_t levels = (int64_t)std::log2(Nleaf);
+  commRank(&mpi_rank, &mpi_size, NULL);
   
   EvalFunc ef = yukawa3d();
-  //EvalFunc ef = dim == 2 ? l2d() : l3d();
-  ef.singularity = Nbody * 1.e3;
 
   std::srand(100);
-  std::vector<double> R(1 << 16);
+  std::vector<double> R(1 << 18);
   for (int64_t i = 0; i < R.size(); i++)
     R[i] = -1. + 2. * ((double)std::rand() / RAND_MAX);
-
+  
   Bodies body(Nbody);
-  //randomUniformBodies(body.data(), Nbody, 0., 1., dim, 1234);
-  randomSurfaceBodies(body.data(), Nbody, dim, 1234);
+  std::vector<int64_t> buckets(Nleaf);
+  std::fill(buckets.begin(), buckets.end(), 0);
+  readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
+  //randomSurfaceBodies(body.data(), Nbody, dim, 1234);
   randomNeutralCharge(body.data(), Nbody, 1., 0);
 
-  /*std::ifstream file;
-  file.open("57126.dat");
-  std::vector<double> arr(Nbody * dim);
-  for (int64_t i = 0; i < arr.size(); i++)
-    file >> arr[i];
-  file.close();
-  loadBodiesArray(body.data(), Nbody, arr.data(), dim);*/
-
   Cells cell;
-  int64_t levels = buildTree(cell, body, Ncrit, dim);
+  buildTreeBuckets(cell, body.data(), Nbody, buckets.data(), levels, dim);
+  //buildTree(cell, body, levels, dim);
   traverse(cell, levels, dim, theta);
   const Cell* lcleaf = &cell[0];
   lcleaf = findLocalAtLevel(lcleaf, levels);
@@ -62,17 +61,17 @@ int main(int argc, char* argv[]) {
   SpDense sp;
   allocSpDense(sp, &rels[0], levels);
 
-  double ctime;
-  startTimer(&ctime);
-  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, 1.e-11, 140, 3000, dim);
+  double construct_time, construct_comm_time;
+  startTimer(&construct_time, &construct_comm_time);
+  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, lr_epi, lr_rank_max, sp_pts, dim);
   for (int64_t i = 0; i <= levels; i++)
     evaluateFar(sp.D[i].S, ef, &cell[0], dim, rels[i], i);
-  stopTimer(&ctime);
+  stopTimer(&construct_time, &construct_comm_time);
 
-  double ftime;
-  startTimer(&ftime);
-  factorSpDense(sp, lcleaf, A, epi, rank_max, &R[0], R.size());
-  stopTimer(&ftime);
+  double factor_time, factor_comm_time;
+  startTimer(&factor_time, &factor_comm_time);
+  factorSpDense(sp, lcleaf, A, fac_epi, fac_rank_max, &R[0], R.size());
+  stopTimer(&factor_time, &factor_comm_time);
 
   Vectors X, Xref;
   loadX(X, lcleaf, levels);
@@ -83,23 +82,22 @@ int main(int argc, char* argv[]) {
 
   RHSS rhs(levels + 1);
 
-  double stime;
-  startTimer(&stime);
+  double solve_time, solve_comm_time;
+  startTimer(&solve_time, &solve_comm_time);
   solveSpDense(&rhs[0], sp, B);
-  stopTimer(&stime);
+  stopTimer(&solve_time, &solve_comm_time);
 
   DistributeVectorsList(rhs[levels].X, levels);
 
-  int64_t mpi_rank;
-  int64_t mpi_size;
-  commRank(&mpi_rank, &mpi_size, NULL);
   double err;
   solveRelErr(&err, rhs[levels].X, Xref, levels);
 
   if (mpi_rank == 0) {
-    std::cout << "LORASP: " << Nbody << "," << Ncrit << "," << theta << "," << dim
-	    << "," << mpi_size << "," << ftime << ","
-	    << stime << "," << err << std::endl;
+    std::cout << "LORASP: " << Nbody << "," << (int64_t)(Nbody / Nleaf) << "," << theta << "," << dim << "," << mpi_size << std::endl;
+    std::cout << "Construct: " << construct_time << " COMM: " << construct_comm_time << std::endl;
+    std::cout << "Factorize: " << factor_time << " COMM: " << factor_comm_time << std::endl;
+    std::cout << "Solution: " << solve_time << " COMM: " << solve_comm_time << std::endl;
+    std::cout << "Err: " << err << std::endl;
   }
   closeComm();
   return 0;
