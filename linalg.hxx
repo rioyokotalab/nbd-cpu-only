@@ -40,7 +40,7 @@ namespace nbd {
 
   void updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2);
 
-  void lraID(double epi, int64_t mrank, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out);
+  void lraID(double epi, int64_t lenR, Matrix& A, Matrix& U, int64_t arows[], const double R[], int64_t* rnk_out);
 
   void zeroMatrix(Matrix& A);
 
@@ -48,13 +48,11 @@ namespace nbd {
 
   void mmult(char ta, char tb, const Matrix& A, const Matrix& B, Matrix& C, double alpha, double beta);
 
-  void msample(char ta, int64_t lenR, const Matrix& A, const double* R, Matrix& C);
+  void msample(char ta, int64_t lenR, const Matrix& A, const double R[], Matrix& C);
 
   void msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C);
 
   void minvl(const Matrix& A, Matrix& B);
-
-  void invBasis(const Matrix& u, Matrix& uinv);
 
   void chol_decomp(Matrix& A);
 

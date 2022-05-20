@@ -20,11 +20,11 @@ int main(int argc, char* argv[]) {
   double theta = argc > 4 ? atof(argv[4]) : 1;
   int64_t dim = 3;
 
-  double fac_epi = 1.e-7;
+  double fac_epi = 1.e-11;
   int64_t fac_rank_max = 50;
-  double lr_epi = 1.e-12;
-  int64_t lr_rank_max = 100;
-  int64_t sp_pts = 4000;
+  double lr_epi = 1.e-11;
+  int64_t lr_rank_max = 50;
+  int64_t sp_pts = 2000;
 
   int64_t mpi_rank;
   int64_t mpi_size;
@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, lr_epi, lr_rank_max, sp_pts, dim);
+  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, lr_epi, lr_rank_max, sp_pts, &R[0], R.size(), dim);
   for (int64_t i = 0; i <= levels; i++)
     evaluateFar(sp.D[i].S, ef, &cell[0], dim, rels[i], i);
   stopTimer(&construct_time, &construct_comm_time);

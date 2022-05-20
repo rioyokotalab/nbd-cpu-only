@@ -7,108 +7,10 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <numeric>
 #include <cstdlib>
 
 using namespace nbd;
-
-void dlra(double epi, int64_t m, int64_t n, int64_t k, double* a, double* u, int64_t ldu, double* vt, int64_t ldvt, int64_t* rank, int64_t* piv) {
-  double nrm = 0.;
-  double epi2 = epi * epi;
-  double n2 = 1.;
-  double amax = 1.;
-
-  int64_t i = 0;
-  while (i < k && (n2 > epi2 * nrm) && amax > 0) {
-    amax = 0.;
-    int64_t ymax = cblas_idamax(m * n, a, 1);
-    amax = fabs(a[ymax]);
-
-    if (amax > 0.) {
-      if (piv != NULL)
-        piv[i] = ymax;
-      int64_t xp = ymax / m;
-      int64_t yp = ymax - xp * m;
-      double ap = 1. / a[ymax];
-      double* ui = &u[i * ldu];
-      double* vi = &vt[i * ldvt];
-
-      cblas_dcopy(n, &a[yp], m, vi, 1);
-      cblas_dcopy(m, &a[xp * m], 1, ui, 1);
-      cblas_dscal(m, ap, ui, 1);
-      ui[yp] = 1.;
-
-      for (int64_t x = 0; x < n; x++) {
-        double ri = -vi[x];
-        cblas_daxpy(m, ri, ui, 1, &a[x * m], 1);
-      }
-
-      double zero = 0.;
-      cblas_dcopy(n, &zero, 0, &a[yp], m);
-      cblas_dcopy(m, &zero, 0, &a[xp * m], 1);
-
-      if (epi2 > 0.) {
-        double nrm_v = 0.;
-        double nrm_u = 0.;
-        double nrm_vi = cblas_ddot(n, vi, 1, vi, 1);
-        double nrm_ui = cblas_ddot(m, ui, 1, ui, 1);
-
-        for (int64_t j = 0; j < i; j++) {
-          double* vj = &vt[j * ldvt];
-          double* uj = &u[j * ldu];
-          double nrm_vj = cblas_ddot(n, vi, 1, vj, 1);
-          double nrm_uj = cblas_ddot(m, ui, 1, uj, 1);
-
-          nrm_v = nrm_v + nrm_vj;
-          nrm_u = nrm_u + nrm_uj;
-        }
-
-        n2 = nrm_ui * nrm_vi;
-        nrm = nrm + 2. * nrm_u * nrm_v + n2;
-      }
-      i++;
-    }
-  }
-
-  *rank = i;
-}
-
-void dorth(char ecoq, int64_t m, int64_t n, double* r, int64_t ldr, double* q, int64_t ldq) {
-  int64_t k = m < n ? m : n;
-  double* TAU = (double*)malloc(sizeof(double) * k);
-  int64_t nq = (ecoq == 'F' || ecoq == 'f') ? m : k;
-
-  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, r, ldr, TAU);
-  for (int64_t i = 0; i < k; i++)
-    cblas_dcopy(m, &r[i * ldr], 1, &q[i * ldq], 1);
-  LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, nq, k, q, ldq, TAU);
-  free(TAU);
-}
-
-void didrow(double epi, int64_t m, int64_t n, int64_t k, double* a, double* x, int64_t ldx, int64_t* arow, int64_t* rank) {
-  int64_t rnk;
-  double* u = (double*)malloc(sizeof(double) * m * k);
-  double* vt = (double*)malloc(sizeof(double)* n * k);
-  dlra(epi, m, n, k, a, u, m, vt, n, &rnk, arow);
-  *rank = rnk;
-
-  double* r = (double*)malloc(sizeof(double) * rnk * rnk);
-  double* q = (double*)malloc(sizeof(double) * rnk * rnk);
-  for (int64_t i = 0; i < rnk; i++) {
-    int64_t ymax = arow[i];
-    int64_t xp = ymax / m;
-    int64_t yp = ymax - xp * m;
-    arow[i] = yp;
-    cblas_dcopy(rnk, u + yp, m, r + i, rnk);
-  }
-  dorth('F', rnk, rnk, r, rnk, q, rnk);
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, m, rnk, 1., r, rnk, u, m);
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, m, rnk, rnk, 1., u, m, q, rnk, 0., x, ldx);
-
-  free(u);
-  free(vt);
-  free(r);
-  free(q);
-}
 
 void nbd::cMatrix(Matrix& mat, int64_t m, int64_t n) {
   mat.A.resize(m * n);
@@ -218,11 +120,42 @@ void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
   }
 }
 
-void nbd::lraID(double epi, int64_t mrank, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out) {
-  int64_t rank = mrank;
-  rank = std::min(A.M, rank);
-  rank = std::min(A.N, rank);
-  didrow(epi, A.M, A.N, rank, A.A.data(), U.A.data(), A.M, arows, rnk_out);
+void nbd::lraID(double epi, int64_t lenR, Matrix& A, Matrix& U, int64_t arows[], const double R[], int64_t* rnk_out) {
+  int64_t rank = std::min(A.M, A.N);
+  rank = *rnk_out > 0 ? std::min(*rnk_out, rank) : rank;
+  zeroMatrix(U);
+  msample('N', lenR, A, R, U);
+
+  Vector s, superb;
+  cVector(s, rank);
+  cVector(superb, s.N + 1);
+  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A.M, rank, U.A.data(), A.M, s.X.data(), NULL, A.M, NULL, rank, superb.X.data());
+
+  if (epi > 0.) {
+    rank = 0;
+    double sepi = s.X[0] * epi;
+    while(s.X[rank] > sepi)
+      rank += 1;
+  }
+  *rnk_out = rank;
+
+  for (int64_t i = 0; i < rank; i++)
+    cblas_dscal(A.M, s.X[i], &U.A[i * A.M], 1);
+  cblas_dcopy(A.M * rank, U.A.data(), 1, A.A.data(), 1);
+
+  std::vector<int> ipiv(rank);
+  LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, rank, A.A.data(), A.M, ipiv.data());
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A.M, rank, 1., A.A.data(), A.M, U.A.data(), A.M);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A.M, rank, 1., A.A.data(), A.M, U.A.data(), A.M);
+
+  std::vector<int64_t> rows(A.M);
+  std::iota(rows.begin(), rows.end(), 0);
+  for (int64_t i = 0; i < rank; i++) {
+    int64_t ri = ipiv[i] - 1;
+    std::iter_swap(&rows[i], &rows[ri]);
+    arows[i] = rows[i];
+  }
+
 }
 
 void nbd::zeroMatrix(Matrix& A) {
@@ -242,7 +175,7 @@ void nbd::mmult(char ta, char tb, const Matrix& A, const Matrix& B, Matrix& C, d
   }
 }
 
-void nbd::msample(char ta, int64_t lenR, const Matrix& A, const double* R, Matrix& C) {
+void nbd::msample(char ta, int64_t lenR, const Matrix& A, const double R[], Matrix& C) {
   if (lenR < C.N * 100) { 
     std::cerr << "Insufficent random vector: " << C.N << " x 100 needed " << lenR << " provided." << std::endl;
     return;
@@ -284,23 +217,6 @@ void nbd::minvl(const Matrix& A, Matrix& B) {
     std::vector<int> ipiv(A.M);
     LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, A.N, work.A.data(), A.M, ipiv.data());
     LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', A.M, B.N, work.A.data(), A.M, ipiv.data(), B.A.data(), B.M);
-  }
-}
-
-void nbd::invBasis(const Matrix& u, Matrix& uinv) {
-  int64_t m = u.M;
-  int64_t n = u.N;
-  if (m > 0 && n > 0) {
-    Matrix a;
-    Matrix q;
-    cMatrix(a, n, n);
-    cMatrix(q, n, n);
-    cMatrix(uinv, n, m);
-
-    mmult('T', 'N', u, u, a, 1., 0.);
-    dorth('F', n, n, a.A.data(), n, q.A.data(), n);
-    mmult('T', 'T', q, u, uinv, 1., 0.);
-    cblas_dtrsm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, n, m, 1., a.A.data(), n, uinv.A.data(), n);
   }
 }
 

@@ -576,16 +576,15 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
 }
 
 void nbd::h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t dim, int64_t levels) {
-  Vector X;
-  cVector(X, root->NBODY);
-  for (int64_t i = 0; i < root->NBODY; i++)
-    X.X[i] = root->BODY[i].B;
-
-  int64_t len = 0;
+  int64_t len = 0, lenj = 0;
   std::vector<const Cell*> cells((int64_t)1 << levels);
+  std::vector<const Cell*> cells_leaf((int64_t)1 << levels);
+
   const Cell* local = findLocalAtLevel(root, levels);
   findCellsAtLevel(&cells[0], &len, local, levels);
+  findCellsAtLevel(&cells_leaf[0], &lenj, root, levels);
 
+#pragma omp parallel for
   for (int64_t i = 0; i < len; i++) {
     const Cell* ci = cells[i];
     int64_t lislen = ci->listNear.size();
@@ -593,6 +592,14 @@ void nbd::h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t d
     iLocal(li, ci->ZID, levels);
     Vector& Bi = B[li];
     cVector(Bi, ci->NBODY);
-    P2P(ef, ci, root, dim, X, Bi);
+    zeroVector(Bi);
+
+    for (int64_t j = 0; j < lenj; j++) {
+      Vector X;
+      cVector(X, cells_leaf[j]->NBODY);
+      for (int64_t i = 0; i < cells_leaf[j]->NBODY; i++)
+        X.X[i] = cells_leaf[j]->BODY[i].B;
+      P2P(ef, ci, cells_leaf[j], dim, X, Bi);
+    }
   }
 }
