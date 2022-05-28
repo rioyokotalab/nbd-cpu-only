@@ -14,24 +14,30 @@ On the same directory, download a Debian image and build sandbox from it: \
 `singularity build --sandbox --fakeroot my_img/ docker://debian` \
 `singularity shell --writable --fakeroot my_img/` \
 Install dependencies from our provided script: \
-`cd nbd/ && . install_deps_apt.sh` \
+`cd nbd/ && . scripts/install_deps_apt.sh` \
+Optionally, add environment configuration for Intel libraries to `/root/.bashrc`: \
+`echo '. /opt/intel/oneapi/setvars.sh' >> /root/.bashrc` \
 Continue on the build
 
 * Docker: \
 `docker run -it debian` \
 `apt-get update && apt-get install -y git` \
 `git clone https://github.com/rioyokotalab/nbd.git` \
-`cd nbd/ && . install_deps_apt.sh` \
+`cd nbd/ && . scripts/install_deps_apt.sh` \
+Optionally, add environment configuration for Intel libraries to `/root/.bashrc`: \
+`echo '. /opt/intel/oneapi/setvars.sh' >> /root/.bashrc` \
 Continue on the build, optionally save the container as new image \
 `exit` and `docker commit`
 
 # Build
 * MPI installed: `mpicc --version` has output
-* Intel MKL installed: `echo $MKLROOT$` has output
-* Compile from cmake: \
+* Intel MKL installed: `echo $MKLROOT` has output
+* Compile from cmake (Intel MKL): \
 `mkdir build && cd build` \
 `cmake ..` \
 `make && cd ..`
+* Compile from make (Fujitsu SSL2): \
+`make`
 
 # Run / Obtain Results
 * Binary lorasp: solves a complete H^2-matrix system and verify answer through dense matrix vector multiplication.
