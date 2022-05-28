@@ -2,7 +2,12 @@
 
 #include "linalg.hxx"
 
+#if USE_MKL
 #include "mkl.h"
+#else
+#include "cblas.h"
+#include "lapacke.h"
+#endif
 
 #include <cmath>
 #include <algorithm>

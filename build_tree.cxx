@@ -228,14 +228,15 @@ void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, double theta) {
       getList(Ci, cj, dim, theta);
   else {
     double dC = 0.;
-    double dR = 0.;
+    double dRi = 0.;
+    double dRj = 0.;
     for (int64_t d = 0; d < dim; d++) {
       double diff = Ci->C[d] - Cj->C[d];
-      double sum = Ci->R[d] + Cj->R[d];
       dC = dC + diff * diff;
-      dR = dR + sum * sum;
+      dRi = dRi + Ci->R[d] * Ci->R[d];
+      dRj = dRj + Cj->R[d] * Cj->R[d];
     }
-    dR = dR * theta;
+    double dR = (dRi + dRj) * theta;
 
     if (dC > dR)
       Ci->listFar.push_back(Cj);

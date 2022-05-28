@@ -18,7 +18,7 @@ add_library(nbd STATIC
   dist.cxx dist.hxx
 )
 target_include_directories(nbd PRIVATE "./" ${MPI_INCLUDE_PATH})
-target_compile_options(nbd PRIVATE ${MPI_CXX_COMPILE_FLAGS})
+target_compile_options(nbd PRIVATE "-DUSE_MKL=true" ${MPI_CXX_COMPILE_FLAGS})
 target_link_libraries(nbd
   ${BLAS_LIBRARIES} ${BLAS_LINKER_FLAGS}
   ${LAPACK_LIBRARIES} ${LAPACK_LINKER_FLAGS}

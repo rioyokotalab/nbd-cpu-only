@@ -14,24 +14,26 @@ int main(int argc, char* argv[]) {
 
   initComm(&argc, &argv);
 
-  const char* DATA = argv[1];
-  int64_t Nbody = argc > 2 ? atol(argv[2]) : 8192;
-  int64_t Nleaf = argc > 3 ? atol(argv[3]) : 32;
-  double theta = argc > 4 ? atof(argv[4]) : 1;
+  int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
+  double theta = argc > 2 ? atof(argv[2]) : 1;
+  int64_t leaf_size = 256;
   int64_t dim = 3;
 
-  double fac_epi = 1.e-7;
+  double fac_epi = 1.e-5;
   int64_t fac_rank_max = 50;
-  double lr_epi = 1.e-10;
-  int64_t lr_rank_max = 50;
-  int64_t sp_pts = 2000;
+  double lr_epi = 1.e-11;
+  int64_t lr_rank_max = 100;
+  int64_t sp_pts = 4000;
 
   int64_t mpi_rank;
   int64_t mpi_size;
-  int64_t levels = (int64_t)std::log2(Nleaf);
+  int64_t levels = (int64_t)std::log2(Nbody / leaf_size);
+  int64_t Nleaf = (int64_t)1 << levels;
+
   commRank(&mpi_rank, &mpi_size, NULL);
   
-  EvalFunc ef = yukawa3d();
+  EvalFunc ef = l3d();//yukawa3d();
+  ef.singularity = 1.e-3 / Nbody;
 
   std::srand(100);
   std::vector<double> R(1 << 18);
@@ -40,13 +42,14 @@ int main(int argc, char* argv[]) {
   
   Bodies body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
-  readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
-  //randomSurfaceBodies(body.data(), Nbody, dim, 1234);
+  //readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
+  randomSurfaceBodies(body.data(), Nbody, dim, 1234);
+  //randomUniformBodies(body.data(), Nbody, 0., 1., dim, 1234);
   randomNeutralCharge(body.data(), Nbody, 1., 0);
 
   Cells cell;
-  buildTreeBuckets(cell, body.data(), Nbody, buckets.data(), levels, dim);
-  //buildTree(cell, body, levels, dim);
+  //buildTreeBuckets(cell, body.data(), Nbody, buckets.data(), levels, dim);
+  buildTree(cell, body, levels, dim);
   traverse(cell, levels, dim, theta);
   const Cell* lcleaf = &cell[0];
   lcleaf = findLocalAtLevel(lcleaf, levels);
