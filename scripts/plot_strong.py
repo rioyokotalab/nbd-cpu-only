@@ -16,7 +16,7 @@ yref = np.array([y[0], y[0] / 32])
 
 plt.rcParams['font.size'] = '16'
 fig, ax = plt.subplots()
-ax.set_xlabel('N')
+ax.set_xlabel('Number Processes')
 ax.set_ylabel('Factor Time (s)')
 
 ax.plot(x, y, '^', label = "OUR CODE MPI", linestyle="-", color='blue')

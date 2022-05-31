@@ -1,11 +1,16 @@
 ﻿
-cmake_minimum_required (VERSION 3.9)
+cmake_minimum_required (VERSION 3.13)
 
 project ("shimo" LANGUAGES CXX)
 
-set(BLA_VENDOR Intel10_64lp_seq)
-find_package(BLAS REQUIRED)
-find_package(LAPACK REQUIRED)
+set(MKL_ARCH intel64)
+set(MKL_LINK dynamic)
+set(MKL_INTERFACE_FULL intel_lp64)
+set(MKL_THREADING sequential)
+set(MKL_MPI intelmpi)
+
+find_package(MKL REQUIRED)
+message(STATUS "${MKL_IMPORTED_TARGETS}")
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
@@ -18,24 +23,22 @@ add_library(nbd STATIC
   solver.cxx solver.hxx
   dist.cxx dist.hxx
 )
-target_include_directories(nbd PRIVATE "./" ${MPI_INCLUDE_PATH})
-target_compile_options(nbd PRIVATE "-DUSE_MKL=true" ${MPI_CXX_COMPILE_FLAGS})
+target_include_directories(nbd PRIVATE "./")
+target_compile_options(nbd PRIVATE "-DUSE_MKL=true")
 target_link_libraries(nbd
+  MKL::MKL
   OpenMP::OpenMP_CXX
-  ${BLAS_LIBRARIES} ${BLAS_LINKER_FLAGS}
-  ${LAPACK_LIBRARIES} ${LAPACK_LINKER_FLAGS}
-  ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS}
+  MPI::MPI_CXX
 )
 
 add_executable(lorasp
   lorasp.cxx
 )
 target_include_directories(lorasp PRIVATE "./")
-target_compile_options(lorasp PRIVATE ${MPI_CXX_COMPILE_FLAGS})
+target_compile_options(lorasp PRIVATE)
 target_link_libraries(lorasp nbd
-  OpenMP::OpenMP_CXX	
-  ${BLAS_LIBRARIES} ${BLAS_LINKER_FLAGS}
-  ${LAPACK_LIBRARIES} ${LAPACK_LINKER_FLAGS}
-  ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS}
+  MKL::MKL
+  OpenMP::OpenMP_CXX
+  MPI::MPI_CXX
 )
 
