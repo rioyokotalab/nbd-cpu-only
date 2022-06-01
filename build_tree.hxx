@@ -57,7 +57,7 @@ namespace nbd {
 
   void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim);
 
-  void buildTreeBuckets(Cells& cells, Body* bodies, int64_t nbodies, const int64_t buckets[], int64_t levels, int64_t dim);
+  void buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], int64_t levels, int64_t dim);
 
   void getList(Cell* Ci, Cell* Cj, int64_t dim, double theta);
 

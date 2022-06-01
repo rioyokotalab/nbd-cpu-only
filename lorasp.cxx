@@ -35,10 +35,7 @@ int main(int argc, char* argv[]) {
   EvalFunc ef = l3d();//yukawa3d();
   ef.singularity = 1.e-3 / Nbody;
 
-  std::srand(100);
-  std::vector<double> R(1 << 18);
-  for (int64_t i = 0; i < R.size(); i++)
-    R[i] = -1. + 2. * ((double)std::rand() / RAND_MAX);
+  cRandom(1 << 16, -1, 1, 100);
   
   Bodies body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
@@ -65,15 +62,16 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, lr_epi, lr_rank_max, sp_pts, &R[0], R.size(), dim);
+  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, lr_epi, lr_rank_max, sp_pts, dim);
   for (int64_t i = 0; i <= levels; i++)
     evaluateFar(sp.D[i].S, ef, &cell[0], dim, rels[i], i);
   stopTimer(&construct_time, &construct_comm_time);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorSpDense(sp, lcleaf, A, fac_epi, fac_rank_max, &R[0], R.size());
+  factorSpDense(sp, lcleaf, A, fac_epi, fac_rank_max);
   stopTimer(&factor_time, &factor_comm_time);
+  cRandom(0, 0, 0, 0);
 
   Vectors X, Xref;
   loadX(X, lcleaf, levels);
@@ -101,6 +99,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Solution: " << solve_time << " COMM: " << solve_comm_time << std::endl;
     std::cout << "Err: " << err << std::endl;
   }
+
   closeComm();
   return 0;
 }

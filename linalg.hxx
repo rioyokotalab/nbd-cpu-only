@@ -20,6 +20,8 @@ namespace nbd {
   typedef std::vector<Matrix> Matrices;
   typedef std::vector<Vector> Vectors;
 
+  void cRandom(int64_t lenR, double min, double max, unsigned int seed);
+
   void cMatrix(Matrix& mat, int64_t m, int64_t n);
 
   void cVector(Vector& vec, int64_t n);
@@ -40,7 +42,7 @@ namespace nbd {
 
   void updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2);
 
-  void lraID(double epi, int64_t lenR, Matrix& A, Matrix& U, int64_t arows[], const double R[], int64_t* rnk_out);
+  void lraID(double epi, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out);
 
   void zeroMatrix(Matrix& A);
 
@@ -48,7 +50,7 @@ namespace nbd {
 
   void mmult(char ta, char tb, const Matrix& A, const Matrix& B, Matrix& C, double alpha, double beta);
 
-  void msample(char ta, int64_t lenR, const Matrix& A, const double R[], Matrix& C);
+  void msample(char ta, const Matrix& A, Matrix& C);
 
   void msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C);
 

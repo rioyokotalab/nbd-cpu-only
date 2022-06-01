@@ -34,10 +34,10 @@ namespace nbd {
 
   void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t dimo[], int64_t level);
 
-  void factorNode(Node& n, Base& basis, const CSC& rels, double epi, int64_t mrank, const double* R, int64_t lenR, int64_t level);
+  void factorNode(Node& n, Base& basis, const CSC& rels, double epi, int64_t mrank, int64_t level);
 
   void nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Aprev, const Base& bsprev, const CSC& rels_low, int64_t nlevel);
 
-  void factorA(Node A[], Base B[], const CSC rels[], int64_t levels, double epi, int64_t mrank, const double* R, int64_t lenR);
+  void factorA(Node A[], Base B[], const CSC rels[], int64_t levels, double epi, int64_t mrank);
 
 };

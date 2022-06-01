@@ -10,9 +10,9 @@ set(MKL_THREADING sequential)
 set(MKL_MPI intelmpi)
 
 find_package(MKL REQUIRED)
-message(STATUS "${MKL_IMPORTED_TARGETS}")
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
+set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
 
 add_library(nbd STATIC 
   build_tree.cxx build_tree.hxx

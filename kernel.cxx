@@ -10,7 +10,7 @@ using namespace nbd;
 EvalFunc nbd::l3d() {
   EvalFunc ef;
   ef.r2f = [](double& r2, double singularity, double alpha) -> void {
-    r2 = 1. / (std::sqrt(r2) + singularity);
+    r2 = alpha / (std::sqrt(r2) + singularity);
   };
   ef.singularity = 1.e-8;
   ef.alpha = 1.;

@@ -7,7 +7,7 @@
 
 using namespace nbd;
 
-void nbd::sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, const double* R, int64_t lenR, int64_t level) {
+void nbd::sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, int64_t level) {
   int64_t lbegin = rels.CBGN;
   int64_t ibegin = 0, iend;
   selfLocalRange(ibegin, iend, level);
@@ -20,7 +20,7 @@ void nbd::sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, const doubl
       if (i == j + lbegin)
         continue;
       const Matrix& Aij = A[ij];
-      msample('T', lenR, Aij, R, cj);
+      msample('T', Aij, cj);
     }
 
     int64_t jj;
@@ -80,7 +80,7 @@ void nbd::allocBasis(Basis& basis, int64_t levels) {
   }
 }
 
-void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, const double R[], int64_t lenR, int64_t dim) {
+void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
   int64_t m;
   childMultipoleSize(&m, *cell);
 
@@ -102,9 +102,10 @@ void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bod
     cMatrix(Base, m, rank);
 
     int64_t iters = rank;
-    lraID(epi, lenR, a, Base, pa.data(), R, &iters);
+    lraID(epi, a, Base, pa.data(), &iters);
 
-    if (cell->Multipole.size() != iters)
+    int64_t len_m = cell->Multipole.size();
+    if (len_m != iters)
       cell->Multipole.resize(iters);
     for (int64_t i = 0; i < iters; i++) {
       int64_t ai = pa[i];
@@ -116,7 +117,7 @@ void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bod
   }
 }
 
-void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, const double R[], int64_t lenR, int64_t dim) {
+void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
   int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
   int64_t iend = xlen;
@@ -137,7 +138,7 @@ void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, con
     int64_t box_i = ii;
     iLocal(box_i, ii, level);
 
-    evaluateBasis(ef, basis.Ulr[box_i], ci, bodies, epi, mrank, sp_pts, R, lenR, dim);
+    evaluateBasis(ef, basis.Ulr[box_i], ci, bodies, epi, mrank, sp_pts, dim);
     int64_t ni;
     childMultipoleSize(&ni, *ci);
     int64_t mi = ci->Multipole.size();
@@ -203,20 +204,21 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
 
     int64_t offset_i = offsets[box_i];
     int64_t end_i = offset_i + basis.DIML[box_i];
-    if (ci->Multipole.size() != basis.DIML[box_i])
+    int64_t len_m = ci->Multipole.size();
+    if (len_m != basis.DIML[box_i])
       ci->Multipole.resize(basis.DIML[box_i]);
     std::copy(&mps_comm[offset_i], &mps_comm[end_i], ci->Multipole.begin());
     iter = std::next(iter);
   }
 }
 
-void nbd::evaluateBaseAll(EvalFunc ef, Base basis[], Cells& cells, int64_t levels, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, const double R[], int64_t lenR, int64_t dim) {
+void nbd::evaluateBaseAll(EvalFunc ef, Base basis[], Cells& cells, int64_t levels, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
   int64_t mpi_levels;
   commRank(NULL, NULL, &mpi_levels);
 
   for (int64_t i = levels; i >= 0; i--) {
     Cell* vlocal = findLocalAtLevelModify(&cells[0], i);
-    evaluateLocal(ef, basis[i], vlocal, i, bodies, epi, mrank, sp_pts, R, lenR, dim);
+    evaluateLocal(ef, basis[i], vlocal, i, bodies, epi, mrank, sp_pts, dim);
     writeRemoteCoupling(basis[i], vlocal, i);
     
     if (i <= mpi_levels && i > 0) {
@@ -224,7 +226,8 @@ void nbd::evaluateBaseAll(EvalFunc ef, Base basis[], Cells& cells, int64_t level
       int64_t msib;
       butterflyUpdateDims(mlen, &msib, i);
       Cell* vsib = vlocal->SIBL;
-      if (vsib->Multipole.size() != msib)
+      int64_t len_m = vsib->Multipole.size();
+      if (len_m != msib)
         vsib->Multipole.resize(msib);
       butterflyUpdateMultipoles(vlocal->Multipole.data(), mlen, vsib->Multipole.data(), msib, i);
     }
@@ -283,7 +286,7 @@ void nbd::allocUcUo(Base& basis, const Matrices& C, int64_t level) {
   }
 }
 
-void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, int64_t mrank, const double* R, int64_t lenR, int64_t level) {
+void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, int64_t mrank, int64_t level) {
   Matrices C1(basis.DIMS.size());
   Matrices C2(basis.DIMS.size());
 
@@ -296,7 +299,7 @@ void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, i
     zeroMatrix(C2[i]);
   }
 
-  sampleC1(C1, rels, A, R, lenR, level);
+  sampleC1(C1, rels, A, level);
   DistributeMatricesList(C1, level);
   sampleC2(C2, rels, A, C1, level);
   orthoBasis(epi, C2, basis.Ulr, &basis.DIMO[0], level);

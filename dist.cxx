@@ -64,7 +64,8 @@ void nbd::commRank(int64_t* mpi_rank, int64_t* mpi_size, int64_t* mpi_levels) {
 }
 
 void nbd::configureComm(int64_t level, const int64_t ngbs[], int64_t ngbs_len) {
-  if (level >= COMMS.size()) {
+  int64_t csize = COMMS.size();
+  if (level >= csize) {
     COMMS.resize(level + 1);
   }
   if (ngbs) {

@@ -176,7 +176,7 @@ void nbd::readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodie
     buckets[bucket_i - 1] = count;
 }
 
-void nbd::buildTreeBuckets(Cells& cells, Body* bodies, int64_t nbodies, const int64_t buckets[], int64_t levels, int64_t dim) {
+void nbd::buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], int64_t levels, int64_t dim) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = (nleaves << 1) - 1;
   cells.resize(ncells);
@@ -588,7 +588,6 @@ void nbd::h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t d
 #pragma omp parallel for
   for (int64_t i = 0; i < len; i++) {
     const Cell* ci = cells[i];
-    int64_t lislen = ci->listNear.size();
     int64_t li = ci->ZID;
     iLocal(li, ci->ZID, levels);
     Vector& Bi = B[li];

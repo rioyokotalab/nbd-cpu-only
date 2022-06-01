@@ -167,8 +167,8 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
   }
 }
 
-void nbd::factorNode(Node& n, Base& basis, const CSC& rels, double epi, int64_t mrank, const double* R, int64_t lenR, int64_t level) {
-  sampleA(basis, rels, n.A, epi, mrank, R, lenR, level);
+void nbd::factorNode(Node& n, Base& basis, const CSC& rels, double epi, int64_t mrank, int64_t level) {
+  sampleA(basis, rels, n.A, epi, mrank, level);
   
   allocSubMatrices(n, rels, &basis.DIMS[0], &basis.DIMO[0], level);
   splitA(n.A_cc, rels, n.A, basis.Uc, basis.Uc, level);
@@ -287,12 +287,12 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
 }
 
 
-void nbd::factorA(Node A[], Base B[], const CSC rels[], int64_t levels, double epi, int64_t mrank, const double* R, int64_t lenR) {
+void nbd::factorA(Node A[], Base B[], const CSC rels[], int64_t levels, double epi, int64_t mrank) {
   for (int64_t i = levels; i > 0; i--) {
     Node& Ai = A[i];
     Base& Bi = B[i];
     const CSC& ri = rels[i];
-    factorNode(Ai, Bi, ri, epi, mrank, R, lenR, i);
+    factorNode(Ai, Bi, ri, epi, mrank, i);
 
     Node& An = A[i - 1];
     Base& Bn = B[i - 1];
