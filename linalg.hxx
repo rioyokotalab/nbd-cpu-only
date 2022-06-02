@@ -26,7 +26,7 @@ namespace nbd {
 
   void cVector(Vector& vec, int64_t n);
 
-  void cpyFromMatrix(char trans, const Matrix& A, double* v);
+  void cpyFromMatrix(const Matrix& A, double* v);
 
   void cpyFromVector(const Vector& A, double* v);
 
@@ -53,8 +53,6 @@ namespace nbd {
   void msample(char ta, const Matrix& A, Matrix& C);
 
   void msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C);
-
-  void minvl(const Matrix& A, Matrix& B);
 
   void chol_decomp(Matrix& A);
 

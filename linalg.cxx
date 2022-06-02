@@ -52,15 +52,10 @@ void nbd::cVector(Vector& vec, int64_t n) {
   vec.N = n;
 }
 
-void nbd::cpyFromMatrix(char trans, const Matrix& A, double* V) {
-  int64_t iv = A.M;
-  int64_t incv = 1;
-  if (trans == 'T' || trans == 't') {
-    iv = 1;
-    incv = A.N;
-  }
-  for (int64_t j = 0; j < A.N; j++)
-    cblas_dcopy(A.M, &A.A[j * A.M], 1, &V[j * iv], incv);
+void nbd::cpyFromMatrix(const Matrix& A, double* v) {
+  int64_t size = A.M * A.N;
+  if (size > 0)
+    std::copy(A.A.data(), A.A.data() + size, v);
 }
 
 void nbd::cpyFromVector(const Vector& A, double* v) {
@@ -236,17 +231,6 @@ void nbd::msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C) {
   }
   int64_t nrhs = std::min(B.N, C.N);
   cblas_dgemm(CblasColMajor, tac, CblasNoTrans, C.M, nrhs, k, 1., A.A.data(), A.M, B.A.data(), B.M, 1., C.A.data(), C.M);
-}
-
-void nbd::minvl(const Matrix& A, Matrix& B) {
-  if (A.M > 0 && A.N > 0) {
-    Matrix work;
-    cMatrix(work, A.M, A.N);
-    cpyMatToMat(A.M, A.N, A, work, 0, 0, 0, 0);
-    std::vector<int> ipiv(A.M);
-    LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, A.N, work.A.data(), A.M, ipiv.data());
-    LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', A.M, B.N, work.A.data(), A.M, ipiv.data(), B.A.data(), B.M);
-  }
 }
 
 void nbd::chol_decomp(Matrix& A) {

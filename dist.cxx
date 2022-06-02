@@ -282,7 +282,7 @@ void nbd::DistributeMatricesList(Matrices& lis, int64_t level) {
     int64_t my_i = my_ind * nboxes + n;
     const Matrix& A_i = lis[my_i];
     int64_t len = A_i.M * A_i.N;
-    cpyFromMatrix('N', A_i, my_data + offset);
+    cpyFromMatrix(A_i, my_data + offset);
     offset = offset + len;
   }
 
@@ -466,7 +466,7 @@ void nbd::butterflySumA(Matrices& A, int64_t level) {
   for (int64_t i = 0; i < alen; i++) {
     const Matrix& A_i = A[i];
     int64_t len = A_i.M * A_i.N;
-    cpyFromMatrix('N', A_i, SRC_DATA + offset);
+    cpyFromMatrix(A_i, SRC_DATA + offset);
     offset = offset + len;
   }
 

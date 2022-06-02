@@ -22,11 +22,6 @@ void nbd::sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, int64_t lev
       const Matrix& Aij = A[ij];
       msample('T', Aij, cj);
     }
-
-    int64_t jj;
-    lookupIJ('N', jj, rels, j + lbegin, j + lbegin);
-    const Matrix& Ajj = A[jj];
-    minvl(Ajj, cj);
   }
 }
 
