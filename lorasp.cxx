@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
   int64_t leaf_size = 256;
   int64_t dim = 3;
 
-  double epi = 1.e-8;
+  double epi = 1.e-10;
   int64_t rank_max = 100;
   int64_t sp_pts = 4000;
 
@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
 
   commRank(&mpi_rank, &mpi_size, NULL);
   
-  eval_func_t ef = yukawa3d;
+  eval_func_t ef = laplace3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
 
   cRandom(1 << 16, -1, 1, 100);
@@ -38,9 +38,9 @@ int main(int argc, char* argv[]) {
   std::vector<Body> body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
   //readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
-  randomSurfaceBodies(body.data(), Nbody, dim, 1234);
-  //randomUniformBodies(body.data(), Nbody, 0., 1., dim, 1234);
-  randomNeutralCharge(body.data(), Nbody, 1., 0);
+  mesh_unit_sphere(body.data(), Nbody);
+  //uniform_unit_cube(body.data(), Nbody, dim, 1234);
+  body_neutral_charge(body.data(), Nbody, 1., 0);
 
   Cells cell;
   //buildTreeBuckets(cell, body.data(), Nbody, buckets.data(), levels, dim);

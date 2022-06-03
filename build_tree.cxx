@@ -13,62 +13,6 @@
 
 using namespace nbd;
 
-void nbd::randomUniformBodies(Body* bodies, int64_t nbodies, const double dmin, const double dmax, int64_t dim, int seed) {
-  if (seed > 0)
-    srand(seed);
-
-  double range = dmax - dmin;
-  for (int64_t i = 0; i < nbodies; i++)
-    for (int64_t d = 0; d < dim; d++) {
-      double r = ((double)rand() / RAND_MAX) * range + dmin;
-      bodies[i].X[d] = r;
-    }
-}
-
-void nbd::randomSurfaceBodies(Body* bodies, int64_t nbodies, int64_t dim, int seed) {
-  if (seed > 0)
-    srand(seed);
-
-  double pi = M_PI;
-  double pi2 = 2. * pi;
-
-  if (dim == 2)
-    for (int64_t i = 0; i < nbodies; i++) {
-      double theta = ((double)rand() / RAND_MAX) * pi2;
-      bodies[i].X[0] = std::cos(theta);
-      bodies[i].X[1] = std::sin(theta);
-    }
-  
-  if (dim == 3)
-    for (int64_t i = 0; i < nbodies; i++) {
-      double theta = ((double)rand() / RAND_MAX) * pi;
-      double phi = ((double)rand() / RAND_MAX) * pi2;
-      double cost = std::cos(theta);
-      double sint = std::sin(theta);
-      double cosp = std::cos(phi);
-      double sinp = std::sin(phi);
-      bodies[i].X[0] = sint * cosp;
-      bodies[i].X[1] = sint * sinp;
-      bodies[i].X[2] = cost;
-    }
-}
-
-void nbd::randomNeutralCharge(Body* bodies, int64_t nbodies, double cmax, int seed) {
-  if (seed > 0)
-    srand(seed);
-
-  double avg = 0.;
-  double cmax2 = cmax * 2;
-  for (int64_t i = 0; i < nbodies; i++) {
-    double c = ((double)rand() / RAND_MAX) * cmax2 - cmax;
-    bodies[i].B = c;
-    avg = avg + c;
-  }
-  avg = avg / nbodies;
-  for (int64_t i = 0; i < nbodies; i++)
-    bodies[i].B = bodies[i].B - avg;
-}
-
 int64_t nbd::partition(Body* bodies, int64_t nbodies, int64_t sdim) {
   auto comp = [sdim](const Body& b1, const Body& b2) -> bool {
     return b1.X[sdim] < b2.X[sdim];
@@ -76,24 +20,6 @@ int64_t nbd::partition(Body* bodies, int64_t nbodies, int64_t sdim) {
   int64_t loc = nbodies / 2;
   std::nth_element(bodies, bodies + loc, bodies + nbodies, comp);
   return loc;
-}
-
-void nbd::getBounds(const Body* bodies, int64_t nbodies, double R[], double C[], int64_t dim) {
-  std::vector<double> Xmin(dim), Xmax(dim);
-  for (int64_t d = 0; d < dim; d++) 
-    Xmin[d] = Xmax[d] = bodies[0].X[d];
-  for (int64_t i = 0; i < nbodies; i++) {
-    const Body* b = &bodies[i];
-    for (int64_t d = 0; d < dim; d++) 
-      Xmin[d] = std::fmin(b->X[d], Xmin[d]);
-    for (int64_t d = 0; d < dim; d++) 
-      Xmax[d] = std::fmax(b->X[d], Xmax[d]);
-  }
-
-  for (int64_t d = 0; d < dim; d++) {
-    C[d] = (Xmin[d] + Xmax[d]) / 2;
-    R[d] = 1.e-7 + std::fabs(Xmin[d] - Xmax[d]) / 2;
-  }
 }
 
 int64_t nbd::buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels, int64_t dim) {
@@ -106,7 +32,7 @@ int64_t nbd::buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t leve
   root->NBODY = nbodies;
   root->ZID = 0;
   root->LEVEL = 0;
-  getBounds(root->BODY, root->NBODY, root->R, root->C, dim);
+  get_bounds(root->BODY, root->NBODY, root->R, root->C);
 
   for (int64_t i = 0; i < ncells; i++) {
     Cell* ci = &cells[i];
@@ -137,8 +63,8 @@ int64_t nbd::buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t leve
       c1->ZID = ((ci->ZID) << 1) + 1;
       c1->LEVEL = ci->LEVEL + 1;
 
-      getBounds(c0->BODY, c0->NBODY, c0->R, c0->C, dim);
-      getBounds(c1->BODY, c1->NBODY, c1->R, c1->C, dim);
+      get_bounds(c0->BODY, c0->NBODY, c0->R, c0->C);
+      get_bounds(c1->BODY, c1->NBODY, c1->R, c1->C);
     }
     else {
       ci->CHILD = NULL;
@@ -194,7 +120,7 @@ void nbd::buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], 
     ci->listNear.clear();
     ci->listFar.clear();
     ci->Multipole.clear();
-    getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
+    get_bounds(ci->BODY, ci->NBODY, ci->R, ci->C);
     offset = offset + ci->NBODY;
   }
 
@@ -212,7 +138,7 @@ void nbd::buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], 
     ci->listNear.clear();
     ci->listFar.clear();
     ci->Multipole.clear();
-    getBounds(ci->BODY, ci->NBODY, ci->R, ci->C, dim);
+    get_bounds(ci->BODY, ci->NBODY, ci->R, ci->C);
     c0->SIBL = c1;
     c1->SIBL = c0;
   }
@@ -502,7 +428,7 @@ void nbd::evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, int64_
         int64_t m = cell->listNear[i]->NBODY;
         int64_t n = cell->NBODY;
         cMatrix(d[off + i], m, n);
-        P2Pmat(ef, m, n, cell->listNear[i]->BODY, cell->BODY, dim, d[off + i], NULL, NULL);
+        gen_matrix(ef, m, n, cell->listNear[i]->BODY, cell->BODY, d[off + i].A.data(), NULL, NULL);
       }
     }
   }
@@ -521,7 +447,7 @@ void nbd::evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, int64_t dim
         int64_t m = cell->listFar[i]->Multipole.size();
         int64_t n = cell->Multipole.size();
         cMatrix(s[off + i], m, n);
-        P2Pmat(ef, m, n, cell->listFar[i]->BODY, cell->BODY, dim, s[off + i], cell->listFar[i]->Multipole.data(), cell->Multipole.data());
+        gen_matrix(ef, m, n, cell->listFar[i]->BODY, cell->BODY, s[off + i].A.data(), cell->listFar[i]->Multipole.data(), cell->Multipole.data());
       }
     }
   }
@@ -607,7 +533,7 @@ void nbd::h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_
       
       Matrix Aij;
       cMatrix(Aij, m, n);
-      P2Pmat(ef, m, n, ci->BODY, cells_leaf[j]->BODY, dim, Aij, NULL, NULL);
+      gen_matrix(ef, m, n, ci->BODY, cells_leaf[j]->BODY, Aij.A.data(), NULL, NULL);
       mvec('N', Aij, X, Bi, 1., 1.);
     }
   }

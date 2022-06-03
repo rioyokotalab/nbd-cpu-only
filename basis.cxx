@@ -88,7 +88,7 @@ void nbd::evaluateBasis(eval_func_t ef, Matrix& Base, Cell* cell, const Body* bo
     
     Matrix a;
     cMatrix(a, m, n);
-    P2Pmat(ef, m, n, cell->BODY, remote.data(), dim, a, cellm.data(), NULL);
+    gen_matrix(ef, m, n, cell->BODY, remote.data(), a.A.data(), cellm.data(), NULL);
 
     int64_t rank = std::min(m, n);
     rank = mrank > 0 ? std::min(mrank, rank) : rank;

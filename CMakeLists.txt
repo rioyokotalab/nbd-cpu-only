@@ -1,6 +1,9 @@
 ﻿
 cmake_minimum_required (VERSION 3.13)
 
+set(CMAKE_C_COMPILER "icc")
+set(CMAKE_C_FLAGS "-O3 -Wall -Wextra")
+
 set(CMAKE_CXX_COMPILER "icpc")
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
@@ -11,15 +14,15 @@ set(MKL_INTERFACE_FULL intel_lp64)
 set(MKL_THREADING sequential)
 set(MKL_MPI intelmpi)
 
-project ("shimo" LANGUAGES CXX)
+project ("shimo" LANGUAGES C CXX)
 
 find_package(MKL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
 add_library(nbd STATIC 
+  kernel.c kernel.h
   build_tree.cxx build_tree.hxx
-  kernel.cxx kernel.hxx
   linalg.cxx linalg.hxx
   basis.cxx basis.hxx
   umv.cxx umv.hxx
@@ -28,7 +31,7 @@ add_library(nbd STATIC
 )
 target_include_directories(nbd PRIVATE "./")
 target_compile_options(nbd PRIVATE "-DUSE_MKL=true")
-target_link_libraries(nbd MKL::MKL OpenMP::OpenMP_CXX MPI::MPI_CXX)
+target_link_libraries(nbd MKL::MKL OpenMP::OpenMP_C OpenMP::OpenMP_CXX MPI::MPI_C MPI::MPI_CXX)
 
 add_executable(lorasp lorasp.cxx)
 target_include_directories(lorasp PRIVATE "./")

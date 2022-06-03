@@ -1,6 +1,7 @@
 
 #pragma once
-#include "kernel.hxx"
+#include "linalg.hxx"
+#include "kernel.h"
 
 namespace nbd {
 
@@ -36,15 +37,7 @@ namespace nbd {
 
   struct Base;
 
-  void randomUniformBodies(Body* bodies, int64_t nbodies, double dmin, double dmax, int64_t dim, int seed);
-
-  void randomSurfaceBodies(Body* bodies, int64_t nbodies, int64_t dim, int seed);
-
-  void randomNeutralCharge(Body* bodies, int64_t nbodies, double cmax, int seed);
-
   int64_t partition(Body* bodies, int64_t nbodies, int64_t sdim);
-
-  void getBounds(const Body* bodies, int64_t nbodies, double R[], double C[], int64_t dim);
 
   int64_t buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels, int64_t dim);
 
