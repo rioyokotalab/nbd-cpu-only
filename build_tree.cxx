@@ -96,15 +96,14 @@ void nbd::getBounds(const Body* bodies, int64_t nbodies, double R[], double C[],
   }
 }
 
-int64_t nbd::buildTree(Cells& cells, Bodies& bodies, int64_t levels, int64_t dim) {
-  int64_t nbody = bodies.size();
+int64_t nbd::buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels, int64_t dim) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = (nleaves << 1) - 1;
   cells.resize(ncells);
 
   Cell* root = &cells[0];
   root->BODY = &bodies[0];
-  root->NBODY = nbody;
+  root->NBODY = nbodies;
   root->ZID = 0;
   root->LEVEL = 0;
   getBounds(root->BODY, root->NBODY, root->R, root->C, dim);
@@ -366,8 +365,8 @@ void nbd::traverse(Cells& cells, int64_t levels, int64_t dim, int64_t theta) {
   }
 }
 
-void nbd::remoteBodies(Bodies& remote, int64_t size, const Cell& cell, const Bodies& bodies, int64_t dim) {
-  int64_t avail = bodies.size();
+int64_t nbd::remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies, int64_t dim) {
+  int64_t avail = nbodies;
   int64_t len = cell.listNear.size();
   std::vector<int64_t> offsets(len);
   std::vector<int64_t> lens(len);
@@ -381,7 +380,6 @@ void nbd::remoteBodies(Bodies& remote, int64_t size, const Cell& cell, const Bod
   }
 
   size = size > avail ? avail : size;
-  remote.resize(size);
 
   for (int64_t i = 0; i < size; i++) {
     int64_t loc = (int64_t)((double)(avail * i) / size);
@@ -393,6 +391,7 @@ void nbd::remoteBodies(Bodies& remote, int64_t size, const Cell& cell, const Bod
       remote[i].X[d] = bodies[loc].X[d];
     remote[i].B = bodies[loc].B;
   }
+  return size;
 }
 
 void nbd::collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
@@ -490,7 +489,7 @@ void nbd::relationsNear(CSC rels[], const Cells& cells) {
   }
 }
 
-void nbd::evaluateLeafNear(Matrices& d, EvalFunc ef, const Cell* cell, int64_t dim, const CSC& csc) {
+void nbd::evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, int64_t dim, const CSC& csc) {
   if (cell->NCHILD > 0)
     for (int64_t i = 0; i < cell->NCHILD; i++)
       evaluateLeafNear(d, ef, cell->CHILD + i, dim, csc);
@@ -500,14 +499,16 @@ void nbd::evaluateLeafNear(Matrices& d, EvalFunc ef, const Cell* cell, int64_t d
       int64_t len = cell->listNear.size();
       int64_t off = csc.COLS_NEAR[n];
       for (int64_t i = 0; i < len; i++) {
-        cMatrix(d[off + i], cell->listNear[i]->NBODY, cell->NBODY);
-        P2Pmat(ef, cell->listNear[i], cell, dim, d[off + i]);
+        int64_t m = cell->listNear[i]->NBODY;
+        int64_t n = cell->NBODY;
+        cMatrix(d[off + i], m, n);
+        P2Pmat(ef, m, n, cell->listNear[i]->BODY, cell->BODY, dim, d[off + i], NULL, NULL);
       }
     }
   }
 }
 
-void nbd::evaluateFar(Matrices& s, EvalFunc ef, const Cell* cell, int64_t dim, const CSC& csc, int64_t level) {
+void nbd::evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, int64_t dim, const CSC& csc, int64_t level) {
   if (cell->LEVEL < level)
     for (int64_t i = 0; i < cell->NCHILD; i++)
       evaluateFar(s, ef, cell->CHILD + i, dim, csc, level);
@@ -517,8 +518,10 @@ void nbd::evaluateFar(Matrices& s, EvalFunc ef, const Cell* cell, int64_t dim, c
       int64_t len = cell->listFar.size();
       int64_t off = csc.COLS_FAR[n];
       for (int64_t i = 0; i < len; i++) {
-        cMatrix(s[off + i], cell->listFar[i]->Multipole.size(), cell->Multipole.size());
-        M2Lmat(ef, cell->listFar[i], cell, dim, s[off + i]);
+        int64_t m = cell->listFar[i]->Multipole.size();
+        int64_t n = cell->Multipole.size();
+        cMatrix(s[off + i], m, n);
+        P2Pmat(ef, m, n, cell->listFar[i]->BODY, cell->BODY, dim, s[off + i], cell->listFar[i]->Multipole.data(), cell->Multipole.data());
       }
     }
   }
@@ -576,7 +579,7 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   DistributeVectorsList(X, level);
 }
 
-void nbd::h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t dim, int64_t levels) {
+void nbd::h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_t dim, int64_t levels) {
   int64_t len = 0, lenj = 0;
   std::vector<const Cell*> cells((int64_t)1 << levels);
   std::vector<const Cell*> cells_leaf((int64_t)1 << levels);
@@ -596,10 +599,16 @@ void nbd::h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t d
 
     for (int64_t j = 0; j < lenj; j++) {
       Vector X;
-      cVector(X, cells_leaf[j]->NBODY);
-      for (int64_t i = 0; i < cells_leaf[j]->NBODY; i++)
-        X.X[i] = cells_leaf[j]->BODY[i].B;
-      P2P(ef, ci, cells_leaf[j], dim, X, Bi);
+      int64_t m = ci->NBODY;
+      int64_t n = cells_leaf[j]->NBODY;
+      cVector(X, n);
+      for (int64_t k = 0; k < n; k++)
+        X.X[k] = cells_leaf[j]->BODY[k].B;
+      
+      Matrix Aij;
+      cMatrix(Aij, m, n);
+      P2Pmat(ef, m, n, ci->BODY, cells_leaf[j]->BODY, dim, Aij, NULL, NULL);
+      mvec('N', Aij, X, Bi, 1., 1.);
     }
   }
 }

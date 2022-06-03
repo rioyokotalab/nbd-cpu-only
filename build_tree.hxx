@@ -4,13 +4,6 @@
 
 namespace nbd {
 
-  struct Body {
-    double X[3];
-    double B;
-  };
-
-  typedef std::vector<Body> Bodies;
-
   struct Cell {
     int64_t NCHILD;
     int64_t NBODY;
@@ -53,7 +46,7 @@ namespace nbd {
 
   void getBounds(const Body* bodies, int64_t nbodies, double R[], double C[], int64_t dim);
 
-  int64_t buildTree(Cells& cells, Bodies& bodies, int64_t levels, int64_t dim);
+  int64_t buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels, int64_t dim);
 
   void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim);
 
@@ -71,7 +64,7 @@ namespace nbd {
 
   void traverse(Cells& cells, int64_t levels, int64_t dim, int64_t theta);
 
-  void remoteBodies(Bodies& remote, int64_t size, const Cell& cell, const Bodies& bodies, int64_t dim);
+  int64_t remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies, int64_t dim);
 
   void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
 
@@ -79,15 +72,15 @@ namespace nbd {
 
   void relationsNear(CSC rels[], const Cells& cells);
 
-  void evaluateLeafNear(Matrices& d, EvalFunc ef, const Cell* cell, int64_t dim, const CSC& csc);
+  void evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, int64_t dim, const CSC& csc);
 
-  void evaluateFar(Matrices& s, EvalFunc ef, const Cell* cell, int64_t dim, const CSC& csc, int64_t level);
+  void evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, int64_t dim, const CSC& csc, int64_t level);
 
   void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
   void loadX(Vectors& X, const Cell* cell, int64_t level);
   
-  void h2MatVecReference(Vectors& B, EvalFunc ef, const Cell* root, int64_t dim, int64_t levels);
+  void h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_t dim, int64_t levels);
 
 }
 

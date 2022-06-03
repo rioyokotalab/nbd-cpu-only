@@ -75,13 +75,12 @@ void nbd::allocBasis(Basis& basis, int64_t levels) {
   }
 }
 
-void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
+void nbd::evaluateBasis(eval_func_t ef, Matrix& Base, Cell* cell, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
   int64_t m;
   childMultipoleSize(&m, *cell);
 
-  Bodies remote;
-  remoteBodies(remote, sp_pts, *cell, bodies, dim);
-  int64_t n = remote.size();
+  std::vector<Body> remote(sp_pts);
+  int64_t n = remoteBodies(remote.data(), sp_pts, *cell, bodies, nbodies, dim);
 
   if (m > 0 && n > 0) {
     std::vector<int64_t> cellm(m);
@@ -89,7 +88,7 @@ void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bod
     
     Matrix a;
     cMatrix(a, m, n);
-    M2Lmat_bodies(ef, m, n, cellm.data(), nullptr, cell->BODY, remote.data(), dim, a);
+    P2Pmat(ef, m, n, cell->BODY, remote.data(), dim, a, cellm.data(), NULL);
 
     int64_t rank = std::min(m, n);
     rank = mrank > 0 ? std::min(mrank, rank) : rank;
@@ -112,7 +111,7 @@ void nbd::evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bod
   }
 }
 
-void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
+void nbd::evaluateLocal(eval_func_t ef, Base& basis, Cell* cell, int64_t level, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
   int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
   int64_t iend = xlen;
@@ -133,7 +132,7 @@ void nbd::evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, con
     int64_t box_i = ii;
     iLocal(box_i, ii, level);
 
-    evaluateBasis(ef, basis.Ulr[box_i], ci, bodies, epi, mrank, sp_pts, dim);
+    evaluateBasis(ef, basis.Ulr[box_i], ci, bodies, nbodies, epi, mrank, sp_pts, dim);
     int64_t ni;
     childMultipoleSize(&ni, *ci);
     int64_t mi = ci->Multipole.size();
@@ -207,13 +206,13 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
   }
 }
 
-void nbd::evaluateBaseAll(EvalFunc ef, Base basis[], Cells& cells, int64_t levels, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
+void nbd::evaluateBaseAll(eval_func_t ef, Base basis[], Cells& cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim) {
   int64_t mpi_levels;
   commRank(NULL, NULL, &mpi_levels);
 
   for (int64_t i = levels; i >= 0; i--) {
     Cell* vlocal = findLocalAtLevelModify(&cells[0], i);
-    evaluateLocal(ef, basis[i], vlocal, i, bodies, epi, mrank, sp_pts, dim);
+    evaluateLocal(ef, basis[i], vlocal, i, bodies, nbodies, epi, mrank, sp_pts, dim);
     writeRemoteCoupling(basis[i], vlocal, i);
     
     if (i <= mpi_levels && i > 0) {

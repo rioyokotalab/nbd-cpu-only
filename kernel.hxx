@@ -5,33 +5,23 @@
 
 namespace nbd {
 
-  typedef void (*eval_func_t) (double&, double, double);
+#define DIM_MAX 3
 
-  struct Cell;
-  struct Body;
-
-  struct EvalFunc {
-    eval_func_t r2f;
-    double singularity;
-    double alpha;
+  struct Body {
+    double X[DIM_MAX];
+    double B;
   };
 
-  EvalFunc l3d();
+  typedef void (*eval_func_t) (double*);
 
-  EvalFunc yukawa3d();
+  void laplace3d(double* r2);
 
-  void eval(EvalFunc ef, const Body* bi, const Body* bj, int64_t dim, double* out);
+  void yukawa3d(double* r2);
 
-  void P2P(EvalFunc ef, const Cell* ci, const Cell* cj, int64_t dim, const Vector& X, Vector& B);
+  void set_kernel_constants(double singularity, double alpha);
 
-  void P2Pmat(EvalFunc ef, const Cell* ci, const Cell* cj, int64_t dim, Matrix& a);
+  void eval(eval_func_t ef, const Body* bi, const Body* bj, int64_t dim, double* out);
 
-  void M2L(EvalFunc ef, const Cell* ci, const Cell* cj, int64_t dim, const double m[], double l[]);
-
-  void M2Lc(EvalFunc ef, const Cell* ci, const Cell* cj, int64_t dim, const Vector& M, Vector& L);
-
-  void M2Lmat_bodies(EvalFunc ef, int64_t m, int64_t n, const int64_t mi[], const int64_t mj[], const Body* bi, const Body* bj, int64_t dim, Matrix& a);
-
-  void M2Lmat(EvalFunc ef, const Cell* ci, const Cell* cj, int64_t dim, Matrix& a);
+  void P2Pmat(eval_func_t ef, int64_t m, int64_t n, const Body bi[], const Body bj[], int64_t dim, Matrix& a, const int64_t sel_i[], const int64_t sel_j[]);
 
 }

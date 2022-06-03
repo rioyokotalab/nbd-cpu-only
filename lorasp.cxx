@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
   int64_t leaf_size = 256;
   int64_t dim = 3;
 
-  double epi = 1.e-6;
+  double epi = 1.e-8;
   int64_t rank_max = 100;
   int64_t sp_pts = 4000;
 
@@ -30,12 +30,12 @@ int main(int argc, char* argv[]) {
 
   commRank(&mpi_rank, &mpi_size, NULL);
   
-  EvalFunc ef = yukawa3d();
-  ef.singularity = 1.e-3 / Nbody;
+  eval_func_t ef = yukawa3d;
+  set_kernel_constants(1.e-3 / Nbody, 1.);
 
-  cRandom(1 << 18, -1, 1, 100);
+  cRandom(1 << 16, -1, 1, 100);
   
-  Bodies body(Nbody);
+  std::vector<Body> body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
   //readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
   randomSurfaceBodies(body.data(), Nbody, dim, 1234);
@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
 
   Cells cell;
   //buildTreeBuckets(cell, body.data(), Nbody, buckets.data(), levels, dim);
-  buildTree(cell, body, levels, dim);
+  buildTree(cell, body.data(), Nbody, levels, dim);
   traverse(cell, levels, dim, theta);
   const Cell* lcleaf = &cell[0];
   lcleaf = findLocalAtLevel(lcleaf, levels);
@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body, epi, rank_max, sp_pts, dim);
+  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body.data(), Nbody, epi, rank_max, sp_pts, dim);
   for (int64_t i = 0; i <= levels; i++)
     evaluateFar(sp.D[i].S, ef, &cell[0], dim, rels[i], i);
   stopTimer(&construct_time, &construct_comm_time);

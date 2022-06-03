@@ -24,13 +24,13 @@ namespace nbd {
 
   void allocBasis(Basis& basis, int64_t levels);
 
-  void evaluateBasis(EvalFunc ef, Matrix& Base, Cell* cell, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
+  void evaluateBasis(eval_func_t ef, Matrix& Base, Cell* cell, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
 
-  void evaluateLocal(EvalFunc ef, Base& basis, Cell* cell, int64_t level, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
+  void evaluateLocal(eval_func_t ef, Base& basis, Cell* cell, int64_t level, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
 
   void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level);
 
-  void evaluateBaseAll(EvalFunc ef, Base basis[], Cells& cells, int64_t levels, const Bodies& bodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
+  void evaluateBaseAll(eval_func_t ef, Base basis[], Cells& cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts, int64_t dim);
   
   void fillDimsFromCell(Base& basis, const Cell* cell, int64_t level);
 
