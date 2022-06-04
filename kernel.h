@@ -30,6 +30,10 @@ void uniform_unit_cube(Bodies bodies, int64_t nbodies, int64_t dim, unsigned int
 
 void mesh_unit_sphere(Bodies bodies, int64_t nbodies);
 
+void mesh_unit_cube(Bodies bodies, int64_t nbodies);
+
+void magnify_reloc(Bodies bodies, int64_t nbodies, double Ccur[], double Rcur[], double Cnew[], double Rnew[]);
+
 void body_neutral_charge(Bodies bodies, int64_t nbodies, double cmax, unsigned int seed);
 
 void get_bounds(const Bodies bodies, int64_t nbodies, double R[], double C[]);

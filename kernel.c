@@ -51,12 +51,12 @@ void uniform_unit_cube(Bodies bodies, int64_t nbodies, int64_t dim, unsigned int
     srand(seed);
 
   for (int64_t i = 0; i < nbodies; i++) {
-    double r1 = dim > 0 ? ((double)rand() / RAND_MAX) : 0.;
-    double r2 = dim > 1 ? ((double)rand() / RAND_MAX) : 0.;
-    double r3 = dim > 2 ? ((double)rand() / RAND_MAX) : 0.;
-    bodies[i].X[0] = r1;
-    bodies[i].X[1] = r2;
-    bodies[i].X[2] = r3;
+    double r0 = dim > 0 ? ((double)rand() / RAND_MAX) : 0.;
+    double r1 = dim > 1 ? ((double)rand() / RAND_MAX) : 0.;
+    double r2 = dim > 2 ? ((double)rand() / RAND_MAX) : 0.;
+    bodies[i].X[0] = r0;
+    bodies[i].X[1] = r1;
+    bodies[i].X[2] = r2;
   }
 }
 
@@ -88,10 +88,10 @@ void mesh_unit_sphere(Bodies bodies, int64_t nbodies) {
     double cosp = cos(phi);
     double sinp = sin(phi);
 
-    double* X = bodies[i + 1].X;
-    X[0] = sint * cosp;
-    X[1] = sint * sinp;
-    X[2] = cost;
+    double* x_bi = bodies[i + 1].X;
+    x_bi[0] = sint * cosp;
+    x_bi[1] = sint * sinp;
+    x_bi[2] = cost;
   }
 
   bodies[0].X[0] = 0.;
@@ -101,6 +101,96 @@ void mesh_unit_sphere(Bodies bodies, int64_t nbodies) {
   bodies[nbodies - 1].X[0] = 0.;
   bodies[nbodies - 1].X[1] = 0.;
   bodies[nbodies - 1].X[2] = -1.;
+}
+
+void mesh_unit_cube(Bodies bodies, int64_t nbodies) {
+  if (nbodies < 0) {
+    fprintf(stderr, "Error cubic mesh size (GT/EQ. 0 required): %" PRId64 ".\n", nbodies);
+    return;
+  }
+
+  int64_t mlen = (int64_t)ceil((double)nbodies / 6.);
+  double alen = sqrt(mlen);
+  int64_t m = (int64_t)ceil(alen);
+  int64_t n = (int64_t)ceil((double)mlen / m);
+
+  double seg_fv = 1. / (m - 1);
+  double seg_fu = 1. / n;
+  double seg_sv = 1. / (m + 1);
+  double seg_su = 1. / (n + 1);
+
+  for (int64_t i = 0; i < nbodies; i++) {
+    int64_t face = i / mlen;
+    int64_t ii = i - face * mlen;
+    int64_t x = ii / m;
+    int64_t y = ii - x * m;
+    int64_t x2 = y & 1;
+
+    double u, v;
+    double* x_bi = bodies[i].X;
+
+    switch (face) {
+      case 0:
+        v = y * seg_fv;
+        u = (0.5 * x2 + x) * seg_fu;
+        x_bi[0] = 1.;
+        x_bi[1] = 2. * v - 1.;
+        x_bi[2] = -2. * u + 1.;
+        break;
+      case 1:
+        v = y * seg_fv;
+        u = (0.5 * x2 + x) * seg_fu;
+        x_bi[0] = -1.;
+        x_bi[1] = 2. * v - 1.;
+        x_bi[2] = 2. * u - 1.;
+        break;
+      case 2:
+        v = (y + 1) * seg_sv;
+        u = (0.5 * x2 + x + 1) * seg_su;
+        x_bi[0] = 2. * u - 1.;
+        x_bi[1] = 1.;
+        x_bi[2] = -2. * v + 1.;
+        break;
+      case 3:
+        v = (y + 1) * seg_sv;
+        u = (0.5 * x2 + x + 1) * seg_su;
+        x_bi[0] = 2. * u - 1.;
+        x_bi[1] = -1.;
+        x_bi[2] = 2. * v - 1.;
+        break;
+      case 4:
+        v = y * seg_fv;
+        u = (0.5 * x2 + x) * seg_fu;
+        x_bi[0] = 2. * u - 1.;
+        x_bi[1] = 2. * v - 1.;
+        x_bi[2] = 1.;
+        break;
+      case 5:
+        v = y * seg_fv;
+        u = (0.5 * x2 + x) * seg_fu;
+        x_bi[0] = -2. * u + 1.;
+        x_bi[1] = 2. * v - 1.;
+        x_bi[2] = -1.;
+        break;
+    }
+  }
+}
+
+void magnify_reloc(Bodies bodies, int64_t nbodies, double Ccur[], double Rcur[], double Cnew[], double Rnew[]) {
+  double Rscale[DIM_MAX];
+  Rscale[0] = Rcur[0] == 0. ? 0. : (Rnew[0] / Rcur[0]);
+  Rscale[1] = Rcur[1] == 0. ? 0. : (Rnew[1] / Rcur[1]);
+  Rscale[2] = Rcur[2] == 0. ? 0. : (Rnew[2] / Rcur[2]);
+
+  for (int64_t i = 0; i < nbodies; i++) {
+    double* x_bi = bodies[i].X;
+    double v0 = x_bi[0] - Ccur[0];
+    double v1 = x_bi[1] - Ccur[1];
+    double v2 = x_bi[2] - Ccur[2];
+    x_bi[0] = Cnew[0] + Rscale[0] * v0;
+    x_bi[1] = Cnew[1] + Rscale[1] * v1;
+    x_bi[2] = Cnew[2] + Rscale[2] * v2;
+  }
 }
 
 void body_neutral_charge(Bodies bodies, int64_t nbodies, double cmax, unsigned int seed) {
@@ -127,7 +217,7 @@ void get_bounds(const Bodies bodies, int64_t nbodies, double R[], double C[]) {
   Xmin[1] = Xmax[1] = bodies[0].X[1];
   Xmin[2] = Xmax[2] = bodies[0].X[2];
 
-  for (int64_t i = 0; i < nbodies; i++) {
+  for (int64_t i = 1; i < nbodies; i++) {
     const struct Body* b = &bodies[i];
     Xmin[0] = fmin(b->X[0], Xmin[0]);
     Xmin[1] = fmin(b->X[1], Xmin[1]);
@@ -142,8 +232,12 @@ void get_bounds(const Bodies bodies, int64_t nbodies, double R[], double C[]) {
   C[1] = (Xmin[1] + Xmax[1]) / 2.;
   C[2] = (Xmin[2] + Xmax[2]) / 2.;
 
-  R[0] = 1.e-8 + (Xmax[0] - Xmin[0]) / 2.;
-  R[1] = 1.e-8 + (Xmax[1] - Xmin[1]) / 2.;
-  R[2] = 1.e-8 + (Xmax[2] - Xmin[2]) / 2.;
+  double d0 = Xmax[0] - Xmin[0];
+  double d1 = Xmax[1] - Xmin[1];
+  double d2 = Xmax[2] - Xmin[2];
+
+  R[0] = (d0 == 0. && Xmin[0] == 0.) ? 0. : (1.e-8 +  d0 / 2.);
+  R[1] = (d1 == 0. && Xmin[1] == 0.) ? 0. : (1.e-8 +  d1 / 2.);
+  R[2] = (d2 == 0. && Xmin[2] == 0.) ? 0. : (1.e-8 +  d2 / 2.);
 }
 

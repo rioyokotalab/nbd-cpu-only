@@ -17,9 +17,8 @@ int main(int argc, char* argv[]) {
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
   double theta = argc > 2 ? atof(argv[2]) : 1;
   int64_t leaf_size = 256;
-  int64_t dim = 3;
 
-  double epi = 1.e-10;
+  double epi = 1.e-8;
   int64_t rank_max = 100;
   int64_t sp_pts = 4000;
 
@@ -38,14 +37,14 @@ int main(int argc, char* argv[]) {
   std::vector<Body> body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
   //readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
-  mesh_unit_sphere(body.data(), Nbody);
+  mesh_unit_cube(body.data(), Nbody);
   //uniform_unit_cube(body.data(), Nbody, dim, 1234);
   body_neutral_charge(body.data(), Nbody, 1., 0);
 
   Cells cell;
   //buildTreeBuckets(cell, body.data(), Nbody, buckets.data(), levels, dim);
-  buildTree(cell, body.data(), Nbody, levels, dim);
-  traverse(cell, levels, dim, theta);
+  buildTree(cell, body.data(), Nbody, levels);
+  traverse(cell, levels, theta);
   const Cell* lcleaf = &cell[0];
   lcleaf = findLocalAtLevel(lcleaf, levels);
 
@@ -53,16 +52,16 @@ int main(int argc, char* argv[]) {
   relationsNear(&rels[0], cell);
 
   Matrices A(rels[levels].NNZ_NEAR);
-  evaluateLeafNear(A, ef, &cell[0], dim, rels[levels]);
+  evaluateLeafNear(A, ef, &cell[0], rels[levels]);
 
   SpDense sp;
   allocSpDense(sp, &rels[0], levels);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body.data(), Nbody, epi, rank_max, sp_pts, dim);
+  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body.data(), Nbody, epi, rank_max, sp_pts);
   for (int64_t i = 0; i <= levels; i++)
-    evaluateFar(sp.D[i].S, ef, &cell[0], dim, rels[i], i);
+    evaluateFar(sp.D[i].S, ef, &cell[0], rels[i], i);
   stopTimer(&construct_time, &construct_comm_time);
 
   double factor_time, factor_comm_time;
@@ -76,7 +75,7 @@ int main(int argc, char* argv[]) {
   loadX(Xref, lcleaf, levels);
 
   Vectors B(X.size());
-  h2MatVecReference(B, ef, &cell[0], dim, levels);
+  h2MatVecReference(B, ef, &cell[0], levels);
 
   RHSS rhs(levels + 1);
 
@@ -89,6 +88,7 @@ int main(int argc, char* argv[]) {
 
   double err;
   solveRelErr(&err, rhs[levels].X, Xref, levels);
+  int64_t dim = 3;
 
   if (mpi_rank == 0) {
     std::cout << "LORASP: " << Nbody << "," << (int64_t)(Nbody / Nleaf) << "," << theta << "," << dim << "," << mpi_size << std::endl;

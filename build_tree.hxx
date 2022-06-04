@@ -35,17 +35,15 @@ namespace nbd {
     std::vector<int64_t> ROWS_FAR;
   };
 
-  struct Base;
-
   int64_t partition(Body* bodies, int64_t nbodies, int64_t sdim);
 
-  int64_t buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels, int64_t dim);
+  int64_t buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels);
 
   void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim);
 
-  void buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], int64_t levels, int64_t dim);
+  void buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], int64_t levels);
 
-  void getList(Cell* Ci, Cell* Cj, int64_t dim, double theta);
+  void getList(Cell* Ci, Cell* Cj, double theta);
 
   void findCellsAtLevel(const Cell* cells[], int64_t* len, const Cell* cell, int64_t level);
 
@@ -55,9 +53,9 @@ namespace nbd {
 
   Cell* findLocalAtLevelModify(Cell* cell, int64_t level);
 
-  void traverse(Cells& cells, int64_t levels, int64_t dim, int64_t theta);
+  void traverse(Cells& cells, int64_t levels, int64_t theta);
 
-  int64_t remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies, int64_t dim);
+  int64_t remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies);
 
   void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
 
@@ -65,15 +63,15 @@ namespace nbd {
 
   void relationsNear(CSC rels[], const Cells& cells);
 
-  void evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, int64_t dim, const CSC& csc);
+  void evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, const CSC& csc);
 
-  void evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, int64_t dim, const CSC& csc, int64_t level);
+  void evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, const CSC& csc, int64_t level);
 
   void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
   void loadX(Vectors& X, const Cell* cell, int64_t level);
   
-  void h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_t dim, int64_t levels);
+  void h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_t levels);
 
 }
 

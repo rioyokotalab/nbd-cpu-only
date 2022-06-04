@@ -22,7 +22,7 @@ int64_t nbd::partition(Body* bodies, int64_t nbodies, int64_t sdim) {
   return loc;
 }
 
-int64_t nbd::buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels, int64_t dim) {
+int64_t nbd::buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = (nleaves << 1) - 1;
   cells.resize(ncells);
@@ -40,10 +40,11 @@ int64_t nbd::buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t leve
     if (ci->LEVEL < levels) {
       int64_t sdim = 0;
       double maxR = ci->R[0];
-      for (int64_t d = 1; d < dim; d++) {
-        if (ci->R[d] > maxR)
-        { sdim = d; maxR = ci->R[d]; }
-      }
+      if (ci->R[1] > maxR)
+      { sdim = 1; maxR = ci->R[1]; }
+      if (ci->R[2] > maxR)
+      { sdim = 2; maxR = ci->R[2]; }
+
       int64_t loc = partition(ci->BODY, ci->NBODY, sdim);
 
       Cell* c0 = &cells[(i << 1) + 1];
@@ -101,7 +102,7 @@ void nbd::readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodie
     buckets[bucket_i - 1] = count;
 }
 
-void nbd::buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], int64_t levels, int64_t dim) {
+void nbd::buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], int64_t levels) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = (nleaves << 1) - 1;
   cells.resize(ncells);
@@ -144,18 +145,18 @@ void nbd::buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], 
   }
 }
 
-void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, double theta) {
+void nbd::getList(Cell* Ci, Cell* Cj, double theta) {
   if (Ci->LEVEL < Cj->LEVEL)
     for (Cell* ci = Ci->CHILD; ci != Ci->CHILD + Ci->NCHILD; ci++)
-      getList(ci, Cj, dim, theta);
+      getList(ci, Cj, theta);
   else if (Cj->LEVEL < Ci->LEVEL)
     for (Cell* cj = Cj->CHILD; cj != Cj->CHILD + Cj->NCHILD; cj++)
-      getList(Ci, cj, dim, theta);
+      getList(Ci, cj, theta);
   else {
     double dC = 0.;
     double dRi = 0.;
     double dRj = 0.;
-    for (int64_t d = 0; d < dim; d++) {
+    for (int64_t d = 0; d < 3; d++) {
       double diff = Ci->C[d] - Cj->C[d];
       dC = dC + diff * diff;
       dRi = dRi + Ci->R[d] * Ci->R[d];
@@ -170,7 +171,7 @@ void nbd::getList(Cell* Ci, Cell* Cj, int64_t dim, double theta) {
 
       if (Ci->NCHILD > 0)
         for (Cell* ci = Ci->CHILD; ci != Ci->CHILD + Ci->NCHILD; ci++)
-          getList(ci, Cj, dim, theta);
+          getList(ci, Cj, theta);
     }
   }
 }
@@ -246,8 +247,8 @@ Cell* nbd::findLocalAtLevelModify(Cell* cell, int64_t level) {
 }
 
 
-void nbd::traverse(Cells& cells, int64_t levels, int64_t dim, int64_t theta) {
-  getList(&cells[0], &cells[0], dim, theta);
+void nbd::traverse(Cells& cells, int64_t levels, int64_t theta) {
+  getList(&cells[0], &cells[0], theta);
   int64_t mpi_size;
   int64_t mpi_levels;
   commRank(NULL, &mpi_size, &mpi_levels);
@@ -291,7 +292,7 @@ void nbd::traverse(Cells& cells, int64_t levels, int64_t dim, int64_t theta) {
   }
 }
 
-int64_t nbd::remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies, int64_t dim) {
+int64_t nbd::remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies) {
   int64_t avail = nbodies;
   int64_t len = cell.listNear.size();
   std::vector<int64_t> offsets(len);
@@ -313,8 +314,9 @@ int64_t nbd::remoteBodies(Body* remote, int64_t size, const Cell& cell, const Bo
       if (loc >= offsets[j])
         loc = loc + lens[j];
 
-    for (int64_t d = 0; d < dim; d++)
-      remote[i].X[d] = bodies[loc].X[d];
+    remote[i].X[0] = bodies[loc].X[0];
+    remote[i].X[1] = bodies[loc].X[1];
+    remote[i].X[2] = bodies[loc].X[2];
     remote[i].B = bodies[loc].B;
   }
   return size;
@@ -415,10 +417,10 @@ void nbd::relationsNear(CSC rels[], const Cells& cells) {
   }
 }
 
-void nbd::evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, int64_t dim, const CSC& csc) {
+void nbd::evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, const CSC& csc) {
   if (cell->NCHILD > 0)
     for (int64_t i = 0; i < cell->NCHILD; i++)
-      evaluateLeafNear(d, ef, cell->CHILD + i, dim, csc);
+      evaluateLeafNear(d, ef, cell->CHILD + i, csc);
   else {
     int64_t n = cell->ZID - csc.CBGN;
     if (n >= 0 && n < csc.N) {
@@ -434,10 +436,10 @@ void nbd::evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, int64_
   }
 }
 
-void nbd::evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, int64_t dim, const CSC& csc, int64_t level) {
+void nbd::evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, const CSC& csc, int64_t level) {
   if (cell->LEVEL < level)
     for (int64_t i = 0; i < cell->NCHILD; i++)
-      evaluateFar(s, ef, cell->CHILD + i, dim, csc, level);
+      evaluateFar(s, ef, cell->CHILD + i, csc, level);
   else {
     int64_t n = cell->ZID - csc.CBGN;
     if (n >= 0 && n < csc.N) {
@@ -505,7 +507,7 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   DistributeVectorsList(X, level);
 }
 
-void nbd::h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_t dim, int64_t levels) {
+void nbd::h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_t levels) {
   int64_t len = 0, lenj = 0;
   std::vector<const Cell*> cells((int64_t)1 << levels);
   std::vector<const Cell*> cells_leaf((int64_t)1 << levels);
