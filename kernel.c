@@ -26,7 +26,7 @@ void set_kernel_constants(double singularity, double alpha) {
   _alpha = alpha;
 }
 
-void gen_matrix(eval_func_t ef, int64_t m, int64_t n, const Bodies bi, const Bodies bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
+void gen_matrix(KerFunc_t ef, int64_t m, int64_t n, const Bodies bi, const Bodies bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
   for (int64_t i = 0; i < m * n; i++) {
     int64_t x = i / m;
     int64_t bx = sel_j == NULL ? x : sel_j[x];
@@ -130,42 +130,42 @@ void mesh_unit_cube(Bodies bodies, int64_t nbodies) {
     double* x_bi = bodies[i].X;
 
     switch (face) {
-      case 0:
+      case 0: // POSITIVE X
         v = y * seg_fv;
         u = (0.5 * x2 + x) * seg_fu;
         x_bi[0] = 1.;
         x_bi[1] = 2. * v - 1.;
         x_bi[2] = -2. * u + 1.;
         break;
-      case 1:
+      case 1: // NEGATIVE X
         v = y * seg_fv;
         u = (0.5 * x2 + x) * seg_fu;
         x_bi[0] = -1.;
         x_bi[1] = 2. * v - 1.;
         x_bi[2] = 2. * u - 1.;
         break;
-      case 2:
+      case 2: // POSITIVE Y
         v = (y + 1) * seg_sv;
         u = (0.5 * x2 + x + 1) * seg_su;
         x_bi[0] = 2. * u - 1.;
         x_bi[1] = 1.;
         x_bi[2] = -2. * v + 1.;
         break;
-      case 3:
+      case 3: // NEGATIVE Y
         v = (y + 1) * seg_sv;
         u = (0.5 * x2 + x + 1) * seg_su;
         x_bi[0] = 2. * u - 1.;
         x_bi[1] = -1.;
         x_bi[2] = 2. * v - 1.;
         break;
-      case 4:
+      case 4: // POSITIVE Z
         v = y * seg_fv;
         u = (0.5 * x2 + x) * seg_fu;
         x_bi[0] = 2. * u - 1.;
         x_bi[1] = 2. * v - 1.;
         x_bi[2] = 1.;
         break;
-      case 5:
+      case 5: // NEGATIVE Z
         v = y * seg_fv;
         u = (0.5 * x2 + x) * seg_fu;
         x_bi[0] = -2. * u + 1.;
@@ -218,14 +218,14 @@ void get_bounds(const Bodies bodies, int64_t nbodies, double R[], double C[]) {
   Xmin[2] = Xmax[2] = bodies[0].X[2];
 
   for (int64_t i = 1; i < nbodies; i++) {
-    const struct Body* b = &bodies[i];
-    Xmin[0] = fmin(b->X[0], Xmin[0]);
-    Xmin[1] = fmin(b->X[1], Xmin[1]);
-    Xmin[2] = fmin(b->X[2], Xmin[2]);
+    const double* x_bi = bodies[i].X;
+    Xmin[0] = fmin(x_bi[0], Xmin[0]);
+    Xmin[1] = fmin(x_bi[1], Xmin[1]);
+    Xmin[2] = fmin(x_bi[2], Xmin[2]);
 
-    Xmax[0] = fmax(b->X[0], Xmax[0]);
-    Xmax[1] = fmax(b->X[1], Xmax[1]);
-    Xmax[2] = fmax(b->X[2], Xmax[2]);
+    Xmax[0] = fmax(x_bi[0], Xmax[0]);
+    Xmax[1] = fmax(x_bi[1], Xmax[1]);
+    Xmax[2] = fmax(x_bi[2], Xmax[2]);
   }
 
   C[0] = (Xmin[0] + Xmax[0]) / 2.;

@@ -16,7 +16,7 @@ struct Body {
 };
 
 typedef struct Body* Bodies;
-typedef void (*eval_func_t) (double*);
+typedef void (*KerFunc_t) (double*);
 
 void laplace3d(double* r2);
 
@@ -24,7 +24,7 @@ void yukawa3d(double* r2);
 
 void set_kernel_constants(double singularity, double alpha);
 
-void gen_matrix(eval_func_t ef, int64_t m, int64_t n, const Bodies bi, const Bodies bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]);
+void gen_matrix(KerFunc_t ef, int64_t m, int64_t n, const Bodies bi, const Bodies bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]);
 
 void uniform_unit_cube(Bodies bodies, int64_t nbodies, int64_t dim, unsigned int seed);
 

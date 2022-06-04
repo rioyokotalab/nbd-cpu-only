@@ -8,13 +8,13 @@ namespace nbd {
     
   struct Matrix {
     std::vector<double> A;
-    int64_t M;
-    int64_t N;
+    int64_t M = 0;
+    int64_t N = 0;
   };
 
   struct Vector {
     std::vector<double> X;
-    int64_t N;
+    int64_t N = 0;
   };
 
   typedef std::vector<Matrix> Matrices;

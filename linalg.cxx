@@ -42,14 +42,30 @@ void nbd::cRandom(int64_t lenR, double min, double max, unsigned int seed) {
 }
 
 void nbd::cMatrix(Matrix& mat, int64_t m, int64_t n) {
-  mat.A.resize(m * n);
-  mat.M = m;
-  mat.N = n;
+  int64_t size = m * n;
+  int64_t size_old = mat.M * mat.N;
+  if (size > 0 && size != size_old) {
+    mat.A.resize(size);
+    mat.M = m;
+    mat.N = n;
+  }
+  else if (size <= 0) {
+    mat.A.clear();
+    mat.M = 0;
+    mat.N = 0;
+  }
 }
 
 void nbd::cVector(Vector& vec, int64_t n) {
-  vec.X.resize(n);
-  vec.N = n;
+  int64_t n_old = vec.N;
+  if (n > 0 && n != n_old) {
+    vec.X.resize(n);
+    vec.N = n;
+  }
+  else if (n <= 0) {
+    vec.X.clear();
+    vec.N = 0;
+  }
 }
 
 void nbd::cpyFromMatrix(const Matrix& A, double* v) {
@@ -102,6 +118,11 @@ void nbd::updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out) {
   rank = *rnk_out > 0 ? std::min(rank, *rnk_out) : rank;
   cMatrix(au, m, n);
   cMatrix(work, m, U.N);
+
+  double nrm_A = 1. + cblas_dnrm2(m * A.N, A.A.data(), 1);
+  double nrm_U = 1. + cblas_dnrm2(m * U.N, U.A.data(), 1);
+  cblas_dscal(m * A.N, nrm_U / nrm_A, A.A.data(), 1);
+  
   cpyMatToMat(m, A.N, A, au, 0, 0, 0, 0);
   cpyMatToMat(m, U.N, U, au, 0, 0, 0, A.N);
   cpyMatToMat(m, U.N, U, work, 0, 0, 0, 0);
@@ -124,6 +145,8 @@ void nbd::updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out) {
     cMatrix(U, rank, U.N);
     cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
   }
+  cMatrix(au, 0, 0);
+  cMatrix(work, 0, 0);
 }
 
 void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
@@ -141,6 +164,9 @@ void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
     cMatrix(U, R1.M + R2.M, n);
     cpyMatToMat(R1.M, n, ru1, U, 0, 0, 0, 0);
     cpyMatToMat(R2.M, n, ru2, U, 0, 0, R1.M, 0);
+
+    cMatrix(ru1, 0, 0);
+    cMatrix(ru2, 0, 0);
   }
 }
 
@@ -180,6 +206,10 @@ void nbd::lraID(double epi, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_
     std::iter_swap(&rows[i], &rows[ri]);
     arows[i] = rows[i];
   }
+
+  cVector(s, 0);
+  cVector(superb, 0);
+  ipiv.clear();
 }
 
 void nbd::zeroMatrix(Matrix& A) {
@@ -254,6 +284,7 @@ void nbd::utav(char tb, const Matrix& U, const Matrix& A, const Matrix& VT, Matr
     mmult('N', 'N', U, A, work, 1., 0.);
     mmult('N', 'T', work, VT, C, 1., 0.);
   }
+  cMatrix(work, 0, 0);
 }
 
 void nbd::chol_solve(Vector& X, const Matrix& A) {
@@ -290,4 +321,5 @@ void nbd::verr2(const Vector& A, const Vector& B, double* err) {
   vaxpby(work, A.X.data(), 1., 0.);
   vaxpby(work, B.X.data(), -1., 1.);
   vnrm2(work, err);
+  cVector(work, 0);
 }

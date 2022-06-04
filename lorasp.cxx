@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
   double theta = argc > 2 ? atof(argv[2]) : 1;
   int64_t leaf_size = 256;
 
-  double epi = 1.e-8;
+  double epi = 1.e-11;
   int64_t rank_max = 100;
   int64_t sp_pts = 4000;
 
@@ -29,16 +29,16 @@ int main(int argc, char* argv[]) {
 
   commRank(&mpi_rank, &mpi_size, NULL);
   
-  eval_func_t ef = laplace3d;
+  KerFunc_t ef = laplace3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
 
-  cRandom(1 << 16, -1, 1, 100);
+  cRandom((int64_t)1.e5, -1, 1, 100);
   
   std::vector<Body> body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
   //readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
-  mesh_unit_cube(body.data(), Nbody);
-  //uniform_unit_cube(body.data(), Nbody, dim, 1234);
+  mesh_unit_sphere(body.data(), Nbody);
+  //uniform_unit_cube(body.data(), Nbody, 3, 1234);
   body_neutral_charge(body.data(), Nbody, 1., 0);
 
   Cells cell;

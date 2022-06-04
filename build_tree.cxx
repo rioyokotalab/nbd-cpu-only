@@ -417,7 +417,7 @@ void nbd::relationsNear(CSC rels[], const Cells& cells) {
   }
 }
 
-void nbd::evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, const CSC& csc) {
+void nbd::evaluateLeafNear(Matrices& d, KerFunc_t ef, const Cell* cell, const CSC& csc) {
   if (cell->NCHILD > 0)
     for (int64_t i = 0; i < cell->NCHILD; i++)
       evaluateLeafNear(d, ef, cell->CHILD + i, csc);
@@ -436,7 +436,7 @@ void nbd::evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, const 
   }
 }
 
-void nbd::evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, const CSC& csc, int64_t level) {
+void nbd::evaluateFar(Matrices& s, KerFunc_t ef, const Cell* cell, const CSC& csc, int64_t level) {
   if (cell->LEVEL < level)
     for (int64_t i = 0; i < cell->NCHILD; i++)
       evaluateFar(s, ef, cell->CHILD + i, csc, level);
@@ -507,7 +507,7 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   DistributeVectorsList(X, level);
 }
 
-void nbd::h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_t levels) {
+void nbd::h2MatVecReference(Vectors& B, KerFunc_t ef, const Cell* root, int64_t levels) {
   int64_t len = 0, lenj = 0;
   std::vector<const Cell*> cells((int64_t)1 << levels);
   std::vector<const Cell*> cells_leaf((int64_t)1 << levels);

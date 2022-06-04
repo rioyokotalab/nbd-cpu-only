@@ -63,15 +63,15 @@ namespace nbd {
 
   void relationsNear(CSC rels[], const Cells& cells);
 
-  void evaluateLeafNear(Matrices& d, eval_func_t ef, const Cell* cell, const CSC& csc);
+  void evaluateLeafNear(Matrices& d, KerFunc_t ef, const Cell* cell, const CSC& csc);
 
-  void evaluateFar(Matrices& s, eval_func_t ef, const Cell* cell, const CSC& csc, int64_t level);
+  void evaluateFar(Matrices& s, KerFunc_t ef, const Cell* cell, const CSC& csc, int64_t level);
 
   void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
   void loadX(Vectors& X, const Cell* cell, int64_t level);
   
-  void h2MatVecReference(Vectors& B, eval_func_t ef, const Cell* root, int64_t levels);
+  void h2MatVecReference(Vectors& B, KerFunc_t ef, const Cell* root, int64_t levels);
 
 }
 
