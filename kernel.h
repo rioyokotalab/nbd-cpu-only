@@ -32,7 +32,7 @@ void mesh_unit_sphere(Bodies bodies, int64_t nbodies);
 
 void mesh_unit_cube(Bodies bodies, int64_t nbodies);
 
-void magnify_reloc(Bodies bodies, int64_t nbodies, double Ccur[], double Rcur[], double Cnew[], double Rnew[]);
+void magnify_reloc(Bodies bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[]);
 
 void body_neutral_charge(Bodies bodies, int64_t nbodies, double cmax, unsigned int seed);
 

@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
 
   double epi = 1.e-11;
   int64_t rank_max = 100;
-  int64_t sp_pts = 4000;
+  int64_t sp_pts = 2000;
 
   int64_t mpi_rank;
   int64_t mpi_size;

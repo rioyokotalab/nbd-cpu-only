@@ -52,8 +52,6 @@ namespace nbd {
 
   void msample(char ta, const Matrix& A, Matrix& C);
 
-  void msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C);
-
   void chol_decomp(Matrix& A);
 
   void trsm_lowerA(Matrix& A, const Matrix& L);

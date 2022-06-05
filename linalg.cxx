@@ -252,17 +252,6 @@ void nbd::msample(char ta, const Matrix& A, Matrix& C) {
       cblas_dgemm(CblasColMajor, tac, CblasNoTrans, C.M, C.N, rk, 1., &A.A[i * inca], A.M, Rvec, rk, 1., C.A.data(), C.M);
 }
 
-void nbd::msample_m(char ta, const Matrix& A, const Matrix& B, Matrix& C) {
-  int64_t k = A.M;
-  CBLAS_TRANSPOSE tac = CblasTrans;
-  if (ta == 'N' || ta == 'n') {
-    k = A.N;
-    tac = CblasNoTrans;
-  }
-  int64_t nrhs = std::min(B.N, C.N);
-  cblas_dgemm(CblasColMajor, tac, CblasNoTrans, C.M, nrhs, k, 1., A.A.data(), A.M, B.A.data(), B.M, 1., C.A.data(), C.M);
-}
-
 void nbd::chol_decomp(Matrix& A) {
   if (A.M > 0)
     LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A.M, A.A.data(), A.M);

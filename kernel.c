@@ -176,20 +176,15 @@ void mesh_unit_cube(Bodies bodies, int64_t nbodies) {
   }
 }
 
-void magnify_reloc(Bodies bodies, int64_t nbodies, double Ccur[], double Rcur[], double Cnew[], double Rnew[]) {
-  double Rscale[DIM_MAX];
-  Rscale[0] = Rcur[0] == 0. ? 0. : (Rnew[0] / Rcur[0]);
-  Rscale[1] = Rcur[1] == 0. ? 0. : (Rnew[1] / Rcur[1]);
-  Rscale[2] = Rcur[2] == 0. ? 0. : (Rnew[2] / Rcur[2]);
-
+void magnify_reloc(Bodies bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[]) {
   for (int64_t i = 0; i < nbodies; i++) {
     double* x_bi = bodies[i].X;
     double v0 = x_bi[0] - Ccur[0];
     double v1 = x_bi[1] - Ccur[1];
     double v2 = x_bi[2] - Ccur[2];
-    x_bi[0] = Cnew[0] + Rscale[0] * v0;
-    x_bi[1] = Cnew[1] + Rscale[1] * v1;
-    x_bi[2] = Cnew[2] + Rscale[2] * v2;
+    x_bi[0] = Cnew[0] + R[0] * v0;
+    x_bi[1] = Cnew[1] + R[1] * v1;
+    x_bi[2] = Cnew[2] + R[2] * v2;
   }
 }
 
