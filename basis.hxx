@@ -16,8 +16,6 @@ namespace nbd {
 
   typedef std::vector<Base> Basis;
 
-  void sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, int64_t level);
-
   void orthoBasis(double epi, Matrices& C, Matrices& U, int64_t dims_o[], int64_t level);
 
   void allocBasis(Basis& basis, int64_t levels);

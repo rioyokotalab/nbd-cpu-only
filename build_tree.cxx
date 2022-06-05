@@ -322,14 +322,14 @@ int64_t nbd::remoteBodies(Body* remote, int64_t size, const Cell& cell, const Bo
   return size;
 }
 
-int64_t nbd::closeBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies) {
+int64_t nbd::closeBodies(Body* remote, int64_t size, const Cell& cell) {
   int64_t avail = 0;
   int64_t len = cell.listNear.size();
   std::vector<int64_t> offsets(len);
   std::vector<int64_t> lens(len);
 
   int64_t cpos = -1;
-  const Body* begin = &bodies[0];
+  const Body* begin = cell.BODY;
   for (int64_t i = 0; i < len; i++) {
     const Cell* c = cell.listNear[i];
     offsets[i] = c->BODY - begin;
@@ -354,10 +354,10 @@ int64_t nbd::closeBodies(Body* remote, int64_t size, const Cell& cell, const Bod
         else
           loc = loc - lens[j];
       }
-    remote[i].X[0] = bodies[loc].X[0];
-    remote[i].X[1] = bodies[loc].X[1];
-    remote[i].X[2] = bodies[loc].X[2];
-    remote[i].B = bodies[loc].B;
+    remote[i].X[0] = begin[loc].X[0];
+    remote[i].X[1] = begin[loc].X[1];
+    remote[i].X[2] = begin[loc].X[2];
+    remote[i].B = begin[loc].B;
   }
   return size;
 }

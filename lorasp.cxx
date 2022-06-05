@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
   KerFunc_t ef = laplace3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
 
-  cRandom((int64_t)1.e5, -1, 1, 100);
+  cRandom((int64_t)1.e6, -1, 1, 100);
   
   std::vector<Body> body(Nbody);
   std::vector<int64_t> buckets(Nleaf);

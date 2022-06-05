@@ -9,12 +9,14 @@
 #include "lapacke.h"
 #endif
 
+
 #include <cmath>
 #include <algorithm>
 #include <iostream>
 #include <numeric>
 #include <random>
 #include <cstdlib>
+#include "inttypes.h"
 
 using namespace nbd;
 
@@ -173,13 +175,17 @@ void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
 void nbd::lraID(double epi, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_out) {
   int64_t rank = std::min(A.M, A.N);
   rank = *rnk_out > 0 ? std::min(*rnk_out, rank) : rank;
-  zeroMatrix(U);
-  msample('N', A, U);
+  if (Rlen < A.N * rank) { 
+    fprintf(stderr, "Insufficent random vector: %" PRId64 " needed %" PRId64 " provided.", A.N * rank, Rlen);
+    *rnk_out = 0;
+    return;
+  }
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A.M, rank, A.N, 1., A.A.data(), A.M, Rvec, A.N, 0., U.A.data(), A.M);
 
   Vector s, superb;
   cVector(s, rank);
   cVector(superb, s.N + 1);
-  int info = LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A.M, rank, U.A.data(), A.M, s.X.data(), NULL, A.M, NULL, rank, superb.X.data());
+  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A.M, rank, U.A.data(), A.M, s.X.data(), NULL, A.M, NULL, rank, superb.X.data());
   if (epi > 0.) {
     rank = 0;
     double sepi = s.X[0] * epi;
@@ -193,7 +199,7 @@ void nbd::lraID(double epi, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_
   cblas_dcopy(A.M * rank, U.A.data(), 1, A.A.data(), 1);
 
   std::vector<int> ipiv(rank);
-  info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, rank, A.A.data(), A.M, ipiv.data());
+  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, rank, A.A.data(), A.M, ipiv.data());
   if (info > 0)
     rank = info - 1;
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A.M, rank, 1., A.A.data(), A.M, U.A.data(), A.M);
@@ -227,29 +233,6 @@ void nbd::mmult(char ta, char tb, const Matrix& A, const Matrix& B, Matrix& C, d
     CBLAS_TRANSPOSE tbc = (tb == 'T' || tb == 't') ? CblasTrans : CblasNoTrans;
     cblas_dgemm(CblasColMajor, tac, tbc, C.M, C.N, k, alpha, A.A.data(), A.M, B.A.data(), B.M, beta, C.A.data(), C.M);
   }
-}
-
-void nbd::msample(char ta, const Matrix& A, Matrix& C) {
-  if (Rlen < C.N * 100) { 
-    std::cerr << "Insufficent random vector: " << C.N << " x 100 needed " << Rlen << " provided." << std::endl;
-    return;
-  }
-  int64_t k = A.M;
-  int64_t inca = 1;
-  CBLAS_TRANSPOSE tac = CblasTrans;
-  if (ta == 'N' || ta == 'n') {
-    k = A.N;
-    inca = A.M;
-    tac = CblasNoTrans;
-  }
-
-  int64_t rk = Rlen / C.N;
-  int64_t lk = k % rk;
-  if (lk > 0)
-    cblas_dgemm(CblasColMajor, tac, CblasNoTrans, C.M, C.N, lk, 1., A.A.data(), A.M, Rvec, lk, 1., C.A.data(), C.M);
-  if (k > rk)
-    for (int64_t i = lk; i < k; i += rk)
-      cblas_dgemm(CblasColMajor, tac, CblasNoTrans, C.M, C.N, rk, 1., &A.A[i * inca], A.M, Rvec, rk, 1., C.A.data(), C.M);
 }
 
 void nbd::chol_decomp(Matrix& A) {

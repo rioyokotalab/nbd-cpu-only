@@ -57,7 +57,7 @@ namespace nbd {
 
   int64_t remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies);
 
-  int64_t closeBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies);
+  int64_t closeBodies(Body* remote, int64_t size, const Cell& cell);
 
   void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
 

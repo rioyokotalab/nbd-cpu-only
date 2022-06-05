@@ -7,29 +7,6 @@
 
 using namespace nbd;
 
-void nbd::sampleC1(Matrices& C1, const CSC& rels, const Matrices& A, int64_t level) {
-  int64_t lbegin = rels.CBGN;
-  int64_t ibegin = 0, iend;
-  selfLocalRange(ibegin, iend, level);
-#pragma omp parallel for
-  for (int64_t j = 0; j < rels.N; j++) {
-    Matrix& cj = C1[j + ibegin];
-    Matrix work;
-    cMatrix(work, cj.M, cj.M);
-    zeroMatrix(work);
-
-    for (int64_t ij = rels.COLS_NEAR[j]; ij < rels.COLS_NEAR[j + 1]; ij++) {
-      int64_t i = rels.ROWS_NEAR[ij];
-      if (i == j + lbegin)
-        continue;
-      const Matrix& Aij = A[ij];
-      mmult('T', 'N', Aij, Aij, work, 1., 1.);
-    }
-    msample('N', work, cj);
-  }
-}
-
-
 void nbd::orthoBasis(double epi, Matrices& C, Matrices& U, int64_t dims_o[], int64_t level) {
   int64_t ibegin = 0;
   int64_t iend = C.size();
@@ -68,7 +45,7 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
     std::vector<Body> remote(sp_pts);
     std::vector<Body> close(sp_pts);
     int64_t n1 = remoteBodies(remote.data(), sp_pts, *cell, bodies, nbodies);
-    int64_t n2 = closeBodies(close.data(), sp_pts, *cell, bodies, nbodies);
+    int64_t n2 = closeBodies(close.data(), sp_pts, *cell);
 
     std::vector<int64_t> cellm(m);
     collectChildMultipoles(*cell, cellm.data());
@@ -296,7 +273,6 @@ void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, i
     zeroMatrix(C1[i]);
   }
 
-  //sampleC1(C1, rels, A, level);
   orthoBasis(epi, C1, basis.Ulr, &basis.DIMO[0], level);
   DistributeDims(&basis.DIML[0], level);
   DistributeDims(&basis.DIMO[0], level);

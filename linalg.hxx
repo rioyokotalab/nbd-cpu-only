@@ -50,8 +50,6 @@ namespace nbd {
 
   void mmult(char ta, char tb, const Matrix& A, const Matrix& B, Matrix& C, double alpha, double beta);
 
-  void msample(char ta, const Matrix& A, Matrix& C);
-
   void chol_decomp(Matrix& A);
 
   void trsm_lowerA(Matrix& A, const Matrix& L);
