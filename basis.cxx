@@ -40,7 +40,9 @@ void nbd::orthoBasis(double epi, Matrices& C, Matrices& U, int64_t dims_o[], int
   for (int64_t i = 0; i < nodes; i++) {
     int64_t ii = i + ibegin;
     dims_o[ii] = 0;
-    updateU(epi, C[ii], U[ii], &dims_o[ii]);
+    if (C[ii].M > 0)
+      updateU(1.e-15, C[ii], U[ii], &dims_o[ii]);
+    //printf("%d %d %d\n", ii, dims_o[ii], C[ii].M);
   }
 }
 
@@ -62,35 +64,56 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
   int64_t m;
   childMultipoleSize(&m, *cell);
 
-  std::vector<Body> remote(sp_pts);
-  int64_t n = remoteBodies(remote.data(), sp_pts, *cell, bodies, nbodies);
+  if (m > 0) {
+    std::vector<Body> remote(sp_pts);
+    std::vector<Body> close(sp_pts);
+    int64_t n1 = remoteBodies(remote.data(), sp_pts, *cell, bodies, nbodies);
+    int64_t n2 = closeBodies(close.data(), sp_pts, *cell, bodies, nbodies);
 
-  if (m > 0 && n > 0) {
     std::vector<int64_t> cellm(m);
     collectChildMultipoles(*cell, cellm.data());
     
-    Matrix a;
-    cMatrix(a, m, n);
-    gen_matrix(ef, m, n, cell->BODY, remote.data(), a.A.data(), cellm.data(), NULL);
+    Matrix work_a, work_b, work_c, work_s;
+    int64_t len_s = n1 + (n2 > 0 ? m : 0);
+    if (len_s > 0)
+      cMatrix(work_s, m, len_s);
 
-    int64_t rank = std::min(m, n);
-    rank = mrank > 0 ? std::min(mrank, rank) : rank;
-    std::vector<int64_t> pa(rank);
-    cMatrix(Base, m, rank);
-
-    int64_t iters = rank;
-    lraID(epi, a, Base, pa.data(), &iters);
-
-    int64_t len_m = cell->Multipole.size();
-    if (len_m != iters)
-      cell->Multipole.resize(iters);
-    for (int64_t i = 0; i < iters; i++) {
-      int64_t ai = pa[i];
-      cell->Multipole[i] = cellm[ai];
+    if (n1 > 0) {
+      cMatrix(work_a, m, n1);
+      gen_matrix(ef, m, n1, cell->BODY, remote.data(), work_a.A.data(), cellm.data(), NULL);
+      cpyMatToMat(m, n1, work_a, work_s, 0, 0, 0, 0);
     }
 
-    if (iters != rank)
-      cMatrix(Base, m, iters);
+    if (n2 > 0) {
+      cMatrix(work_b, m, n2);
+      cMatrix(work_c, m, m);
+      gen_matrix(ef, m, n2, cell->BODY, close.data(), work_b.A.data(), cellm.data(), NULL);
+      mmult('N', 'T', work_b, work_b, work_c, 1., 0.);
+      if (n1 > 0)
+        normalizeA(work_c, work_a);
+      cpyMatToMat(m, m, work_c, work_s, 0, 0, 0, n1);
+    }
+
+    if (len_s > 0) {
+      int64_t rank = m;
+      rank = mrank > 0 ? std::min(mrank, rank) : rank;
+      std::vector<int64_t> pa(rank);
+      cMatrix(Base, m, rank);
+
+      int64_t iters = rank;
+      lraID(epi, work_s, Base, pa.data(), &iters);
+
+      int64_t len_m = cell->Multipole.size();
+      if (len_m != iters)
+        cell->Multipole.resize(iters);
+      for (int64_t i = 0; i < iters; i++) {
+        int64_t ai = pa[i];
+        cell->Multipole[i] = cellm[ai];
+      }
+
+      if (iters != rank)
+        cMatrix(Base, m, iters);
+    }
   }
 }
 
@@ -273,7 +296,7 @@ void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, i
     zeroMatrix(C1[i]);
   }
 
-  sampleC1(C1, rels, A, level);
+  //sampleC1(C1, rels, A, level);
   orthoBasis(epi, C1, basis.Ulr, &basis.DIMO[0], level);
   DistributeDims(&basis.DIML[0], level);
   DistributeDims(&basis.DIMO[0], level);

@@ -300,6 +300,16 @@ void nbd::mvec(char ta, const Matrix& A, const Vector& X, Vector& B, double alph
   }
 }
 
+void nbd::normalizeA(Matrix& A, const Matrix& B) {
+  int64_t len_A = A.M * A.N;
+  int64_t len_B = B.M * B.N;
+  if (len_A > 0 && len_B > 0) {
+    double nrm_A = cblas_dnrm2(len_A, A.A.data(), 1);
+    double nrm_B = cblas_dnrm2(len_B, B.A.data(), 1);
+    cblas_dscal(len_A, nrm_B / nrm_A, A.A.data(), 1);
+  }
+}
+
 void nbd::vnrm2(const Vector& A, double* nrm) {
   *nrm = cblas_dnrm2(A.N, A.X.data(), 1);
 }

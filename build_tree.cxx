@@ -322,6 +322,46 @@ int64_t nbd::remoteBodies(Body* remote, int64_t size, const Cell& cell, const Bo
   return size;
 }
 
+int64_t nbd::closeBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies) {
+  int64_t avail = 0;
+  int64_t len = cell.listNear.size();
+  std::vector<int64_t> offsets(len);
+  std::vector<int64_t> lens(len);
+
+  int64_t cpos = -1;
+  const Body* begin = &bodies[0];
+  for (int64_t i = 0; i < len; i++) {
+    const Cell* c = cell.listNear[i];
+    offsets[i] = c->BODY - begin;
+    lens[i] = c->NBODY;
+    if (c != &cell)
+      avail = avail + c->NBODY;
+    else
+      cpos = i;
+  }
+
+  size = size > avail ? avail : size;
+
+  for (int64_t i = 0; i < size; i++) {
+    int64_t loc = (int64_t)((double)(avail * i) / size);
+    int64_t region = -1;
+    for (int64_t j = 0; j < len; j++)
+      if (j != cpos && region == -1) {
+        if (loc < lens[j]) {
+          region = j;
+          loc = loc + offsets[region];
+        }
+        else
+          loc = loc - lens[j];
+      }
+    remote[i].X[0] = bodies[loc].X[0];
+    remote[i].X[1] = bodies[loc].X[1];
+    remote[i].X[2] = bodies[loc].X[2];
+    remote[i].B = bodies[loc].B;
+  }
+  return size;
+}
+
 void nbd::collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
   if (cell.NCHILD > 0) {
     int64_t count = 0;

@@ -66,6 +66,8 @@ namespace nbd {
 
   void mvec(char ta, const Matrix& A, const Vector& X, Vector& B, double alpha, double beta);
 
+  void normalizeA(Matrix& A, const Matrix& B);
+
   void vnrm2(const Vector& A, double* nrm);
 
   void verr2(const Vector& A, const Vector& B, double* err);

@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
   double theta = argc > 2 ? atof(argv[2]) : 1;
   int64_t leaf_size = 256;
 
-  double epi = 1.e-11;
+  double epi = 1.e-10;
   int64_t rank_max = 100;
   int64_t sp_pts = 2000;
 
