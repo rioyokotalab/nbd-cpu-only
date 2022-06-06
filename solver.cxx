@@ -37,7 +37,7 @@ void nbd::svAccFw(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t le
     int64_t ii;
     lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     const Matrix& A_ii = A_cc[ii];
-    fw_solve(xlocal[i], A_ii);
+    mat_solve('F', xlocal[i], A_ii);
 
     for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++) {
       int64_t y = rels.ROWS_NEAR[yi];
@@ -74,7 +74,7 @@ void nbd::svAccBk(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t le
     int64_t ii;
     lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     const Matrix& A_ii = A_cc[ii];
-    bk_solve(xlocal[i], A_ii);
+    mat_solve('B', xlocal[i], A_ii);
   }
   
   sendBkSubstituted(Xc, level);
@@ -181,7 +181,7 @@ void nbd::allocRightHandSides(RHS st[], const Base base[], int64_t levels) {
 
     for (int64_t n = 0; n < nodes; n++) {
       int64_t dim = base[i].DIMS[n];
-      int64_t dim_o = base[i].DIMO[n];
+      int64_t dim_o = base[i].DIML[n];
       int64_t dim_c = dim - dim_o;
       cVector(ix[n], dim);
       cVector(ixc[n], dim_c);
@@ -208,7 +208,7 @@ void nbd::solveA(RHS st[], const Node A[], const Base B[], const CSC rels[], con
     svAocFw(st[i].Xo, st[i].Xc, A[i].A_oc, rels[i], i);
     permuteAndMerge('F', st[i].Xo, st[i - 1].X, i - 1);
   }
-  chol_solve(st[0].X[0], A[0].A[0]);
+  mat_solve('A', st[0].X[0], A[0].A[0]);
   
   for (int64_t i = 1; i <= levels; i++) {
     permuteAndMerge('B', st[i].Xo, st[i - 1].X, i - 1);
@@ -228,7 +228,7 @@ void nbd::allocSpDense(SpDense& sp, const CSC rels[], int64_t levels) {
   allocBasis(sp.Basis, levels);
 }
 
-void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D, double epi, int64_t mrank) {
+void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D) {
   int64_t levels = sp.Levels;
   fillDimsFromCell(sp.Basis[levels], local, levels);
 
@@ -245,7 +245,7 @@ void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D, doubl
     }
   }
   if (!cless)
-    factorA(&sp.D[0], &sp.Basis[0], sp.Rels, levels, epi, mrank);
+    factorA(&sp.D[0], &sp.Basis[0], sp.Rels, levels);
 }
 
 void nbd::solveSpDense(RHS st[], const SpDense& sp, const Vectors& X) {

@@ -38,7 +38,7 @@ namespace nbd {
 
   void allocSpDense(SpDense& sp, const CSC rels[], int64_t levels);
 
-  void factorSpDense(SpDense& sp, const Cell* local, const Matrices& D, double epi, int64_t mrank);
+  void factorSpDense(SpDense& sp, const Cell* local, const Matrices& D);
 
   void solveSpDense(RHS st[], const SpDense& sp, const Vectors& X);
 

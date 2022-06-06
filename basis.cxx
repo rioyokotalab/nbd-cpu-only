@@ -7,21 +7,6 @@
 
 using namespace nbd;
 
-void nbd::orthoBasis(double epi, Matrices& C, Matrices& U, int64_t dims_o[], int64_t level) {
-  int64_t ibegin = 0;
-  int64_t iend = C.size();
-  selfLocalRange(ibegin, iend, level);
-  int64_t nodes = iend - ibegin;
-
-#pragma omp parallel for
-  for (int64_t i = 0; i < nodes; i++) {
-    int64_t ii = i + ibegin;
-    dims_o[ii] = 0;
-    if (C[ii].M > 0)
-      updateU(1.e-15, C[ii], U[ii], &dims_o[ii]);
-    //printf("%d %d %d\n", ii, dims_o[ii], C[ii].M);
-  }
-}
 
 void nbd::allocBasis(Basis& basis, int64_t levels) {
   basis.resize(levels + 1);
@@ -29,7 +14,6 @@ void nbd::allocBasis(Basis& basis, int64_t levels) {
     int64_t nodes = (int64_t)1 << i;
     contentLength(nodes, i);
     basis[i].DIMS.resize(nodes);
-    basis[i].DIMO.resize(nodes);
     basis[i].DIML.resize(nodes);
     basis[i].Uo.resize(nodes);
     basis[i].Uc.resize(nodes);
@@ -233,10 +217,9 @@ void nbd::fillDimsFromCell(Base& basis, const Cell* cell, int64_t level) {
   }
 
   DistributeDims(&basis.DIMS[0], level);
-  std::fill(basis.DIMO.begin(), basis.DIMO.end(), 0);
 }
 
-void nbd::allocUcUo(Base& basis, const Matrices& C, int64_t level) {
+void nbd::allocUcUo(Base& basis, int64_t level) {
   int64_t len = basis.DIMS.size();
   int64_t lbegin = 0;
   int64_t lend = len;
@@ -244,40 +227,21 @@ void nbd::allocUcUo(Base& basis, const Matrices& C, int64_t level) {
 #pragma omp parallel for
   for (int64_t i = 0; i < len; i++) {
     int64_t dim = basis.DIMS[i];
-    int64_t dim_o = basis.DIMO[i];
-    int64_t dim_c = dim - dim_o;
     int64_t dim_l = basis.DIML[i];
+    int64_t dim_c = dim - dim_l;
 
     Matrix& Uo_i = basis.Uo[i];
     Matrix& Uc_i = basis.Uc[i];
     Matrix& Ul_i = basis.Ulr[i];
-    cMatrix(Uo_i, dim, dim_o);
+    cMatrix(Uo_i, dim, dim_l);
     cMatrix(Uc_i, dim, dim_c);
-    cMatrix(Ul_i, dim_o, dim_l);
 
-    if (i >= lbegin && i < lend) {
-      const Matrix& U = C[i];
-      cpyMatToMat(dim, dim_o, U, Uo_i, 0, 0, 0, 0);
-      cpyMatToMat(dim, dim_c, U, Uc_i, 0, dim_o, 0, 0);
-    }
-  }
-}
-
-void nbd::sampleA(Base& basis, const CSC& rels, const Matrices& A, double epi, int64_t mrank, int64_t level) {
-  Matrices C1(basis.DIMS.size());
-
-  int64_t len = basis.DIMS.size();
-  for (int64_t i = 0; i < len; i++) {
-    int64_t dim = basis.DIMS[i];
-    cMatrix(C1[i], dim, mrank);
-    zeroMatrix(C1[i]);
+    if (i >= lbegin && i < lend && dim > 0)
+      updateU(Uo_i, Uc_i, Ul_i);
+    else if (i < lbegin || i >= lend)
+      cMatrix(Ul_i, dim_l, dim_l);
   }
 
-  orthoBasis(epi, C1, basis.Ulr, &basis.DIMO[0], level);
-  DistributeDims(&basis.DIML[0], level);
-  DistributeDims(&basis.DIMO[0], level);
-  allocUcUo(basis, C1, level);
-  
   DistributeMatricesList(basis.Uc, level);
   DistributeMatricesList(basis.Uo, level);
   DistributeMatricesList(basis.Ulr, level);

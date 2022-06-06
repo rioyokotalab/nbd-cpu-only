@@ -38,7 +38,7 @@ namespace nbd {
 
   void cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64_t x2);
 
-  void updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out);
+  void updateU(Matrix& Qo, Matrix& Qc, Matrix& R);
 
   void updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2);
 
@@ -56,11 +56,7 @@ namespace nbd {
 
   void utav(char tb, const Matrix& U, const Matrix& A, const Matrix& VT, Matrix& C);
 
-  void chol_solve(Vector& X, const Matrix& A);
-
-  void fw_solve(Vector& X, const Matrix& L);
-
-  void bk_solve(Vector& X, const Matrix& L);
+  void mat_solve(char type, Vector& X, const Matrix& A);
 
   void mvec(char ta, const Matrix& A, const Vector& X, Vector& B, double alpha, double beta);
 

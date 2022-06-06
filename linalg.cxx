@@ -112,43 +112,32 @@ void nbd::cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64
     std::copy(&v1.X[x1], &v1.X[x1] + n, &v2.X[x2]);
 }
 
-void nbd::updateU(double epi, Matrix& A, Matrix& U, int64_t *rnk_out) {
-  int64_t m = A.M;
-  Matrix au, work;
-  int64_t n = A.N + U.N;
-  int64_t rank = std::min(m, n);
-  rank = *rnk_out > 0 ? std::min(rank, *rnk_out) : rank;
-  cMatrix(au, m, n);
-  cMatrix(work, m, U.N);
+void nbd::updateU(Matrix& Qo, Matrix& Qc, Matrix& R) {
+  int64_t m = R.M;
+  int64_t n = R.N;
+  int64_t nc = m - n;
 
-  double nrm_A = 1. + cblas_dnrm2(m * A.N, A.A.data(), 1);
-  double nrm_U = 1. + cblas_dnrm2(m * U.N, U.A.data(), 1);
-  cblas_dscal(m * A.N, nrm_U / nrm_A, A.A.data(), 1);
-  
-  cpyMatToMat(m, A.N, A, au, 0, 0, 0, 0);
-  cpyMatToMat(m, U.N, U, au, 0, 0, 0, A.N);
-  cpyMatToMat(m, U.N, U, work, 0, 0, 0, 0);
-  cMatrix(A, m, m);
+  if (m > 0 && n > 0 && nc >= 0) {
+    Matrix work;
+    cMatrix(work, m, m);
+    cpyMatToMat(m, n, R, work, 0, 0, 0, 0);
+    cMatrix(R, n, n);
 
-  Vector s, superb;
-  cVector(s, std::min(m, n));
-  cVector(superb, s.N + 1);
-  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', m, n, au.A.data(), m, s.X.data(), A.A.data(), m, NULL, n, superb.X.data());
+    Vector tau;
+    cVector(tau, n);
+    LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, work.A.data(), m, tau.X.data());
+    cpyMatToMat(n, n, work, R, 0, 0, 0, 0);
+    LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, work.A.data(), m, tau.X.data());
+    cpyMatToMat(m, n, work, Qo, 0, 0, 0, 0);
+    if (nc > 0)
+      cpyMatToMat(m, nc, work, Qc, 0, n, 0, 0);
+    
+    for (int64_t i = 0; i < n - 1; i++)
+      std::fill(&R.A[i * n + i + 1], &R.A[(i + 1) * n], 0.);
 
-  if (epi > 0.) {
-    rank = 0;
-    double sepi = s.X[0] * epi;
-    while(rank < s.N && s.X[rank] > sepi)
-      rank += 1;
+    cMatrix(work, 0, 0);
+    cVector(tau, 0);
   }
-  *rnk_out = rank;
-
-  if (U.N > 0 && rank > 0) {
-    cMatrix(U, rank, U.N);
-    cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, rank, U.N, m, 1., A.A.data(), m, work.A.data(), m, 0., U.A.data(), rank);
-  }
-  cMatrix(au, 0, 0);
-  cMatrix(work, 0, 0);
 }
 
 void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
@@ -259,21 +248,13 @@ void nbd::utav(char tb, const Matrix& U, const Matrix& A, const Matrix& VT, Matr
   cMatrix(work, 0, 0);
 }
 
-void nbd::chol_solve(Vector& X, const Matrix& A) {
+void nbd::mat_solve(char type, Vector& X, const Matrix& A) {
   if (A.M > 0 && X.N > 0) {
-    fw_solve(X, A);
-    bk_solve(X, A);
+    if (type == 'F' || type == 'f' || type == 'A' || type == 'a')
+      cblas_dtrsv(CblasColMajor, CblasLower, CblasNoTrans, CblasNonUnit, X.N, A.A.data(), A.M, X.X.data(), 1);
+    if (type == 'B' || type == 'b' || type == 'A' || type == 'a')
+      cblas_dtrsv(CblasColMajor, CblasLower, CblasTrans, CblasNonUnit, X.N, A.A.data(), A.M, X.X.data(), 1);
   }
-}
-
-void nbd::fw_solve(Vector& X, const Matrix& L) {
-  if (L.M > 0 && X.N > 0)
-    cblas_dtrsv(CblasColMajor, CblasLower, CblasNoTrans, CblasNonUnit, X.N, L.A.data(), L.M, X.X.data(), 1);
-}
-
-void nbd::bk_solve(Vector& X, const Matrix& L) {
-  if (L.M > 0 && X.N > 0)
-    cblas_dtrsv(CblasColMajor, CblasLower, CblasTrans, CblasNonUnit, X.N, L.A.data(), L.M, X.X.data(), 1);
 }
 
 void nbd::mvec(char ta, const Matrix& A, const Vector& X, Vector& B, double alpha, double beta) {

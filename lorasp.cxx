@@ -66,7 +66,7 @@ int main(int argc, char* argv[]) {
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorSpDense(sp, lcleaf, A, epi, rank_max);
+  factorSpDense(sp, lcleaf, A);
   stopTimer(&factor_time, &factor_comm_time);
   cRandom(0, 0, 0, 0);
 
