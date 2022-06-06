@@ -18,10 +18,7 @@ namespace nbd {
     int64_t Levels;
     std::vector<Node> D;
     std::vector<Base> Basis;
-    const CSC *Rels;
   };
-
-  typedef std::vector<Node> Nodes;
 
   void splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matrices& U, const Matrices& V, int64_t level);
 
@@ -33,13 +30,13 @@ namespace nbd {
 
   void schurCmplm(Matrices& S, const Matrices& A_oc, const CSC& rels);
 
-  void allocNodes(Nodes& nodes, const CSC rels[], int64_t levels);
+  void allocNodes(Node* nodes, const CSC rels[], int64_t levels);
 
   void allocA(Matrices& A, const CSC& rels, const int64_t dims[], int64_t level);
 
   void allocS(Matrices& S, const CSC& rels, const int64_t diml[], int64_t level);
 
-  void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t dimo[], int64_t level);
+  void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t diml[], int64_t level);
 
   void factorNode(Node& n, Base& basis, const CSC& rels, int64_t level);
 
@@ -49,6 +46,6 @@ namespace nbd {
 
   void allocSpDense(SpDense& sp, const CSC rels[], int64_t levels);
 
-  void factorSpDense(SpDense& sp);
+  void factorSpDense(SpDense& sp, const CSC rels[]);
 
 };

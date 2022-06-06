@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorSpDense(sp);
+  factorSpDense(sp, rels.data());
   stopTimer(&factor_time, &factor_comm_time);
   cRandom(0, 0, 0, 0);
 
@@ -76,14 +76,14 @@ int main(int argc, char* argv[]) {
   Vectors B(X.size());
   h2MatVecReference(B, ef, &cell[0], levels);
 
-  RHSS rhs(levels + 1);
+  std::vector<RHS> rhs(levels + 1);
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
-  solveSpDense(&rhs[0], sp, B);
+  solveSpDense(&rhs[0], sp, rels.data(), B);
   stopTimer(&solve_time, &solve_comm_time);
 
-  DistributeVectorsList(rhs[levels].X, levels);
+  DistributeVectorsList(rhs[levels].X.data(), levels);
 
   double err;
   solveRelErr(&err, rhs[levels].X, Xref, levels);

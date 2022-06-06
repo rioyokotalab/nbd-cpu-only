@@ -112,7 +112,7 @@ void nbd::cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64
     std::copy(&v1.X[x1], &v1.X[x1] + n, &v2.X[x2]);
 }
 
-void nbd::updateU(Matrix& Qo, Matrix& Qc, Matrix& R) {
+void nbd::qr_with_complements(Matrix& Qo, Matrix& Qc, Matrix& R) {
   int64_t m = Qo.M;
   int64_t n = Qo.N;
   int64_t nc = m - n;
@@ -150,8 +150,6 @@ void nbd::updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2) {
 
     cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R1.M, n, m1, 1., R1.A.data(), R1.M, U.A.data(), U.M, 0., ru1.A.data(), R1.M);
     cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R2.M, n, m2, 1., R2.A.data(), R2.M, U.A.data() + m1, U.M, 0., ru2.A.data(), R2.M);
-
-    cMatrix(U, R1.M + R2.M, n);
     cpyMatToMat(R1.M, n, ru1, U, 0, 0, 0, 0);
     cpyMatToMat(R2.M, n, ru2, U, 0, 0, R1.M, 0);
 
@@ -204,6 +202,7 @@ void nbd::lraID(double epi, Matrix& A, Matrix& U, int64_t arows[], int64_t* rnk_
   cVector(s, 0);
   cVector(superb, 0);
   ipiv.clear();
+  rows.clear();
 }
 
 void nbd::zeroMatrix(Matrix& A) {

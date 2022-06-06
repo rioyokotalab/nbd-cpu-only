@@ -8,7 +8,7 @@ using namespace nbd;
 
 void nbd::splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matrices& U, const Matrices& V, int64_t level) {
   int64_t ibegin = 0, iend;
-  selfLocalRange(ibegin, iend, level);
+  selfLocalRange(&ibegin, &iend, level);
   const Matrix* vlocal = &V[ibegin];
 
 #pragma omp parallel for
@@ -16,7 +16,7 @@ void nbd::splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matr
     for (int64_t yx = rels.COLS_NEAR[x]; yx < rels.COLS_NEAR[x + 1]; yx++) {
       int64_t y = rels.ROWS_NEAR[yx];
       int64_t box_y = y;
-      iLocal(box_y, y, level);
+      iLocal(&box_y, y, level);
       utav('N', U[box_y], A[yx], vlocal[x], A_out[yx]);
     }
   }
@@ -24,7 +24,7 @@ void nbd::splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matr
 
 void nbd::splitS(Matrices& S_out, const CSC& rels, const Matrices& S, const Matrices& U, const Matrices& V, int64_t level) {
   int64_t ibegin = 0, iend;
-  selfLocalRange(ibegin, iend, level);
+  selfLocalRange(&ibegin, &iend, level);
   const Matrix* vlocal = &V[ibegin];
 
 #pragma omp parallel for
@@ -32,7 +32,7 @@ void nbd::splitS(Matrices& S_out, const CSC& rels, const Matrices& S, const Matr
     for (int64_t yx = rels.COLS_FAR[x]; yx < rels.COLS_FAR[x + 1]; yx++) {
       int64_t y = rels.ROWS_FAR[yx];
       int64_t box_y = y;
-      iLocal(box_y, y, level);
+      iLocal(&box_y, y, level);
       utav('T', U[box_y], S[yx], vlocal[x], S_out[yx]);
     }
   }
@@ -80,8 +80,7 @@ void nbd::schurCmplm(Matrices& S, const Matrices& A_oc, const CSC& rels) {
 }
 
 
-void nbd::allocNodes(Nodes& nodes, const CSC rels[], int64_t levels) {
-  nodes.resize(levels + 1);
+void nbd::allocNodes(Node* nodes, const CSC rels[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nnz = rels[i].NNZ_NEAR;
     nodes[i].A.resize(nnz);
@@ -96,7 +95,7 @@ void nbd::allocNodes(Nodes& nodes, const CSC rels[], int64_t levels) {
 
 void nbd::allocA(Matrices& A, const CSC& rels, const int64_t dims[], int64_t level) {
   int64_t ibegin = 0, iend;
-  selfLocalRange(ibegin, iend, level);
+  selfLocalRange(&ibegin, &iend, level);
 
   for (int64_t j = 0; j < rels.N; j++) {
     int64_t box_j = ibegin + j;
@@ -105,7 +104,7 @@ void nbd::allocA(Matrices& A, const CSC& rels, const int64_t dims[], int64_t lev
     for (int64_t ij = rels.COLS_NEAR[j]; ij < rels.COLS_NEAR[j + 1]; ij++) {
       int64_t i = rels.ROWS_NEAR[ij];
       int64_t box_i = i;
-      iLocal(box_i, i, level);
+      iLocal(&box_i, i, level);
       int64_t n_i = dims[box_i];
 
       Matrix& A_ij = A[ij];
@@ -117,7 +116,7 @@ void nbd::allocA(Matrices& A, const CSC& rels, const int64_t dims[], int64_t lev
 
 void nbd::allocS(Matrices& S, const CSC& rels, const int64_t diml[], int64_t level) {
   int64_t ibegin = 0, iend;
-  selfLocalRange(ibegin, iend, level);
+  selfLocalRange(&ibegin, &iend, level);
 
   for (int64_t j = 0; j < rels.N; j++) {
     int64_t box_j = ibegin + j;
@@ -126,7 +125,7 @@ void nbd::allocS(Matrices& S, const CSC& rels, const int64_t diml[], int64_t lev
     for (int64_t ij = rels.COLS_FAR[j]; ij < rels.COLS_FAR[j + 1]; ij++) {
       int64_t i = rels.ROWS_FAR[ij];
       int64_t box_i = i;
-      iLocal(box_i, i, level);
+      iLocal(&box_i, i, level);
       int64_t n_i = diml[box_i];
 
       Matrix& S_ij = S[ij];
@@ -136,33 +135,33 @@ void nbd::allocS(Matrices& S, const CSC& rels, const int64_t diml[], int64_t lev
   }
 }
 
-void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t dimo[], int64_t level) {
+void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t diml[], int64_t level) {
   int64_t ibegin = 0, iend;
-  selfLocalRange(ibegin, iend, level);
+  selfLocalRange(&ibegin, &iend, level);
 
   for (int64_t j = 0; j < rels.N; j++) {
     int64_t box_j = ibegin + j;
-    int64_t dimo_j = dimo[box_j];
-    int64_t dimc_j = dims[box_j] - dimo_j;
+    int64_t diml_j = diml[box_j];
+    int64_t dimc_j = dims[box_j] - diml_j;
 
     for (int64_t ij = rels.COLS_NEAR[j]; ij < rels.COLS_NEAR[j + 1]; ij++) {
       int64_t i = rels.ROWS_NEAR[ij];
       int64_t box_i = i;
-      iLocal(box_i, i, level);
-      int64_t dimo_i = dimo[box_i];
-      int64_t dimc_i = dims[box_i] - dimo_i;
+      iLocal(&box_i, i, level);
+      int64_t diml_i = diml[box_i];
+      int64_t dimc_i = dims[box_i] - diml_i;
 
       cMatrix(n.A_cc[ij], dimc_i, dimc_j);
-      cMatrix(n.A_oc[ij], dimo_i, dimc_j);
-      cMatrix(n.A_oo[ij], dimo_i, dimo_j);
+      cMatrix(n.A_oc[ij], diml_i, dimc_j);
+      cMatrix(n.A_oo[ij], diml_i, diml_j);
     }
 
     for (int64_t ij = rels.COLS_FAR[j]; ij < rels.COLS_FAR[j + 1]; ij++) {
       int64_t i = rels.ROWS_FAR[ij];
       int64_t box_i = i;
-      iLocal(box_i, i, level);
-      int64_t dimo_i = dimo[box_i];
-      cMatrix(n.S_oo[ij], dimo_i, dimo_j);
+      iLocal(&box_i, i, level);
+      int64_t diml_i = diml[box_i];
+      cMatrix(n.S_oo[ij], diml_i, diml_j);
     }
   }
 }
@@ -173,7 +172,7 @@ void nbd::factorNode(Node& n, Base& basis, const CSC& rels, int64_t level) {
   splitA(n.A_cc, rels, n.A, basis.Uc, basis.Uc, level);
   splitA(n.A_oc, rels, n.A, basis.Uo, basis.Uc, level);
   splitA(n.A_oo, rels, n.A, basis.Uo, basis.Uo, level);
-  splitS(n.S_oo, rels, n.S, basis.Ulr, basis.Ulr, level);
+  splitS(n.S_oo, rels, n.S, basis.R, basis.R, level);
 
   factorAcc(n.A_cc, rels);
   factorAoc(n.A_oc, n.A_cc, rels);
@@ -198,10 +197,10 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
     int64_t lj = gj;
     int64_t lj0 = cj0;
     int64_t lj1 = cj1;
-    iLocal(lj, gj, nlevel);
-    iLocal(lj0, cj0, clevel);
-    iLocal(lj1, cj1, clevel);
-    updateSubU(bsnext.Uo[lj], bsprev.Ulr[lj0], bsprev.Ulr[lj1]);
+    iLocal(&lj, gj, nlevel);
+    iLocal(&lj0, cj0, clevel);
+    iLocal(&lj1, cj1, clevel);
+    updateSubU(bsnext.Uo[lj], bsprev.R[lj0], bsprev.R[lj1]);
 
     for (int64_t ij = rels_up.COLS_NEAR[j]; ij < rels_up.COLS_NEAR[j + 1]; ij++) {
       int64_t i = rels_up.ROWS_NEAR[ij];
@@ -269,18 +268,7 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
   }
   
   if (rels_low.N == rels_up.N)
-    butterflySumA(Mup, clevel);
-
-  int64_t xlen = bsnext.DIMS.size();
-  for (int64_t i = 0; i < xlen; i++) {
-    int64_t m = bsnext.DIMS[i];
-    int64_t n = bsnext.DIML[i];
-    int64_t msize = m * n;
-    if (msize > 0 && (bsnext.Uo[i].M != m || bsnext.Uo[i].N != n))
-      cMatrix(bsnext.Uo[i], m, n);
-  }
-
-  DistributeMatricesList(bsnext.Uo, nlevel);
+    butterflySumA(Mup.data(), Mup.size(), clevel);
 }
 
 
@@ -303,11 +291,10 @@ void nbd::allocSpDense(SpDense& sp, const CSC rels[], int64_t levels) {
   sp.Levels = levels;
   sp.D.resize(levels + 1);
   sp.Basis.resize(levels + 1);
-  sp.Rels = rels;
-  allocNodes(sp.D, rels, levels);
-  allocBasis(sp.Basis, levels);
+  allocNodes(sp.D.data(), rels, levels);
+  allocBasis(sp.Basis.data(), levels);
 }
 
-void nbd::factorSpDense(SpDense& sp) {
-  factorA(&sp.D[0], &sp.Basis[0], sp.Rels, sp.Levels);
+void nbd::factorSpDense(SpDense& sp, const CSC rels[]) {
+  factorA(&sp.D[0], &sp.Basis[0], rels, sp.Levels);
 }

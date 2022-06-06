@@ -7,17 +7,15 @@
 
 using namespace nbd;
 
-
-void nbd::allocBasis(Basis& basis, int64_t levels) {
-  basis.resize(levels + 1);
+void nbd::allocBasis(Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = (int64_t)1 << i;
-    contentLength(nodes, i);
+    contentLength(&nodes, i);
     basis[i].DIMS.resize(nodes);
     basis[i].DIML.resize(nodes);
     basis[i].Uo.resize(nodes);
     basis[i].Uc.resize(nodes);
-    basis[i].Ulr.resize(nodes);
+    basis[i].R.resize(nodes);
   }
 }
 
@@ -88,7 +86,7 @@ void nbd::evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, co
   int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
   int64_t iend = xlen;
-  selfLocalRange(ibegin, iend, level);
+  selfLocalRange(&ibegin, &iend, level);
   int64_t nodes = iend - ibegin;
 
   int64_t len = 0;
@@ -103,7 +101,7 @@ void nbd::evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, co
     Cell* ci = leaves[i];
     int64_t ii = ci->ZID;
     int64_t box_i = ii;
-    iLocal(box_i, ii, level);
+    iLocal(&box_i, ii, level);
 
     evaluateBasis(ef, basis.Uo[box_i], ci, bodies, nbodies, epi, mrank, sp_pts);
     int64_t ni;
@@ -123,14 +121,14 @@ void nbd::evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, co
     if (msize > 0 && (i < ibegin || i >= iend))
       cMatrix(basis.Uo[i], m, n);
   }
-  DistributeMatricesList(basis.Uo, level);
+  DistributeMatricesList(basis.Uo.data(), level);
 }
 
 void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
   int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
   int64_t iend = xlen;
-  selfLocalRange(ibegin, iend, level);
+  selfLocalRange(&ibegin, &iend, level);
 
   int64_t count = 0;
   std::vector<int64_t> offsets(xlen);
@@ -149,7 +147,7 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
     const Cell* ci = leaves[i];
     int64_t ii = ci->ZID;
     int64_t box_i = ii;
-    iLocal(box_i, ii, level);
+    iLocal(&box_i, ii, level);
 
     int64_t offset_i = offsets[box_i];
     std::copy(ci->Multipole.begin(), ci->Multipole.end(), &mps_comm[offset_i]);
@@ -167,7 +165,7 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
     Cell* ci = *iter;
     int64_t ii = ci->ZID;
     int64_t box_i = ii;
-    iLocal(box_i, ii, level);
+    iLocal(&box_i, ii, level);
 
     int64_t offset_i = offsets[box_i];
     int64_t end_i = offset_i + basis.DIML[box_i];
@@ -206,7 +204,7 @@ void nbd::allocUcUo(Base& basis, int64_t level) {
   int64_t len = basis.DIMS.size();
   int64_t lbegin = 0;
   int64_t lend = len;
-  selfLocalRange(lbegin, lend, level);
+  selfLocalRange(&lbegin, &lend, level);
 #pragma omp parallel for
   for (int64_t i = 0; i < len; i++) {
     int64_t dim = basis.DIMS[i];
@@ -215,16 +213,16 @@ void nbd::allocUcUo(Base& basis, int64_t level) {
 
     Matrix& Uo_i = basis.Uo[i];
     Matrix& Uc_i = basis.Uc[i];
-    Matrix& Ul_i = basis.Ulr[i];
+    Matrix& Ul_i = basis.R[i];
     cMatrix(Uc_i, dim, dim_c);
     cMatrix(Ul_i, dim_l, dim_l);
 
     if (i >= lbegin && i < lend && dim > 0)
-      updateU(Uo_i, Uc_i, Ul_i);
+      qr_with_complements(Uo_i, Uc_i, Ul_i);
   }
 
-  DistributeMatricesList(basis.Uc, level);
-  DistributeMatricesList(basis.Uo, level);
-  DistributeMatricesList(basis.Ulr, level);
+  DistributeMatricesList(basis.Uc.data(), level);
+  DistributeMatricesList(basis.Uo.data(), level);
+  DistributeMatricesList(basis.R.data(), level);
 }
 

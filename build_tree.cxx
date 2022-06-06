@@ -514,12 +514,12 @@ void nbd::lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j)
 
 void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
-  contentLength(xlen, level);
+  contentLength(&xlen, level);
   X.resize(xlen);
 
   int64_t ibegin = 0;
   int64_t iend = (int64_t)1 << level;
-  selfLocalRange(ibegin, iend, level);
+  selfLocalRange(&ibegin, &iend, level);
   int64_t nodes = iend - ibegin;
 
   int64_t len = 0;
@@ -530,7 +530,7 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   for (int64_t i = 0; i < len; i++) {
     const Cell* ci = cells[i];
     int64_t li = ci->ZID;
-    iLocal(li, ci->ZID, level);
+    iLocal(&li, ci->ZID, level);
     Vector& Xi = X[li];
     cVector(Xi, ci->NBODY);
     dims[li] = ci->NBODY;
@@ -544,7 +544,7 @@ void nbd::loadX(Vectors& X, const Cell* cell, int64_t level) {
   for (int64_t i = 0; i < xlen; i++)
     if (X[i].N != dims[i])
       cVector(X[i], dims[i]);
-  DistributeVectorsList(X, level);
+  DistributeVectorsList(X.data(), level);
 }
 
 void nbd::h2MatVecReference(Vectors& B, KerFunc_t ef, const Cell* root, int64_t levels) {
@@ -560,7 +560,7 @@ void nbd::h2MatVecReference(Vectors& B, KerFunc_t ef, const Cell* root, int64_t 
   for (int64_t i = 0; i < len; i++) {
     const Cell* ci = cells[i];
     int64_t li = ci->ZID;
-    iLocal(li, ci->ZID, levels);
+    iLocal(&li, ci->ZID, levels);
     Vector& Bi = B[li];
     cVector(Bi, ci->NBODY);
     zeroVector(Bi);

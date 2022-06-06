@@ -11,8 +11,6 @@ namespace nbd {
     Vectors Xo;
   };
 
-  typedef std::vector<RHS> RHSS;
-
   void basisXoc(char fwbk, RHS& vx, const Base& basis, int64_t level);
 
   void svAccFw(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t level);
@@ -29,7 +27,7 @@ namespace nbd {
 
   void solveA(RHS st[], const Node A[], const Base B[], const CSC rels[], const Vectors& X, int64_t levels);
 
-  void solveSpDense(RHS st[], const SpDense& sp, const Vectors& X);
+  void solveSpDense(RHS st[], const SpDense& sp, const CSC rels[], const Vectors& X);
 
   void solveRelErr(double* err_out, const Vectors& X, const Vectors& ref, int64_t level);
 

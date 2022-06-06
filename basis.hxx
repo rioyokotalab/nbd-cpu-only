@@ -10,12 +10,10 @@ namespace nbd {
     std::vector<int64_t> DIML;
     Matrices Uc;
     Matrices Uo;
-    Matrices Ulr;
+    Matrices R;
   };
 
-  typedef std::vector<Base> Basis;
-
-  void allocBasis(Basis& basis, int64_t levels);
+  void allocBasis(Base* basis, int64_t levels);
 
   void evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
 

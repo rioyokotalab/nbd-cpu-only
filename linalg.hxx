@@ -38,7 +38,7 @@ namespace nbd {
 
   void cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64_t x2);
 
-  void updateU(Matrix& Qo, Matrix& Qc, Matrix& R);
+  void qr_with_complements(Matrix& Qo, Matrix& Qc, Matrix& R);
 
   void updateSubU(Matrix& U, const Matrix& R1, const Matrix& R2);
 
