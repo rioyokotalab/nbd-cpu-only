@@ -51,11 +51,9 @@ int main(int argc, char* argv[]) {
   std::vector<CSC> rels(levels + 1);
   relationsNear(&rels[0], cell);
 
-  Matrices A(rels[levels].NNZ_NEAR);
-  evaluateLeafNear(A, ef, &cell[0], rels[levels]);
-
   SpDense sp;
   allocSpDense(sp, &rels[0], levels);
+  evaluateLeafNear(sp.D[levels].A, ef, &cell[0], rels[levels]);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
@@ -66,7 +64,7 @@ int main(int argc, char* argv[]) {
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorSpDense(sp, lcleaf, A);
+  factorSpDense(sp);
   stopTimer(&factor_time, &factor_comm_time);
   cRandom(0, 0, 0, 0);
 

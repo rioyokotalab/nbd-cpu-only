@@ -219,35 +219,6 @@ void nbd::solveA(RHS st[], const Node A[], const Base B[], const CSC rels[], con
   }
 }
 
-void nbd::allocSpDense(SpDense& sp, const CSC rels[], int64_t levels) {
-  sp.Levels = levels;
-  sp.D.resize(levels + 1);
-  sp.Basis.resize(levels + 1);
-  sp.Rels = rels;
-  allocNodes(sp.D, rels, levels);
-  allocBasis(sp.Basis, levels);
-}
-
-void nbd::factorSpDense(SpDense& sp, const Cell* local, const Matrices& D) {
-  int64_t levels = sp.Levels;
-  fillDimsFromCell(sp.Basis[levels], local, levels);
-
-  int64_t nnz = sp.Rels[levels].NNZ_NEAR;
-  bool cless = true;
-  for (int64_t i = 0; i < nnz; i++) {
-    Matrix& Ai = sp.D[levels].A[i];
-    const Matrix& Di = D[i];
-    if (Ai.M != Di.M || Ai.N != Di.N)
-      cMatrix(Ai, Di.M, Di.N);
-    if (Ai.M > 0 && Ai.N > 0) {
-      cpyMatToMat(Di.M, Di.N, Di, Ai, 0, 0, 0, 0);
-      cless = false;
-    }
-  }
-  if (!cless)
-    factorA(&sp.D[0], &sp.Basis[0], sp.Rels, levels);
-}
-
 void nbd::solveSpDense(RHS st[], const SpDense& sp, const Vectors& X) {
   allocRightHandSides(st, &sp.Basis[0], sp.Levels);
   solveA(st, &sp.D[0], &sp.Basis[0], sp.Rels, X, sp.Levels);

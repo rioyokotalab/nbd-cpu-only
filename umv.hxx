@@ -14,6 +14,13 @@ namespace nbd {
     Matrices S_oo;
   };
 
+  struct SpDense {
+    int64_t Levels;
+    std::vector<Node> D;
+    std::vector<Base> Basis;
+    const CSC *Rels;
+  };
+
   typedef std::vector<Node> Nodes;
 
   void splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matrices& U, const Matrices& V, int64_t level);
@@ -39,5 +46,9 @@ namespace nbd {
   void nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Aprev, const Base& bsprev, const CSC& rels_low, int64_t nlevel);
 
   void factorA(Node A[], Base B[], const CSC rels[], int64_t levels);
+
+  void allocSpDense(SpDense& sp, const CSC rels[], int64_t levels);
+
+  void factorSpDense(SpDense& sp);
 
 };

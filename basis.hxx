@@ -25,10 +25,6 @@ namespace nbd {
 
   void evaluateBaseAll(KerFunc_t ef, Base basis[], Cells& cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
   
-  void fillDimsFromCell(Base& basis, const Cell* cell, int64_t level);
-
   void allocUcUo(Base& basis, int64_t level);
-
-  void nextBasisDims(Base& bsnext, const int64_t dimo[], int64_t nlevel);
 
 };

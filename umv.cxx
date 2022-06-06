@@ -185,8 +185,6 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
   const Matrices& Mlow = Aprev.A_oo;
   const Matrices& Slow = Aprev.S_oo;
 
-  nextBasisDims(bsnext, bsprev.DIML.data(), nlevel);
-  DistributeDims(&bsnext.DIML[0], nlevel);
   allocA(Mup, rels_up, &bsnext.DIMS[0], nlevel);
   int64_t nbegin = rels_up.CBGN;
   int64_t clevel = nlevel + 1;
@@ -299,4 +297,17 @@ void nbd::factorA(Node A[], Base B[], const CSC rels[], int64_t levels) {
     nextNode(An, Bn, rn, Ai, Bi, ri, i - 1);
   }
   chol_decomp(A[0].A[0]);
+}
+
+void nbd::allocSpDense(SpDense& sp, const CSC rels[], int64_t levels) {
+  sp.Levels = levels;
+  sp.D.resize(levels + 1);
+  sp.Basis.resize(levels + 1);
+  sp.Rels = rels;
+  allocNodes(sp.D, rels, levels);
+  allocBasis(sp.Basis, levels);
+}
+
+void nbd::factorSpDense(SpDense& sp) {
+  factorA(&sp.D[0], &sp.Basis[0], sp.Rels, sp.Levels);
 }

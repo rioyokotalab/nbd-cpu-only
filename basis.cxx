@@ -195,29 +195,6 @@ void nbd::evaluateBaseAll(KerFunc_t ef, Base basis[], Cells& cells, int64_t leve
   }
 }
 
-void nbd::fillDimsFromCell(Base& basis, const Cell* cell, int64_t level) {
-  int64_t ibegin = 0;
-  int64_t iend = basis.DIMS.size();
-  selfLocalRange(ibegin, iend, level);
-  int64_t nodes = iend - ibegin;
-
-  int64_t len = 0;
-  std::vector<const Cell*> leaves(nodes);
-  findCellsAtLevel(&leaves[0], &len, cell, level);
-
-  for (int64_t i = 0; i < len; i++) {
-    const Cell* ci = leaves[i];
-    int64_t ii = ci->ZID;
-    int64_t box_i = ii;
-    iLocal(box_i, ii, level);
-
-    int64_t ni;
-    childMultipoleSize(&ni, *ci);
-    basis.DIMS[box_i] = ni;
-  }
-
-  DistributeDims(&basis.DIMS[0], level);
-}
 
 void nbd::allocUcUo(Base& basis, int64_t level) {
   int64_t len = basis.DIMS.size();
@@ -245,33 +222,5 @@ void nbd::allocUcUo(Base& basis, int64_t level) {
   DistributeMatricesList(basis.Uc, level);
   DistributeMatricesList(basis.Uo, level);
   DistributeMatricesList(basis.Ulr, level);
-}
-
-
-void nbd::nextBasisDims(Base& bsnext, const int64_t dimo[], int64_t nlevel) {
-  int64_t ibegin = 0;
-  int64_t iend = bsnext.DIMS.size();
-  selfLocalRange(ibegin, iend, nlevel);
-  int64_t nboxes = iend - ibegin;
-
-  int64_t* dims = &bsnext.DIMS[0];
-  int64_t clevel = nlevel + 1;
-
-  for (int64_t i = 0; i < nboxes; i++) {
-    int64_t nloc = i + ibegin;
-    int64_t nrnk = nloc;
-    iGlobal(nrnk, nloc, nlevel);
-
-    int64_t c0rnk = nrnk << 1;
-    int64_t c1rnk = (nrnk << 1) + 1;
-    int64_t c0 = c0rnk;
-    int64_t c1 = c1rnk;
-    iLocal(c0, c0rnk, clevel);
-    iLocal(c1, c1rnk, clevel);
-
-    dims[nloc] = c0 >= 0 ? dimo[c0] : 0;
-    dims[nloc] = dims[nloc] + (c1 >= 0 ? dimo[c1] : 0);
-  }
-  DistributeDims(dims, nlevel);
 }
 
