@@ -201,7 +201,7 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
     iLocal(lj, gj, nlevel);
     iLocal(lj0, cj0, clevel);
     iLocal(lj1, cj1, clevel);
-    updateSubU(bsnext.Ulr[lj], bsprev.Ulr[lj0], bsprev.Ulr[lj1]);
+    updateSubU(bsnext.Uo[lj], bsprev.Ulr[lj0], bsprev.Ulr[lj1]);
 
     for (int64_t ij = rels_up.COLS_NEAR[j]; ij < rels_up.COLS_NEAR[j + 1]; ij++) {
       int64_t i = rels_up.ROWS_NEAR[ij];
@@ -276,11 +276,11 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
     int64_t m = bsnext.DIMS[i];
     int64_t n = bsnext.DIML[i];
     int64_t msize = m * n;
-    if (msize > 0 && (bsnext.Ulr[i].M != m || bsnext.Ulr[i].N != n))
-      cMatrix(bsnext.Ulr[i], m, n);
+    if (msize > 0 && (bsnext.Uo[i].M != m || bsnext.Uo[i].N != n))
+      cMatrix(bsnext.Uo[i], m, n);
   }
 
-  DistributeMatricesList(bsnext.Ulr, nlevel);
+  DistributeMatricesList(bsnext.Uo, nlevel);
 }
 
 

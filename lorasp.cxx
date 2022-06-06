@@ -53,14 +53,15 @@ int main(int argc, char* argv[]) {
 
   SpDense sp;
   allocSpDense(sp, &rels[0], levels);
-  evaluateLeafNear(sp.D[levels].A, ef, &cell[0], rels[levels]);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
   evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body.data(), Nbody, epi, rank_max, sp_pts);
+  stopTimer(&construct_time, &construct_comm_time);
+
+  evaluateLeafNear(sp.D[levels].A, ef, &cell[0], rels[levels]);
   for (int64_t i = 0; i <= levels; i++)
     evaluateFar(sp.D[i].S, ef, &cell[0], rels[i], i);
-  stopTimer(&construct_time, &construct_comm_time);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);

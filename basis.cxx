@@ -53,7 +53,12 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
       if (n1 > 0)
         normalizeA(work_c, work_a);
       cpyMatToMat(m, m, work_c, work_s, 0, 0, 0, n1);
+      cMatrix(work_b, 0, 0);
+      cMatrix(work_c, 0, 0);
     }
+
+    if (n1 > 0)
+      cMatrix(work_a, 0, 0);
 
     if (len_s > 0) {
       int64_t rank = m;
@@ -63,6 +68,7 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
 
       int64_t iters = rank;
       lraID(epi, work_s, Base, pa.data(), &iters);
+      cMatrix(work_s, 0, 0);
 
       int64_t len_m = cell->Multipole.size();
       if (len_m != iters)
@@ -99,7 +105,7 @@ void nbd::evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, co
     int64_t box_i = ii;
     iLocal(box_i, ii, level);
 
-    evaluateBasis(ef, basis.Ulr[box_i], ci, bodies, nbodies, epi, mrank, sp_pts);
+    evaluateBasis(ef, basis.Uo[box_i], ci, bodies, nbodies, epi, mrank, sp_pts);
     int64_t ni;
     childMultipoleSize(&ni, *ci);
     int64_t mi = ci->Multipole.size();
@@ -115,9 +121,9 @@ void nbd::evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, co
     int64_t n = diml[i];
     int64_t msize = m * n;
     if (msize > 0 && (i < ibegin || i >= iend))
-      cMatrix(basis.Ulr[i], m, n);
+      cMatrix(basis.Uo[i], m, n);
   }
-  DistributeMatricesList(basis.Ulr, level);
+  DistributeMatricesList(basis.Uo, level);
 }
 
 void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
@@ -210,13 +216,11 @@ void nbd::allocUcUo(Base& basis, int64_t level) {
     Matrix& Uo_i = basis.Uo[i];
     Matrix& Uc_i = basis.Uc[i];
     Matrix& Ul_i = basis.Ulr[i];
-    cMatrix(Uo_i, dim, dim_l);
     cMatrix(Uc_i, dim, dim_c);
+    cMatrix(Ul_i, dim_l, dim_l);
 
     if (i >= lbegin && i < lend && dim > 0)
       updateU(Uo_i, Uc_i, Ul_i);
-    else if (i < lbegin || i >= lend)
-      cMatrix(Ul_i, dim_l, dim_l);
   }
 
   DistributeMatricesList(basis.Uc, level);

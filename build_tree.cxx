@@ -577,6 +577,7 @@ void nbd::h2MatVecReference(Vectors& B, KerFunc_t ef, const Cell* root, int64_t 
       cMatrix(Aij, m, n);
       gen_matrix(ef, m, n, ci->BODY, cells_leaf[j]->BODY, Aij.A.data(), NULL, NULL);
       mvec('N', Aij, X, Bi, 1., 1.);
+      cMatrix(Aij, 0, 0);
     }
   }
 }

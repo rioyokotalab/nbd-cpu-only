@@ -113,18 +113,17 @@ void nbd::cpyVecToVec(int64_t n, const Vector& v1, Vector& v2, int64_t x1, int64
 }
 
 void nbd::updateU(Matrix& Qo, Matrix& Qc, Matrix& R) {
-  int64_t m = R.M;
-  int64_t n = R.N;
+  int64_t m = Qo.M;
+  int64_t n = Qo.N;
   int64_t nc = m - n;
 
   if (m > 0 && n > 0 && nc >= 0) {
     Matrix work;
     cMatrix(work, m, m);
-    cpyMatToMat(m, n, R, work, 0, 0, 0, 0);
-    cMatrix(R, n, n);
-
     Vector tau;
     cVector(tau, n);
+    cpyMatToMat(m, n, Qo, work, 0, 0, 0, 0);
+
     LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, work.A.data(), m, tau.X.data());
     cpyMatToMat(n, n, work, R, 0, 0, 0, 0);
     LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, work.A.data(), m, tau.X.data());
