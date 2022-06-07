@@ -166,8 +166,7 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
   }
 }
 
-void nbd::factorNode(Node& n, Base& basis, const CSC& rels, int64_t level) {
-  allocUcUo(basis, level);
+void nbd::factorNode(Node& n, const Base& basis, const CSC& rels, int64_t level) {
   allocSubMatrices(n, rels, &basis.DIMS[0], &basis.DIML[0], level);
   splitA(n.A_cc, rels, n.A, basis.Uc, basis.Uc, level);
   splitA(n.A_oc, rels, n.A, basis.Uo, basis.Uc, level);
@@ -179,12 +178,11 @@ void nbd::factorNode(Node& n, Base& basis, const CSC& rels, int64_t level) {
   schurCmplm(n.A_oo, n.A_oc, rels);
 }
 
-void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Aprev, const Base& bsprev, const CSC& rels_low, int64_t nlevel) {
+void nbd::nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rels_low, int64_t nlevel) {
   Matrices& Mup = Anext.A;
   const Matrices& Mlow = Aprev.A_oo;
   const Matrices& Slow = Aprev.S_oo;
 
-  allocA(Mup, rels_up, &bsnext.DIMS[0], nlevel);
   int64_t nbegin = rels_up.CBGN;
   int64_t clevel = nlevel + 1;
 
@@ -193,14 +191,6 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
     int64_t gj = j + nbegin;
     int64_t cj0 = (gj << 1);
     int64_t cj1 = (gj << 1) + 1;
-
-    int64_t lj = gj;
-    int64_t lj0 = cj0;
-    int64_t lj1 = cj1;
-    iLocal(&lj, gj, nlevel);
-    iLocal(&lj0, cj0, clevel);
-    iLocal(&lj1, cj1, clevel);
-    updateSubU(bsnext.Uo[lj], bsprev.R[lj0], bsprev.R[lj1]);
 
     for (int64_t ij = rels_up.COLS_NEAR[j]; ij < rels_up.COLS_NEAR[j + 1]; ij++) {
       int64_t i = rels_up.ROWS_NEAR[ij];
@@ -272,17 +262,19 @@ void nbd::nextNode(Node& Anext, Base& bsnext, const CSC& rels_up, const Node& Ap
 }
 
 
-void nbd::factorA(Node A[], Base B[], const CSC rels[], int64_t levels) {
+void nbd::factorA(Node A[], const Base B[], const CSC rels[], int64_t levels) {
+  for (int64_t i = levels - 1; i >= 0; i--)
+    allocA(A[i].A, rels[i], B[i].DIMS.data(), i);
+
   for (int64_t i = levels; i > 0; i--) {
     Node& Ai = A[i];
-    Base& Bi = B[i];
+    const Base& Bi = B[i];
     const CSC& ri = rels[i];
     factorNode(Ai, Bi, ri, i);
 
     Node& An = A[i - 1];
-    Base& Bn = B[i - 1];
     const CSC& rn = rels[i - 1];
-    nextNode(An, Bn, rn, Ai, Bi, ri, i - 1);
+    nextNode(An, rn, Ai, ri, i - 1);
   }
   chol_decomp(A[0].A[0]);
 }

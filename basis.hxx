@@ -23,6 +23,6 @@ namespace nbd {
 
   void evaluateBaseAll(KerFunc_t ef, Base basis[], Cells& cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
   
-  void allocUcUo(Base& basis, int64_t level);
+  void orth_base_all(Base* basis, int64_t levels);
 
 };

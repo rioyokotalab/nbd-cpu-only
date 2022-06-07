@@ -200,29 +200,55 @@ void nbd::evaluateBaseAll(KerFunc_t ef, Base basis[], Cells& cells, int64_t leve
 }
 
 
-void nbd::allocUcUo(Base& basis, int64_t level) {
-  int64_t len = basis.DIMS.size();
-  int64_t lbegin = 0;
-  int64_t lend = len;
-  selfLocalRange(&lbegin, &lend, level);
+void nbd::orth_base_all(Base* basis, int64_t levels) {
+  for (int64_t i = levels; i > 0; i--) {
+    Base* base_i = basis + i;
+    int64_t len = (int64_t)1 << i;
+    int64_t lbegin = 0;
+    int64_t lend = len;
+    selfLocalRange(&lbegin, &lend, i);
+    contentLength(&len, i);
+
 #pragma omp parallel for
-  for (int64_t i = 0; i < len; i++) {
-    int64_t dim = basis.DIMS[i];
-    int64_t dim_l = basis.DIML[i];
-    int64_t dim_c = dim - dim_l;
+    for (int64_t j = 0; j < len; j++) {
+      int64_t dim = base_i->DIMS[j];
+      int64_t dim_l = base_i->DIML[j];
+      int64_t dim_c = dim - dim_l;
 
-    Matrix& Uo_i = basis.Uo[i];
-    Matrix& Uc_i = basis.Uc[i];
-    Matrix& Ul_i = basis.R[i];
-    cMatrix(Uc_i, dim, dim_c);
-    cMatrix(Ul_i, dim_l, dim_l);
+      Matrix& Uo_i = base_i->Uo[j];
+      Matrix& Uc_i = base_i->Uc[j];
+      Matrix& Ul_i = base_i->R[j];
+      cMatrix(Uc_i, dim, dim_c);
+      cMatrix(Ul_i, dim_l, dim_l);
 
-    if (i >= lbegin && i < lend && dim > 0)
-      qr_with_complements(Uo_i, Uc_i, Ul_i);
+      if (j >= lbegin && j < lend && dim > 0)
+        qr_with_complements(Uo_i, Uc_i, Ul_i);
+    }
+
+    DistributeMatricesList(base_i->Uc.data(), i);
+    DistributeMatricesList(base_i->Uo.data(), i);
+    DistributeMatricesList(base_i->R.data(), i);
+
+    int64_t nlevel = i - 1;
+    int64_t nbegin = 0;
+    int64_t nend = (int64_t)1 << nlevel;
+    selfLocalRange(&nbegin, &nend, nlevel);
+    int64_t nodes = nend - nbegin;
+
+#pragma omp parallel for
+    for (int64_t j = 0; j < nodes; j++) {
+      int64_t lj = j + nbegin;
+      int64_t gj = j;
+      iGlobal(&gj, lj, nlevel);
+
+      int64_t cj0 = (gj << 1);
+      int64_t cj1 = (gj << 1) + 1;
+      int64_t lj0 = cj0;
+      int64_t lj1 = cj1;
+      iLocal(&lj0, cj0, i);
+      iLocal(&lj1, cj1, i);
+
+      updateSubU(basis[nlevel].Uo[lj], base_i->R[lj0], base_i->R[lj1]);
+    }
   }
-
-  DistributeMatricesList(basis.Uc.data(), level);
-  DistributeMatricesList(basis.Uo.data(), level);
-  DistributeMatricesList(basis.R.data(), level);
 }
-
