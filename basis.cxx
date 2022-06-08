@@ -11,6 +11,7 @@ void nbd::allocBasis(Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = (int64_t)1 << i;
     contentLength(&nodes, i);
+    basis[i].Ulen = nodes;
     basis[i].DIMS.resize(nodes);
     basis[i].DIML.resize(nodes);
     basis[i].Uo.resize(nodes);
@@ -59,14 +60,18 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
       cMatrix(work_a, 0, 0);
 
     if (len_s > 0) {
-      int64_t rank = m;
-      rank = mrank > 0 ? std::min(mrank, rank) : rank;
+      int64_t rank = mrank > 0 ? std::min(mrank, m) : m;
+      Matrix work_u;
       std::vector<int64_t> pa(rank);
-      cMatrix(Base, m, rank);
+      cMatrix(work_u, m, rank);
 
       int64_t iters = rank;
-      lraID(epi, work_s, Base, pa.data(), &iters);
+      lraID(epi, work_s, work_u, pa.data(), &iters);
+
+      cMatrix(Base, m, iters);
+      cpyMatToMat(m, iters, work_u, Base, 0, 0, 0, 0);
       cMatrix(work_s, 0, 0);
+      cMatrix(work_u, 0, 0);
 
       int64_t len_m = cell->Multipole.size();
       if (len_m != iters)
@@ -75,9 +80,6 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
         int64_t ai = pa[i];
         cell->Multipole[i] = cellm[ai];
       }
-
-      if (iters != rank)
-        cMatrix(Base, m, iters);
     }
   }
 }
@@ -177,16 +179,15 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
   }
 }
 
-void nbd::evaluateBaseAll(KerFunc_t ef, Base basis[], Cells& cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
-  int64_t mpi_levels;
-  commRank(NULL, NULL, &mpi_levels);
-
+void nbd::evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
   for (int64_t i = levels; i >= 0; i--) {
     Cell* vlocal = findLocalAtLevelModify(&cells[0], i);
     evaluateLocal(ef, basis[i], vlocal, i, bodies, nbodies, epi, mrank, sp_pts);
     writeRemoteCoupling(basis[i], vlocal, i);
     
-    if (i <= mpi_levels && i > 0) {
+    int comm_needed;
+    butterflyComm(&comm_needed, i);
+    if (comm_needed) {
       int64_t mlen = vlocal->Multipole.size();
       int64_t msib;
       butterflyUpdateDims(mlen, &msib, i);

@@ -21,8 +21,6 @@ namespace nbd {
     std::vector<int64_t> Multipole;
   };
 
-  typedef std::vector<Cell> Cells;
-
   struct CSC {
     int64_t M;
     int64_t N;
@@ -37,11 +35,11 @@ namespace nbd {
 
   int64_t partition(Body* bodies, int64_t nbodies, int64_t sdim);
 
-  int64_t buildTree(Cells& cells, Body* bodies, int64_t nbodies, int64_t levels);
+  int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
 
   void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim);
 
-  void buildTreeBuckets(Cells& cells, Body* bodies, const int64_t buckets[], int64_t levels);
+  void buildTreeBuckets(Cell* cells, Body* bodies, const int64_t buckets[], int64_t levels);
 
   void getList(Cell* Ci, Cell* Cj, double theta);
 
@@ -53,7 +51,7 @@ namespace nbd {
 
   Cell* findLocalAtLevelModify(Cell* cell, int64_t level);
 
-  void traverse(Cells& cells, int64_t levels, int64_t theta);
+  void traverse(Cell* cells, int64_t levels, int64_t theta);
 
   int64_t remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies);
 
@@ -63,17 +61,17 @@ namespace nbd {
 
   void childMultipoleSize(int64_t* size, const Cell& cell);
 
-  void relationsNear(CSC rels[], const Cells& cells);
+  void relationsNear(CSC rels[], const Cell* cells, int64_t levels);
 
-  void evaluateLeafNear(Matrices& d, KerFunc_t ef, const Cell* cell, const CSC& csc);
+  void evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const CSC& csc);
 
-  void evaluateFar(Matrices& s, KerFunc_t ef, const Cell* cell, const CSC& csc, int64_t level);
+  void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const CSC& csc, int64_t level);
 
   void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
-  void loadX(Vectors& X, const Cell* cell, int64_t level);
+  void loadX(Vector* X, const Cell* cell, int64_t level);
   
-  void h2MatVecReference(Vectors& B, KerFunc_t ef, const Cell* root, int64_t levels);
+  void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, int64_t levels);
 
 }
 

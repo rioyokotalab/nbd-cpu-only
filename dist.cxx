@@ -58,13 +58,15 @@ void nbd::closeComm() {
   MPI_Finalize();
 }
 
-void nbd::commRank(int64_t* mpi_rank, int64_t* mpi_size, int64_t* mpi_levels) {
+void nbd::commRank(int64_t* mpi_rank, int64_t* mpi_level) {
   if (mpi_rank)
     *mpi_rank = MPI_RANK;
-  if (mpi_size)
-    *mpi_size = MPI_SIZE;
-  if (mpi_levels)
-    *mpi_levels = MPI_LEVELS;
+  if (mpi_level)
+    *mpi_level = MPI_LEVELS;
+}
+
+void nbd::butterflyComm(int* comm_needed, int64_t level) {
+  *comm_needed = (int)(level > 0 && level <= MPI_LEVELS);
 }
 
 void nbd::configureComm(int64_t level, const int64_t ngbs[], int64_t ngbs_len) {

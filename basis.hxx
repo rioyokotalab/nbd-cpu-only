@@ -6,11 +6,12 @@
 namespace nbd {
 
   struct Base {
+    int64_t Ulen;
     std::vector<int64_t> DIMS;
     std::vector<int64_t> DIML;
-    Matrices Uc;
-    Matrices Uo;
-    Matrices R;
+    std::vector<Matrix> Uc;
+    std::vector<Matrix> Uo;
+    std::vector<Matrix> R;
   };
 
   void allocBasis(Base* basis, int64_t levels);
@@ -21,7 +22,7 @@ namespace nbd {
 
   void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level);
 
-  void evaluateBaseAll(KerFunc_t ef, Base basis[], Cells& cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
+  void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
   
   void orth_base_all(Base* basis, int64_t levels);
 

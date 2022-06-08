@@ -9,7 +9,9 @@ namespace nbd {
 
   void closeComm();
 
-  void commRank(int64_t* mpi_rank, int64_t* mpi_size, int64_t* mpi_levels);
+  void commRank(int64_t* mpi_rank, int64_t* mpi_size);
+
+  void butterflyComm(int* comm_needed, int64_t level);
   
   void configureComm(int64_t levels, const int64_t ngbs[], int64_t ngs_len);
 

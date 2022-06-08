@@ -17,9 +17,6 @@ namespace nbd {
     int64_t N = 0;
   };
 
-  typedef std::vector<Matrix> Matrices;
-  typedef std::vector<Vector> Vectors;
-
   void cRandom(int64_t lenR, double min, double max, unsigned int seed);
 
   void cMatrix(Matrix& mat, int64_t m, int64_t n);
@@ -63,7 +60,5 @@ namespace nbd {
   void normalizeA(Matrix& A, const Matrix& B);
 
   void vnrm2(const Vector& A, double* nrm);
-
-  void verr2(const Vector& A, const Vector& B, double* err);
-
+  
 };

@@ -275,12 +275,3 @@ void nbd::normalizeA(Matrix& A, const Matrix& B) {
 void nbd::vnrm2(const Vector& A, double* nrm) {
   *nrm = cblas_dnrm2(A.N, A.X.data(), 1);
 }
-
-void nbd::verr2(const Vector& A, const Vector& B, double* err) {
-  Vector work;
-  cVector(work, A.N);
-  vaxpby(work, A.X.data(), 1., 0.);
-  vaxpby(work, B.X.data(), -1., 1.);
-  vnrm2(work, err);
-  cVector(work, 0);
-}

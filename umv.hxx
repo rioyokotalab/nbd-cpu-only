@@ -6,12 +6,14 @@
 namespace nbd {
 
   struct Node {
-    Matrices A;
-    Matrices S;
-    Matrices A_cc;
-    Matrices A_oc;
-    Matrices A_oo;
-    Matrices S_oo;
+    int64_t lenA;
+    int64_t lenS;
+    std::vector<Matrix> A;
+    std::vector<Matrix> S;
+    std::vector<Matrix> A_cc;
+    std::vector<Matrix> A_oc;
+    std::vector<Matrix> A_oo;
+    std::vector<Matrix> S_oo;
   };
 
   struct SpDense {
@@ -20,21 +22,21 @@ namespace nbd {
     std::vector<Base> Basis;
   };
 
-  void splitA(Matrices& A_out, const CSC& rels, const Matrices& A, const Matrices& U, const Matrices& V, int64_t level);
+  void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, const Matrix* V, int64_t level);
 
-  void splitS(Matrices& S_out, const CSC& rels, const Matrices& S, const Matrices& U, const Matrices& V, int64_t level);
+  void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, const Matrix* V, int64_t level);
 
-  void factorAcc(Matrices& A_cc, const CSC& rels);
+  void factorAcc(Matrix* A_cc, const CSC& rels);
 
-  void factorAoc(Matrices& A_oc, const Matrices& A_cc, const CSC& rels);
+  void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels);
 
-  void schurCmplm(Matrices& S, const Matrices& A_oc, const CSC& rels);
+  void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels);
 
   void allocNodes(Node* nodes, const CSC rels[], int64_t levels);
 
-  void allocA(Matrices& A, const CSC& rels, const int64_t dims[], int64_t level);
+  void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level);
 
-  void allocS(Matrices& S, const CSC& rels, const int64_t diml[], int64_t level);
+  void allocS(Matrix* S, const CSC& rels, const int64_t diml[], int64_t level);
 
   void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t diml[], int64_t level);
 

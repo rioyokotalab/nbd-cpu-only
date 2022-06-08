@@ -5,31 +5,31 @@
 
 namespace nbd {
 
-  struct RHS {
-    Vectors X;
-    Vectors Xc;
-    Vectors Xo;
+  struct RightHandSides {
+    std::vector<Vector> X;
+    std::vector<Vector> Xc;
+    std::vector<Vector> Xo;
   };
 
-  void basisXoc(char fwbk, RHS& vx, const Base& basis, int64_t level);
+  void basisXoc(char fwbk, RightHandSides& vx, const Base& basis, int64_t level);
 
-  void svAccFw(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t level);
+  void svAccFw(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level);
 
-  void svAccBk(Vectors& Xc, const Matrices& A_cc, const CSC& rels, int64_t level);
+  void svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level);
 
-  void svAocFw(Vectors& Xo, const Vectors& Xc, const Matrices& A_oc, const CSC& rels, int64_t level);
+  void svAocFw(Vector* Xo, const Vector* Xc, const Matrix* A_oc, const CSC& rels, int64_t level);
 
-  void svAocBk(Vectors& Xc, const Vectors& Xo, const Matrices& A_oc, const CSC& rels, int64_t level);
+  void svAocBk(Vector* Xc, const Vector* Xo, const Matrix* A_oc, const CSC& rels, int64_t level);
 
-  void permuteAndMerge(char fwbk, Vectors& px, Vectors& nx, int64_t nlevel);
+  void permuteAndMerge(char fwbk, Vector* px, Vector* nx, int64_t nlevel);
 
-  void allocRightHandSides(RHS st[], const Base base[], int64_t levels);
+  void allocRightHandSides(RightHandSides st[], const Base base[], int64_t levels);
 
-  void solveA(RHS st[], const Node A[], const Base B[], const CSC rels[], const Vectors& X, int64_t levels);
+  void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Vector* X, int64_t levels);
 
-  void solveSpDense(RHS st[], const SpDense& sp, const CSC rels[], const Vectors& X);
+  void solveSpDense(RightHandSides st[], const SpDense& sp, const CSC rels[], const Vector* X);
 
-  void solveRelErr(double* err_out, const Vectors& X, const Vectors& ref, int64_t level);
+  void solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64_t level);
 
 
 };

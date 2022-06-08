@@ -22,12 +22,8 @@ int main(int argc, char* argv[]) {
   int64_t rank_max = 100;
   int64_t sp_pts = 2000;
 
-  int64_t mpi_rank;
-  int64_t mpi_size;
   int64_t levels = (int64_t)std::log2(Nbody / leaf_size);
   int64_t Nleaf = (int64_t)1 << levels;
-
-  commRank(&mpi_rank, &mpi_size, NULL);
   
   KerFunc_t ef = laplace3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
@@ -41,29 +37,29 @@ int main(int argc, char* argv[]) {
   //uniform_unit_cube(body.data(), Nbody, 3, 1234);
   body_neutral_charge(body.data(), Nbody, 1., 0);
 
-  Cells cell;
+  std::vector<Cell> cell(Nleaf + Nleaf - 1);
   //buildTreeBuckets(cell, body.data(), Nbody, buckets.data(), levels, dim);
-  buildTree(cell, body.data(), Nbody, levels);
-  traverse(cell, levels, theta);
+  buildTree(cell.data(), body.data(), Nbody, levels);
+  traverse(cell.data(), levels, theta);
   const Cell* lcleaf = &cell[0];
   lcleaf = findLocalAtLevel(lcleaf, levels);
 
   std::vector<CSC> rels(levels + 1);
-  relationsNear(&rels[0], cell);
+  relationsNear(&rels[0], cell.data(), levels);
 
   SpDense sp;
   allocSpDense(sp, &rels[0], levels);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], cell, levels, body.data(), Nbody, epi, rank_max, sp_pts);
+  evaluateBaseAll(ef, &sp.Basis[0], cell.data(), levels, body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
 
   orth_base_all(&sp.Basis[0], levels);
 
-  evaluateLeafNear(sp.D[levels].A, ef, &cell[0], rels[levels]);
+  evaluateLeafNear(sp.D[levels].A.data(), ef, &cell[0], rels[levels]);
   for (int64_t i = 0; i <= levels; i++)
-    evaluateFar(sp.D[i].S, ef, &cell[0], rels[i], i);
+    evaluateFar(sp.D[i].S.data(), ef, &cell[0], rels[i], i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
@@ -71,28 +67,33 @@ int main(int argc, char* argv[]) {
   stopTimer(&factor_time, &factor_comm_time);
   cRandom(0, 0, 0, 0);
 
-  Vectors X, Xref;
-  loadX(X, lcleaf, levels);
-  loadX(Xref, lcleaf, levels);
+  int64_t xlen = (int64_t)1 << levels;
+  contentLength(&xlen, levels);
+  std::vector<Vector> X(xlen), Xref(xlen);
+  loadX(X.data(), lcleaf, levels);
+  loadX(Xref.data(), lcleaf, levels);
 
-  Vectors B(X.size());
-  h2MatVecReference(B, ef, &cell[0], levels);
+  std::vector<Vector> B(X.size());
+  h2MatVecReference(B.data(), ef, &cell[0], levels);
 
-  std::vector<RHS> rhs(levels + 1);
+  std::vector<RightHandSides> rhs(levels + 1);
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
-  solveSpDense(&rhs[0], sp, rels.data(), B);
+  solveSpDense(&rhs[0], sp, rels.data(), B.data());
   stopTimer(&solve_time, &solve_comm_time);
 
   DistributeVectorsList(rhs[levels].X.data(), levels);
 
   double err;
-  solveRelErr(&err, rhs[levels].X, Xref, levels);
+  solveRelErr(&err, rhs[levels].X.data(), Xref.data(), levels);
+  int64_t mpi_rank;
+  int64_t mpi_levels;
   int64_t dim = 3;
+  commRank(&mpi_rank, &mpi_levels);
 
   if (mpi_rank == 0) {
-    std::cout << "LORASP: " << Nbody << "," << (int64_t)(Nbody / Nleaf) << "," << theta << "," << dim << "," << mpi_size << std::endl;
+    std::cout << "LORASP: " << Nbody << "," << (int64_t)(Nbody / Nleaf) << "," << theta << "," << dim << "," << (int64_t)(1 << mpi_levels) << std::endl;
     std::cout << "Construct: " << construct_time << " COMM: " << construct_comm_time << std::endl;
     std::cout << "Factorize: " << factor_time << " COMM: " << factor_comm_time << std::endl;
     std::cout << "Solution: " << solve_time << " COMM: " << solve_comm_time << std::endl;
