@@ -44,11 +44,8 @@ int main(int argc, char* argv[]) {
   const Cell* lcleaf = &cell[0];
   lcleaf = findLocalAtLevel(lcleaf, levels);
 
-  std::vector<CSC> rels(levels + 1);
-  relationsNear(&rels[0], cell.data(), levels);
-
   SpDense sp;
-  allocSpDense(sp, &rels[0], levels);
+  allocSpDense(sp, cell.data(), levels);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
@@ -57,13 +54,13 @@ int main(int argc, char* argv[]) {
 
   orth_base_all(&sp.Basis[0], levels);
 
-  evaluateLeafNear(sp.D[levels].A.data(), ef, &cell[0], rels[levels]);
+  evaluateLeafNear(sp.D[levels].A.data(), ef, &cell[0], sp.Rels[levels]);
   for (int64_t i = 0; i <= levels; i++)
-    evaluateFar(sp.D[i].S.data(), ef, &cell[0], rels[i], i);
+    evaluateFar(sp.D[i].S.data(), ef, &cell[0], sp.Rels[i], i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorSpDense(sp, rels.data());
+  factorSpDense(sp);
   stopTimer(&factor_time, &factor_comm_time);
   cRandom(0, 0, 0, 0);
 
@@ -73,14 +70,14 @@ int main(int argc, char* argv[]) {
   loadX(X.data(), lcleaf, levels);
   loadX(Xref.data(), lcleaf, levels);
 
-  std::vector<Vector> B(X.size());
+  std::vector<Vector> B(xlen);
   h2MatVecReference(B.data(), ef, &cell[0], levels);
 
   std::vector<RightHandSides> rhs(levels + 1);
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
-  solveSpDense(&rhs[0], sp, rels.data(), B.data());
+  solveSpDense(&rhs[0], sp, B.data());
   stopTimer(&solve_time, &solve_comm_time);
 
   DistributeVectorsList(rhs[levels].X.data(), levels);
@@ -100,6 +97,14 @@ int main(int argc, char* argv[]) {
     std::cout << "Err: " << err << std::endl;
   }
 
+  deallocSpDense(&sp);
+  deallocRightHandSides(&rhs[0], levels);
+  for (int64_t i = 0; i < xlen; i++) {
+    cVector(X[i], 0);
+    cVector(Xref[i], 0);
+    cVector(B[i], 0);
+  }
+  
   closeComm();
   return 0;
 }

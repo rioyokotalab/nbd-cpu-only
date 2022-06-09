@@ -20,6 +20,24 @@ void nbd::allocBasis(Base* basis, int64_t levels) {
   }
 }
 
+void nbd::deallocBasis(Base* basis, int64_t levels) {
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes = basis[i].Ulen;
+    for (int64_t n = 0; n < nodes; n++) {
+      cMatrix(basis[i].Uo[n], 0, 0);
+      cMatrix(basis[i].Uc[n], 0, 0);
+      cMatrix(basis[i].R[n], 0, 0);
+    }
+
+    basis[i].Ulen = 0;
+    basis[i].DIMS.clear();
+    basis[i].DIML.clear();
+    basis[i].Uo.clear();
+    basis[i].Uc.clear();
+    basis[i].R.clear();
+  }
+}
+
 void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
   int64_t m;
   childMultipoleSize(&m, *cell);

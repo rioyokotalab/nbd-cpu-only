@@ -2,8 +2,6 @@
 #include "umv.hxx"
 #include "dist.hxx"
 
-#include <cstdio>
-
 using namespace nbd;
 
 void nbd::splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, const Matrix* V, int64_t level) {
@@ -92,6 +90,33 @@ void nbd::allocNodes(Node* nodes, const CSC rels[], int64_t levels) {
     nodes[i].S_oo.resize(nnz_f);
     nodes[i].lenA = nnz;
     nodes[i].lenS = nnz_f;
+  }
+}
+
+void nbd::deallocNode(Node* node, int64_t levels) {
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nnz = node[i].lenA;
+    for (int64_t n = 0; n < nnz; n++) {
+      cMatrix(node[i].A[n], 0, 0);
+      cMatrix(node[i].A_cc[n], 0, 0);
+      cMatrix(node[i].A_oc[n], 0, 0);
+      cMatrix(node[i].A_oo[n], 0, 0);
+    }
+
+    int64_t nnz_f = node[i].lenS;
+    for (int64_t n = 0; n < nnz_f; n++) {
+      cMatrix(node[i].S[n], 0, 0);
+      cMatrix(node[i].S_oo[n], 0, 0);
+    }
+
+    node[i].A.clear();
+    node[i].A_cc.clear();
+    node[i].A_oc.clear();
+    node[i].A_oo.clear();
+    node[i].S.clear();
+    node[i].S_oo.clear();
+    node[i].lenA = 0;
+    node[i].lenS = 0;
   }
 }
 
@@ -283,14 +308,28 @@ void nbd::factorA(Node A[], const Base B[], const CSC rels[], int64_t levels) {
   chol_decomp(A[0].A[0]);
 }
 
-void nbd::allocSpDense(SpDense& sp, const CSC rels[], int64_t levels) {
+void nbd::allocSpDense(SpDense& sp, const Cell* cells, int64_t levels) {
   sp.Levels = levels;
   sp.D.resize(levels + 1);
   sp.Basis.resize(levels + 1);
-  allocNodes(sp.D.data(), rels, levels);
+  sp.Rels.resize(levels + 1);
+
+  relationsNear(&sp.Rels[0], cells, levels);
+  allocNodes(sp.D.data(), sp.Rels.data(), levels);
   allocBasis(sp.Basis.data(), levels);
 }
 
-void nbd::factorSpDense(SpDense& sp, const CSC rels[]) {
-  factorA(&sp.D[0], &sp.Basis[0], rels, sp.Levels);
+void nbd::deallocSpDense(SpDense* sp) {
+  int64_t level = sp->Levels;
+  deallocBasis(&(sp->Basis)[0], level);
+  deallocNode(&(sp->D)[0], level);
+  
+  sp->Levels = 0;
+  sp->Basis.clear();
+  sp->D.clear();
+  sp->Rels.clear();
+}
+
+void nbd::factorSpDense(SpDense& sp) {
+  factorA(&sp.D[0], &sp.Basis[0], &sp.Rels[0], sp.Levels);
 }

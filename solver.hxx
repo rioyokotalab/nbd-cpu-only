@@ -6,6 +6,7 @@
 namespace nbd {
 
   struct RightHandSides {
+    int64_t Xlen;
     std::vector<Vector> X;
     std::vector<Vector> Xc;
     std::vector<Vector> Xo;
@@ -25,9 +26,11 @@ namespace nbd {
 
   void allocRightHandSides(RightHandSides st[], const Base base[], int64_t levels);
 
+  void deallocRightHandSides(RightHandSides* st, int64_t levels);
+
   void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Vector* X, int64_t levels);
 
-  void solveSpDense(RightHandSides st[], const SpDense& sp, const CSC rels[], const Vector* X);
+  void solveSpDense(RightHandSides st[], const SpDense& sp, const Vector* X);
 
   void solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64_t level);
 

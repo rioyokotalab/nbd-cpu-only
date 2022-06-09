@@ -2,6 +2,8 @@
 #include "solver.hxx"
 #include "dist.hxx"
 
+#include "math.h"
+
 using namespace nbd;
 
 void nbd::basisXoc(char fwbk, RightHandSides& vx, const Base& basis, int64_t level) {
@@ -141,14 +143,6 @@ void nbd::permuteAndMerge(char fwbk, Vector* px, Vector* nx, int64_t nlevel) {
         cpyVecToVec(x2.N, x2, x0, 0, x0.N - x2.N);
       }
     }
-
-    int64_t nlen = (int64_t)1 << nlevel;
-    contentLength(&nlen, nlevel);
-    int comm_needed;
-    butterflyComm(&comm_needed, plevel);
-
-    if (comm_needed)
-      butterflySumX(nx, nlen, plevel);
   }
   else if (fwbk == 'B' || fwbk == 'b') {
     for (int64_t i = 0; i < nboxes; i++) {
@@ -176,6 +170,7 @@ void nbd::allocRightHandSides(RightHandSides st[], const Base base[], int64_t le
     contentLength(&nodes, i);
 
     RightHandSides& rhs_i = st[i];
+    rhs_i.Xlen = nodes;
     rhs_i.X.resize(nodes);
     rhs_i.Xc.resize(nodes);
     rhs_i.Xo.resize(nodes);
@@ -194,6 +189,22 @@ void nbd::allocRightHandSides(RightHandSides st[], const Base base[], int64_t le
   }
 }
 
+void nbd::deallocRightHandSides(RightHandSides* st, int64_t levels) {
+  for (int i = 0; i <= levels; i++) {
+    int64_t nodes = st[i].Xlen;
+    for (int64_t n = 0; n < nodes; n++) {
+      cVector(st[i].X[n], 0);
+      cVector(st[i].Xc[n], 0);
+      cVector(st[i].Xo[n], 0);
+    }
+
+    st[i].Xlen = 0;
+    st[i].X.clear();
+    st[i].Xc.clear();
+    st[i].Xo.clear();
+  }
+}
+
 void nbd::solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Vector* X, int64_t levels) {
   int64_t ibegin = 0;
   int64_t iend = (int64_t)1 << levels;
@@ -208,6 +219,11 @@ void nbd::solveA(RightHandSides st[], const Node A[], const Base B[], const CSC 
     svAccFw(st[i].Xc.data(), A[i].A_cc.data(), rels[i], i);
     svAocFw(st[i].Xo.data(), st[i].Xc.data(), A[i].A_oc.data(), rels[i], i);
     permuteAndMerge('F', st[i].Xo.data(), st[i - 1].X.data(), i - 1);
+
+    int comm_needed;
+    butterflyComm(&comm_needed, i);
+    if (comm_needed)
+      butterflySumX(st[i - 1].X.data(), st[i - 1].Xlen, i);
   }
   mat_solve('A', st[0].X[0], A[0].A[0]);
   
@@ -220,9 +236,9 @@ void nbd::solveA(RightHandSides st[], const Node A[], const Base B[], const CSC 
   }
 }
 
-void nbd::solveSpDense(RightHandSides st[], const SpDense& sp, const CSC rels[], const Vector* X) {
+void nbd::solveSpDense(RightHandSides st[], const SpDense& sp, const Vector* X) {
   allocRightHandSides(st, &sp.Basis[0], sp.Levels);
-  solveA(st, &sp.D[0], &sp.Basis[0], rels, X, sp.Levels);
+  solveA(st, &sp.D[0], &sp.Basis[0], &sp.Rels[0], X, sp.Levels);
 }
 
 void nbd::solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64_t level) {
@@ -236,15 +252,16 @@ void nbd::solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64
     double e, n;
     Vector work;
     cVector(work, X[i].N);
+
     vaxpby(work, X[i].X.data(), 1., 0.);
     vaxpby(work, ref[i].X.data(), -1., 1.);
     vnrm2(work, &e);
-    cVector(work, 0);
-
     vnrm2(ref[i], &n);
-    err = err + e;
-    nrm = nrm + n;
+
+    cVector(work, 0);
+    err = err + e * e;
+    nrm = nrm + n * n;
   }
 
-  *err_out = err / nrm;
+  *err_out = std::sqrt(err / nrm);
 }

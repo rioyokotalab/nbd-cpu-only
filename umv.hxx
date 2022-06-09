@@ -20,6 +20,7 @@ namespace nbd {
     int64_t Levels;
     std::vector<Node> D;
     std::vector<Base> Basis;
+    std::vector<CSC> Rels;
   };
 
   void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, const Matrix* V, int64_t level);
@@ -34,6 +35,8 @@ namespace nbd {
 
   void allocNodes(Node* nodes, const CSC rels[], int64_t levels);
 
+  void deallocNode(Node* node, int64_t levels);
+
   void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level);
 
   void allocS(Matrix* S, const CSC& rels, const int64_t diml[], int64_t level);
@@ -46,8 +49,10 @@ namespace nbd {
 
   void factorA(Node A[], const Base B[], const CSC rels[], int64_t levels);
 
-  void allocSpDense(SpDense& sp, const CSC rels[], int64_t levels);
+  void allocSpDense(SpDense& sp, const Cell* cells, int64_t levels);
 
-  void factorSpDense(SpDense& sp, const CSC rels[]);
+  void deallocSpDense(SpDense* sp);
+
+  void factorSpDense(SpDense& sp);
 
 };

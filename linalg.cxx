@@ -43,6 +43,9 @@ void nbd::cRandom(int64_t lenR, double min, double max, unsigned int seed) {
   }
 }
 
+int64_t msize = 0;
+int64_t vsize = 0;
+
 void nbd::cMatrix(Matrix& mat, int64_t m, int64_t n) {
   int64_t size = m * n;
   int64_t size_old = mat.M * mat.N;
