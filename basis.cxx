@@ -58,14 +58,14 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
 
     if (n1 > 0) {
       cMatrix(work_a, m, n1);
-      gen_matrix(ef, m, n1, cell->BODY, remote.data(), work_a.A.data(), cellm.data(), NULL);
+      gen_matrix(ef, m, n1, cell->BODY, remote.data(), work_a.A, cellm.data(), NULL);
       cpyMatToMat(m, n1, work_a, work_s, 0, 0, 0, 0);
     }
 
     if (n2 > 0) {
       cMatrix(work_b, m, n2);
       cMatrix(work_c, m, m);
-      gen_matrix(ef, m, n2, cell->BODY, close.data(), work_b.A.data(), cellm.data(), NULL);
+      gen_matrix(ef, m, n2, cell->BODY, close.data(), work_b.A, cellm.data(), NULL);
       mmult('N', 'T', work_b, work_b, work_c, 1., 0.);
       if (n1 > 0)
         normalizeA(work_c, work_a);

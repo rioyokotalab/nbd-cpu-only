@@ -464,7 +464,7 @@ void nbd::evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const CSC&
         int64_t m = cell->listNear[i]->NBODY;
         int64_t n = cell->NBODY;
         cMatrix(d[off + i], m, n);
-        gen_matrix(ef, m, n, cell->listNear[i]->BODY, cell->BODY, d[off + i].A.data(), NULL, NULL);
+        gen_matrix(ef, m, n, cell->listNear[i]->BODY, cell->BODY, d[off + i].A, NULL, NULL);
       }
     }
   }
@@ -483,7 +483,7 @@ void nbd::evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const CSC& csc,
         int64_t m = cell->listFar[i]->Multipole.size();
         int64_t n = cell->Multipole.size();
         cMatrix(s[off + i], m, n);
-        gen_matrix(ef, m, n, cell->listFar[i]->BODY, cell->BODY, s[off + i].A.data(), cell->listFar[i]->Multipole.data(), cell->Multipole.data());
+        gen_matrix(ef, m, n, cell->listFar[i]->BODY, cell->BODY, s[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
       }
     }
   }
@@ -568,7 +568,7 @@ void nbd::h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, int64_t l
       
       Matrix Aij;
       cMatrix(Aij, m, n);
-      gen_matrix(ef, m, n, ci->BODY, cells_leaf[j]->BODY, Aij.A.data(), NULL, NULL);
+      gen_matrix(ef, m, n, ci->BODY, cells_leaf[j]->BODY, Aij.A, NULL, NULL);
       mvec('N', Aij, X, Bi, 1., 1.);
       cMatrix(Aij, 0, 0);
       cVector(X, 0);

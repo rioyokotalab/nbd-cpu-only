@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 using namespace nbd;
 
@@ -214,7 +215,7 @@ void nbd::DistributeVectorsList(Vector lis[], int64_t level) {
         int64_t rm_i = i * nboxes + n;
         Vector& B_i = lis[rm_i];
         int64_t len = B_i.N;
-        vaxpby(B_i, rm_v + offset, 1., 0.);
+        vaxpby(B_i, &rm_v[offset], 1., 0.);
         offset = offset + len;
       }
     }

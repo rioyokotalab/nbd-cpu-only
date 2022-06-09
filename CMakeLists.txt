@@ -2,6 +2,7 @@
 cmake_minimum_required (VERSION 3.13)
 
 set(CMAKE_C_COMPILER "gcc")
+set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_FLAGS "-O3 -Wall -Wextra")
 
 set(CMAKE_CXX_COMPILER "g++")

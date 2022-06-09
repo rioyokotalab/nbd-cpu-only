@@ -253,8 +253,8 @@ void nbd::solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64
     Vector work;
     cVector(work, X[i].N);
 
-    vaxpby(work, X[i].X.data(), 1., 0.);
-    vaxpby(work, ref[i].X.data(), -1., 1.);
+    vaxpby(work, X[i].X, 1., 0.);
+    vaxpby(work, ref[i].X, -1., 1.);
     vnrm2(work, &e);
     vnrm2(ref[i], &n);
 

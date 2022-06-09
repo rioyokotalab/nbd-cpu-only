@@ -1,19 +1,19 @@
 
 #pragma once
 
-#include <vector>
-#include <cstdint>
+#include "stddef.h"
+#include "stdint.h"
 
 namespace nbd {
     
   struct Matrix {
-    std::vector<double> A;
+    double* A = NULL;
     int64_t M = 0;
     int64_t N = 0;
   };
 
   struct Vector {
-    std::vector<double> X;
+    double* X = NULL;
     int64_t N = 0;
   };
 
