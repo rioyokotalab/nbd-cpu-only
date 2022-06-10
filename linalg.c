@@ -59,7 +59,7 @@ void cVector(struct Vector* vec, int64_t n) {
     vec->X = (double*)malloc(sizeof(double) * n);
     vec->N = n;
   }
-  else if (n <= 0) {
+  else {
     if (vec->X != NULL)
       free(vec->X);
     vec->X = NULL;
@@ -115,24 +115,22 @@ void qr_with_complements(struct Matrix* Qo, struct Matrix* Qc, struct Matrix* R)
   int64_t nc = m - n;
 
   if (m > 0 && n > 0 && nc >= 0) {
-    struct Matrix work = { NULL, 0, 0 };
-    cMatrix(&work, m, m);
-    struct Vector tau = { NULL, 0 };
-    cVector(&tau, n);
-    cpyMatToMat(m, n, Qo, &work, 0, 0, 0, 0);
+    double* work = (double*)malloc(sizeof(double) * (n + m * m));
+    struct Matrix Q = { &work[n], m, m };
+    struct Vector tau = { work, n };
+    cpyMatToMat(m, n, Qo, &Q, 0, 0, 0, 0);
 
-    LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, work.A, m, tau.X);
-    cpyMatToMat(n, n, &work, R, 0, 0, 0, 0);
-    LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, work.A, m, tau.X);
-    cpyMatToMat(m, n, &work, Qo, 0, 0, 0, 0);
+    LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, Q.A, m, tau.X);
+    cpyMatToMat(n, n, &Q, R, 0, 0, 0, 0);
+    LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, Q.A, m, tau.X);
+    cpyMatToMat(m, n, &Q, Qo, 0, 0, 0, 0);
     if (nc > 0)
-      cpyMatToMat(m, nc, &work, Qc, 0, n, 0, 0);
+      cpyMatToMat(m, nc, &Q, Qc, 0, n, 0, 0);
     
     for (int64_t i = 0; i < n - 1; i++)
       memset(&(R->A)[i * n + i + 1], 0, sizeof(double) * (n - i - 1));
 
-    cMatrix(&work, 0, 0);
-    cVector(&tau, 0);
+    free(work);
   }
 }
 
@@ -141,18 +139,17 @@ void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* 
     int64_t m1 = R1->N;
     int64_t m2 = R2->N;
     int64_t n = U->N;
-    struct Matrix ru1 = { NULL, 0, 0 };
-    struct Matrix ru2 = { NULL, 0, 0 };
-    cMatrix(&ru1, R1->M, n);
-    cMatrix(&ru2, R2->M, n);
+
+    double* work = (double*)malloc(sizeof(double) * n * (R1->M + R2->M));
+    struct Matrix ru1 = { work, R1->M, n };
+    struct Matrix ru2 = { &work[n * R1->M], R2->M, n };
 
     cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R1->M, n, m1, 1., R1->A, R1->M, U->A, U->M, 0., ru1.A, R1->M);
     cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R2->M, n, m2, 1., R2->A, R2->M, &(U->A)[m1], U->M, 0., ru2.A, R2->M);
     cpyMatToMat(R1->M, n, &ru1, U, 0, 0, 0, 0);
     cpyMatToMat(R2->M, n, &ru2, U, 0, 0, R1->M, 0);
 
-    cMatrix(&ru1, 0, 0);
-    cMatrix(&ru2, 0, 0);
+    free(work);
   }
 }
 
@@ -169,10 +166,9 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
   }
   cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A->M, rank, A->N, 1., A->A, A->M, Rvec, A->N, 0., U->A, A->M);
 
-  struct Vector s = { NULL, 0 };
-  struct Vector superb = { NULL, 0 };
-  cVector(&s, rank);
-  cVector(&superb, s.N + 1);
+  double* work = (double*)malloc(sizeof(double) * (rank + rank + 1));
+  struct Vector s = { work, rank };
+  struct Vector superb = { &work[rank], rank + 1 };
   LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A->M, rank, U->A, A->M, s.X, NULL, A->M, NULL, rank, superb.X);
   if (epi > 0.) {
     rank = 0;
@@ -204,8 +200,7 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
     arows[i] = rows[i];
   }
 
-  cVector(&s, 0);
-  cVector(&superb, 0);
+  free(work);
   free(ipiv);
   free(rows);
 }
@@ -238,17 +233,20 @@ void trsm_lowerA(struct Matrix* A, const struct Matrix* L) {
 }
 
 void utav(char tb, const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C) {
-  struct Matrix work = { NULL, 0, 0 };
-  cMatrix(&work, C->M, A->N);
   if (tb == 'N' || tb == 'n') {
-    mmult('T', 'N', U, A, &work, 1., 0.);
-    mmult('N', 'N', &work, VT, C, 1., 0.);
+    double* work = (double*)malloc(sizeof(double) * C->M * A->N);
+    struct Matrix UA = { work, C->M, A->N };
+    mmult('T', 'N', U, A, &UA, 1., 0.);
+    mmult('N', 'N', &UA, VT, C, 1., 0.);
+    free(work);
   }
   else if (tb == 'T' || tb == 't') {
-    mmult('N', 'N', U, A, &work, 1., 0.);
-    mmult('N', 'T', &work, VT, C, 1., 0.);
+    double* work = (double*)malloc(sizeof(double) * C->M * A->N);
+    struct Matrix UA = { work, C->M, A->N };
+    mmult('N', 'N', U, A, &UA, 1., 0.);
+    mmult('N', 'T', &UA, VT, C, 1., 0.);
+    free(work);
   }
-  cMatrix(&work, 0, 0);
 }
 
 void mat_solve(char type, struct Vector* X, const struct Matrix* A) {
