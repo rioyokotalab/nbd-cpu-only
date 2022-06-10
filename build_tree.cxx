@@ -463,7 +463,7 @@ void nbd::evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const CSC&
       for (int64_t i = 0; i < len; i++) {
         int64_t m = cell->listNear[i]->NBODY;
         int64_t n = cell->NBODY;
-        cMatrix(d[off + i], m, n);
+        cMatrix(&d[off + i], m, n);
         gen_matrix(ef, m, n, cell->listNear[i]->BODY, cell->BODY, d[off + i].A, NULL, NULL);
       }
     }
@@ -482,7 +482,7 @@ void nbd::evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const CSC& csc,
       for (int64_t i = 0; i < len; i++) {
         int64_t m = cell->listFar[i]->Multipole.size();
         int64_t n = cell->Multipole.size();
-        cMatrix(s[off + i], m, n);
+        cMatrix(&s[off + i], m, n);
         gen_matrix(ef, m, n, cell->listFar[i]->BODY, cell->BODY, s[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
       }
     }
@@ -525,7 +525,7 @@ void nbd::loadX(Vector* X, const Cell* cell, int64_t level) {
     int64_t li = ci->ZID;
     iLocal(&li, ci->ZID, level);
     Vector& Xi = X[li];
-    cVector(Xi, ci->NBODY);
+    cVector(&Xi, ci->NBODY);
     dims[li] = ci->NBODY;
 
     for (int64_t n = 0; n < ci->NBODY; n++)
@@ -536,7 +536,7 @@ void nbd::loadX(Vector* X, const Cell* cell, int64_t level) {
 
   for (int64_t i = 0; i < xlen; i++)
     if (X[i].N != dims[i])
-      cVector(X[i], dims[i]);
+      cVector(&X[i], dims[i]);
   DistributeVectorsList(X, level);
 }
 
@@ -555,23 +555,23 @@ void nbd::h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, int64_t l
     int64_t li = ci->ZID;
     iLocal(&li, ci->ZID, levels);
     Vector& Bi = B[li];
-    cVector(Bi, ci->NBODY);
-    zeroVector(Bi);
+    cVector(&Bi, ci->NBODY);
+    zeroVector(&Bi);
 
     for (int64_t j = 0; j < lenj; j++) {
       Vector X;
       int64_t m = ci->NBODY;
       int64_t n = cells_leaf[j]->NBODY;
-      cVector(X, n);
+      cVector(&X, n);
       for (int64_t k = 0; k < n; k++)
         X.X[k] = cells_leaf[j]->BODY[k].B;
       
       Matrix Aij;
-      cMatrix(Aij, m, n);
+      cMatrix(&Aij, m, n);
       gen_matrix(ef, m, n, ci->BODY, cells_leaf[j]->BODY, Aij.A, NULL, NULL);
-      mvec('N', Aij, X, Bi, 1., 1.);
-      cMatrix(Aij, 0, 0);
-      cVector(X, 0);
+      mvec('N', &Aij, &X, &Bi, 1., 1.);
+      cMatrix(&Aij, 0, 0);
+      cVector(&X, 0);
     }
   }
 }

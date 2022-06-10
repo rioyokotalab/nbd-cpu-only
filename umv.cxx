@@ -15,7 +15,7 @@ void nbd::splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* 
       int64_t y = rels.ROWS_NEAR[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
-      utav('N', U[box_y], A[yx], vlocal[x], A_out[yx]);
+      utav('N', &U[box_y], &A[yx], &vlocal[x], &A_out[yx]);
     }
   }
 }
@@ -31,7 +31,7 @@ void nbd::splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* 
       int64_t y = rels.ROWS_FAR[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
-      utav('T', U[box_y], S[yx], vlocal[x], S_out[yx]);
+      utav('T', &U[box_y], &S[yx], &vlocal[x], &S_out[yx]);
     }
   }
 }
@@ -43,12 +43,12 @@ void nbd::factorAcc(Matrix* A_cc, const CSC& rels) {
     int64_t ii;
     lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     Matrix& A_ii = A_cc[ii];
-    chol_decomp(A_ii);
+    chol_decomp(&A_ii);
 
     for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++) {
       int64_t y = rels.ROWS_NEAR[yi];
       if (y > i + lbegin)
-        trsm_lowerA(A_cc[yi], A_ii);
+        trsm_lowerA(&A_cc[yi], &A_ii);
     }
   }
 }
@@ -61,7 +61,7 @@ void nbd::factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels) {
     lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     const Matrix& A_ii = A_cc[ii];
     for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++)
-      trsm_lowerA(A_oc[yi], A_ii);
+      trsm_lowerA(&A_oc[yi], &A_ii);
   }
 }
 
@@ -73,7 +73,7 @@ void nbd::schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels) {
     lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
     const Matrix& A_ii = A_oc[ii];
     Matrix& S_i = S[ii];
-    mmult('N', 'T', A_ii, A_ii, S_i, -1., 1.);
+    mmult('N', 'T', &A_ii, &A_ii, &S_i, -1., 1.);
   }
 }
 
@@ -97,16 +97,16 @@ void nbd::deallocNode(Node* node, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nnz = node[i].lenA;
     for (int64_t n = 0; n < nnz; n++) {
-      cMatrix(node[i].A[n], 0, 0);
-      cMatrix(node[i].A_cc[n], 0, 0);
-      cMatrix(node[i].A_oc[n], 0, 0);
-      cMatrix(node[i].A_oo[n], 0, 0);
+      cMatrix(&node[i].A[n], 0, 0);
+      cMatrix(&node[i].A_cc[n], 0, 0);
+      cMatrix(&node[i].A_oc[n], 0, 0);
+      cMatrix(&node[i].A_oo[n], 0, 0);
     }
 
     int64_t nnz_f = node[i].lenS;
     for (int64_t n = 0; n < nnz_f; n++) {
-      cMatrix(node[i].S[n], 0, 0);
-      cMatrix(node[i].S_oo[n], 0, 0);
+      cMatrix(&node[i].S[n], 0, 0);
+      cMatrix(&node[i].S_oo[n], 0, 0);
     }
 
     node[i].A.clear();
@@ -135,8 +135,8 @@ void nbd::allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level
       int64_t n_i = dims[box_i];
 
       Matrix& A_ij = A[ij];
-      cMatrix(A_ij, n_i, n_j);
-      zeroMatrix(A_ij);
+      cMatrix(&A_ij, n_i, n_j);
+      zeroMatrix(&A_ij);
     }
   }
 }
@@ -156,8 +156,8 @@ void nbd::allocS(Matrix* S, const CSC& rels, const int64_t diml[], int64_t level
       int64_t n_i = diml[box_i];
 
       Matrix& S_ij = S[ij];
-      cMatrix(S_ij, n_i, n_j);
-      zeroMatrix(S_ij);
+      cMatrix(&S_ij, n_i, n_j);
+      zeroMatrix(&S_ij);
     }
   }
 }
@@ -178,9 +178,9 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
       int64_t diml_i = diml[box_i];
       int64_t dimc_i = dims[box_i] - diml_i;
 
-      cMatrix(n.A_cc[ij], dimc_i, dimc_j);
-      cMatrix(n.A_oc[ij], diml_i, dimc_j);
-      cMatrix(n.A_oo[ij], diml_i, diml_j);
+      cMatrix(&n.A_cc[ij], dimc_i, dimc_j);
+      cMatrix(&n.A_oc[ij], diml_i, dimc_j);
+      cMatrix(&n.A_oo[ij], diml_i, diml_j);
     }
 
     for (int64_t ij = rels.COLS_FAR[j]; ij < rels.COLS_FAR[j + 1]; ij++) {
@@ -188,7 +188,7 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
       int64_t box_i = i;
       iLocal(&box_i, i, level);
       int64_t diml_i = diml[box_i];
-      cMatrix(n.S_oo[ij], diml_i, diml_j);
+      cMatrix(&n.S_oo[ij], diml_i, diml_j);
     }
   }
 }
@@ -231,26 +231,26 @@ void nbd::nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC
 
       if (i00 >= 0) {
         const Matrix& m00 = Mlow[i00];
-        cpyMatToMat(m00.M, m00.N, m00, Mup[ij], 0, 0, 0, 0);
+        cpyMatToMat(m00.M, m00.N, &m00, &Mup[ij], 0, 0, 0, 0);
       }
 
       if (i01 >= 0) {
         const Matrix& m01 = Mlow[i01];
         int64_t xbegin = Mup[ij].N - m01.N;
-        cpyMatToMat(m01.M, m01.N, m01, Mup[ij], 0, 0, 0, xbegin);
+        cpyMatToMat(m01.M, m01.N, &m01, &Mup[ij], 0, 0, 0, xbegin);
       }
 
       if (i10 >= 0) {
         const Matrix& m10 = Mlow[i10];
         int64_t ybegin = Mup[ij].M - m10.M;
-        cpyMatToMat(m10.M, m10.N, m10, Mup[ij], 0, 0, ybegin, 0);
+        cpyMatToMat(m10.M, m10.N, &m10, &Mup[ij], 0, 0, ybegin, 0);
       }
 
       if (i11 >= 0) {
         const Matrix& m11 = Mlow[i11];
         int64_t ybegin = Mup[ij].M - m11.M;
         int64_t xbegin = Mup[ij].N - m11.N;
-        cpyMatToMat(m11.M, m11.N, m11, Mup[ij], 0, 0, ybegin, xbegin);
+        cpyMatToMat(m11.M, m11.N, &m11, &Mup[ij], 0, 0, ybegin, xbegin);
       }
 
       lookupIJ('F', i00, rels_low, ci0, cj0);
@@ -260,26 +260,26 @@ void nbd::nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC
 
       if (i00 >= 0) {
         const Matrix& m00 = Slow[i00];
-        cpyMatToMat(m00.M, m00.N, m00, Mup[ij], 0, 0, 0, 0);
+        cpyMatToMat(m00.M, m00.N, &m00, &Mup[ij], 0, 0, 0, 0);
       }
 
       if (i01 >= 0) {
         const Matrix& m01 = Slow[i01];
         int64_t xbegin = Mup[ij].N - m01.N;
-        cpyMatToMat(m01.M, m01.N, m01, Mup[ij], 0, 0, 0, xbegin);
+        cpyMatToMat(m01.M, m01.N, &m01, &Mup[ij], 0, 0, 0, xbegin);
       }
 
       if (i10 >= 0) {
         const Matrix& m10 = Slow[i10];
         int64_t ybegin = Mup[ij].M - m10.M;
-        cpyMatToMat(m10.M, m10.N, m10, Mup[ij], 0, 0, ybegin, 0);
+        cpyMatToMat(m10.M, m10.N, &m10, &Mup[ij], 0, 0, ybegin, 0);
       }
 
       if (i11 >= 0) {
         const Matrix& m11 = Slow[i11];
         int64_t ybegin = Mup[ij].M - m11.M;
         int64_t xbegin = Mup[ij].N - m11.N;
-        cpyMatToMat(m11.M, m11.N, m11, Mup[ij], 0, 0, ybegin, xbegin);
+        cpyMatToMat(m11.M, m11.N, &m11, &Mup[ij], 0, 0, ybegin, xbegin);
       }
     }
   }
@@ -305,7 +305,7 @@ void nbd::factorA(Node A[], const Base B[], const CSC rels[], int64_t levels) {
     const CSC& rn = rels[i - 1];
     nextNode(An, rn, Ai, ri, i - 1);
   }
-  chol_decomp(A[0].A[0]);
+  chol_decomp(&A[0].A[0]);
 }
 
 void nbd::allocSpDense(SpDense& sp, const Cell* cells, int64_t levels) {

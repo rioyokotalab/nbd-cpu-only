@@ -23,15 +23,15 @@ find_package(OpenMP REQUIRED)
 
 add_library(nbd STATIC 
   kernel.c kernel.h
+  linalg.c linalg.h
   build_tree.cxx build_tree.hxx
-  linalg.cxx linalg.hxx
   basis.cxx basis.hxx
   umv.cxx umv.hxx
   solver.cxx solver.hxx
   dist.cxx dist.hxx
 )
 target_include_directories(nbd PRIVATE "./")
-target_compile_options(nbd PRIVATE "-DUSE_MKL=true")
+target_compile_options(nbd PRIVATE "-DUSE_MKL")
 target_link_libraries(nbd MKL::MKL OpenMP::OpenMP_C OpenMP::OpenMP_CXX MPI::MPI_C MPI::MPI_CXX)
 
 add_executable(lorasp lorasp.cxx)

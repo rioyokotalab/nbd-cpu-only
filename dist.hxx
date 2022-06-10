@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "linalg.hxx"
+#include "linalg.h"
 
 namespace nbd {
 

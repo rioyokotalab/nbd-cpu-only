@@ -177,7 +177,7 @@ void nbd::DistributeVectorsList(Vector lis[], int64_t level) {
     int64_t my_i = my_ind * nboxes + n;
     const Vector& B_i = lis[my_i];
     int64_t len = B_i.N;
-    cpyFromVector(B_i, my_data + offset);
+    cpyFromVector(&B_i, my_data + offset);
     offset = offset + len;
   }
 
@@ -215,7 +215,7 @@ void nbd::DistributeVectorsList(Vector lis[], int64_t level) {
         int64_t rm_i = i * nboxes + n;
         Vector& B_i = lis[rm_i];
         int64_t len = B_i.N;
-        vaxpby(B_i, &rm_v[offset], 1., 0.);
+        vaxpby(&B_i, &rm_v[offset], 1., 0.);
         offset = offset + len;
       }
     }
@@ -255,7 +255,7 @@ void nbd::DistributeMatricesList(Matrix lis[], int64_t level) {
     int64_t my_i = my_ind * nboxes + n;
     const Matrix& A_i = lis[my_i];
     int64_t len = A_i.M * A_i.N;
-    cpyFromMatrix(A_i, my_data + offset);
+    cpyFromMatrix(&A_i, my_data + offset);
     offset = offset + len;
   }
 
@@ -293,7 +293,7 @@ void nbd::DistributeMatricesList(Matrix lis[], int64_t level) {
         int64_t rm_i = i * nboxes + n;
         Matrix& A_i = lis[rm_i];
         int64_t len = A_i.M * A_i.N;
-        maxpby(A_i, rm_v + offset, 1., 0.);
+        maxpby(&A_i, rm_v + offset, 1., 0.);
         offset = offset + len;
       }
     }
@@ -439,7 +439,7 @@ void nbd::butterflySumA(Matrix A[], int64_t lenA, int64_t level) {
   for (int64_t i = 0; i < lenA; i++) {
     const Matrix& A_i = A[i];
     int64_t len = A_i.M * A_i.N;
-    cpyFromMatrix(A_i, SRC_DATA + offset);
+    cpyFromMatrix(&A_i, SRC_DATA + offset);
     offset = offset + len;
   }
 
@@ -455,7 +455,7 @@ void nbd::butterflySumA(Matrix A[], int64_t lenA, int64_t level) {
   for (int64_t i = 0; i < lenA; i++) {
     Matrix& A_i = A[i];
     int64_t len = A_i.M * A_i.N;
-    maxpby(A_i, RM_DATA + offset, 1., 1.);
+    maxpby(&A_i, RM_DATA + offset, 1., 1.);
     offset = offset + len;
   }
 
@@ -489,7 +489,7 @@ void nbd::sendFwSubstituted(const Vector X[], int64_t level) {
 
       len_i = 0;
       for (int64_t n = ibegin; n < iend; n++) {
-        cpyFromVector(X[n], DATA[i] + len_i);
+        cpyFromVector(&X[n], DATA[i] + len_i);
         len_i = len_i + X[n].N;
       }
       MPI_Isend(DATA[i], (int)LENS[i], MPI_DOUBLE, (int)rm_rank, tag, MPI_COMM_WORLD, &requests[i]);
@@ -527,7 +527,7 @@ void nbd::sendBkSubstituted(const Vector X[], int64_t level) {
 
   LEN = 0;
   for (int64_t i = lbegin; i < lend; i++) {
-    cpyFromVector(X[i], DATA + LEN);
+    cpyFromVector(&X[i], DATA + LEN);
     LEN = LEN + X[i].N;
   }
   
@@ -566,7 +566,7 @@ void nbd::recvFwSubstituted(Vector X[], int64_t level) {
       MPI_Recv(DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       int64_t offset = 0;
       for (int64_t i = lbegin; i < lend; i++) {
-        vaxpby(X[i], DATA + offset, 1., 1.);
+        vaxpby(&X[i], DATA + offset, 1., 1.);
         offset = offset + X[i].N;
       }
     }
@@ -624,7 +624,7 @@ void nbd::recvBkSubstituted(Vector X[], int64_t level) {
       int64_t ibegin = i * nboxes;
       int64_t iend = ibegin + nboxes;
       for (int64_t n = ibegin; n < iend; n++) {
-        vaxpby(X[n], DATA[i] + len_i, 1., 0.);
+        vaxpby(&X[n], DATA[i] + len_i, 1., 0.);
         len_i = len_i + X[n].N;
       }
       free(DATA[i]);
@@ -665,7 +665,7 @@ void nbd::distributeSubstituted(Vector X[], int64_t level) {
 
       len_i = 0;
       for (int64_t n = ibegin; n < iend; n++) {
-        cpyFromVector(X[n], SRC_DATA[i] + len_i);
+        cpyFromVector(&X[n], SRC_DATA[i] + len_i);
         len_i = len_i + X[n].N;
       }
     }
@@ -704,7 +704,7 @@ void nbd::distributeSubstituted(Vector X[], int64_t level) {
       int64_t offset = 0;
       const double* data = RM_DATA[i];
       for (int64_t n = lbegin; n < lend; n++) {
-        vaxpby(X[n], data + offset, 1., 1.);
+        vaxpby(&X[n], data + offset, 1., 1.);
         offset = offset + X[n].N;
       }
     }
@@ -733,7 +733,7 @@ void nbd::butterflySumX(Vector X[], int64_t lenX, int64_t level) {
 
   int64_t offset = 0;
   for (int64_t i = 0; i < lenX; i++) {
-    cpyFromVector(X[i], SRC_DATA + offset);
+    cpyFromVector(&X[i], SRC_DATA + offset);
     offset = offset + X[i].N;
   }
 
@@ -747,7 +747,7 @@ void nbd::butterflySumX(Vector X[], int64_t lenX, int64_t level) {
 
   offset = 0;
   for (int64_t i = 0; i < lenX; i++) {
-    vaxpby(X[i], RM_DATA + offset, 1., 1.);
+    vaxpby(&X[i], RM_DATA + offset, 1., 1.);
     offset = offset + X[i].N;
   }
 

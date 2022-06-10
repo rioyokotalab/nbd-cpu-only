@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "linalg.hxx"
+#include "linalg.h"
 #include "kernel.h"
 #include <vector>
 
