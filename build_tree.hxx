@@ -35,8 +35,6 @@ namespace nbd {
     std::vector<int64_t> ROWS_FAR;
   };
 
-  int64_t partition(Body* bodies, int64_t nbodies, int64_t sdim);
-
   int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
 
   void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim);

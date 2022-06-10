@@ -13,15 +13,6 @@
 
 using namespace nbd;
 
-int64_t nbd::partition(Body* bodies, int64_t nbodies, int64_t sdim) {
-  auto comp = [sdim](const Body& b1, const Body& b2) -> bool {
-    return b1.X[sdim] < b2.X[sdim];
-  };
-  int64_t loc = nbodies / 2;
-  std::nth_element(bodies, bodies + loc, bodies + nbodies, comp);
-  return loc;
-}
-
 int64_t nbd::buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = nleaves + nleaves - 1;
@@ -44,7 +35,8 @@ int64_t nbd::buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t level
       if (ci->R[2] > maxR)
       { sdim = 2; maxR = ci->R[2]; }
 
-      int64_t loc = partition(ci->BODY, ci->NBODY, sdim);
+      sort_bodies(ci->BODY, ci->NBODY, sdim);
+      int64_t loc = ci->NBODY / 2;
 
       Cell* c0 = &cells[(i << 1) + 1];
       Cell* c1 = &cells[(i << 1) + 2];

@@ -26,7 +26,7 @@ void set_kernel_constants(double singularity, double alpha) {
   _alpha = alpha;
 }
 
-void gen_matrix(KerFunc_t ef, int64_t m, int64_t n, const Bodies bi, const Bodies bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
+void gen_matrix(KerFunc_t ef, int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
   for (int64_t i = 0; i < m * n; i++) {
     int64_t x = i / m;
     int64_t bx = sel_j == NULL ? x : sel_j[x];
@@ -46,7 +46,7 @@ void gen_matrix(KerFunc_t ef, int64_t m, int64_t n, const Bodies bi, const Bodie
   }
 }
 
-void uniform_unit_cube(Bodies bodies, int64_t nbodies, int64_t dim, unsigned int seed) {
+void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsigned int seed) {
   if (seed > 0)
     srand(seed);
 
@@ -60,7 +60,7 @@ void uniform_unit_cube(Bodies bodies, int64_t nbodies, int64_t dim, unsigned int
   }
 }
 
-void mesh_unit_sphere(Bodies bodies, int64_t nbodies) {
+void mesh_unit_sphere(struct Body* bodies, int64_t nbodies) {
   int64_t mlen = nbodies - 2;
   if (mlen < 0) {
     fprintf(stderr, "Error spherical mesh size (GT/EQ. 2 required): %" PRId64 ".\n", nbodies);
@@ -103,7 +103,7 @@ void mesh_unit_sphere(Bodies bodies, int64_t nbodies) {
   bodies[nbodies - 1].X[2] = -1.;
 }
 
-void mesh_unit_cube(Bodies bodies, int64_t nbodies) {
+void mesh_unit_cube(struct Body* bodies, int64_t nbodies) {
   if (nbodies < 0) {
     fprintf(stderr, "Error cubic mesh size (GT/EQ. 0 required): %" PRId64 ".\n", nbodies);
     return;
@@ -176,7 +176,7 @@ void mesh_unit_cube(Bodies bodies, int64_t nbodies) {
   }
 }
 
-void magnify_reloc(Bodies bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[]) {
+void magnify_reloc(struct Body* bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[]) {
   for (int64_t i = 0; i < nbodies; i++) {
     double* x_bi = bodies[i].X;
     double v0 = x_bi[0] - Ccur[0];
@@ -188,7 +188,7 @@ void magnify_reloc(Bodies bodies, int64_t nbodies, const double Ccur[], const do
   }
 }
 
-void body_neutral_charge(Bodies bodies, int64_t nbodies, double cmax, unsigned int seed) {
+void body_neutral_charge(struct Body* bodies, int64_t nbodies, double cmax, unsigned int seed) {
   if (seed > 0)
     srand(seed);
 
@@ -206,7 +206,7 @@ void body_neutral_charge(Bodies bodies, int64_t nbodies, double cmax, unsigned i
       bodies[i].B = bodies[i].B - avg;
 }
 
-void get_bounds(const Bodies bodies, int64_t nbodies, double R[], double C[]) {
+void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C[]) {
   double Xmin[DIM_MAX], Xmax[DIM_MAX];
   Xmin[0] = Xmax[0] = bodies[0].X[0];
   Xmin[1] = Xmax[1] = bodies[0].X[1];
@@ -236,3 +236,33 @@ void get_bounds(const Bodies bodies, int64_t nbodies, double R[], double C[]) {
   R[2] = (d2 == 0. && Xmin[2] == 0.) ? 0. : (1.e-8 +  d2 / 2.);
 }
 
+int comp_bodies_s0(const void *a, const void *b) {
+  struct Body* body_a = (struct Body*)a;
+  struct Body* body_b = (struct Body*)b;
+  double diff = (body_a->X)[0] - (body_b->X)[0];
+  return diff < 0. ? -1 : 1;
+}
+
+int comp_bodies_s1(const void *a, const void *b) {
+  struct Body* body_a = (struct Body*)a;
+  struct Body* body_b = (struct Body*)b;
+  double diff = (body_a->X)[1] - (body_b->X)[1];
+  return diff < 0. ? -1 : 1;
+}
+
+int comp_bodies_s2(const void *a, const void *b) {
+  struct Body* body_a = (struct Body*)a;
+  struct Body* body_b = (struct Body*)b;
+  double diff = (body_a->X)[2] - (body_b->X)[2];
+  return diff < 0. ? -1 : 1;
+}
+
+void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim) {
+  size_t size = sizeof(struct Body);
+  if (sdim == 0)
+    qsort(bodies, nbodies, size, comp_bodies_s0);
+  else if (sdim == 1)
+    qsort(bodies, nbodies, size, comp_bodies_s1);
+  else if (sdim == 2)
+    qsort(bodies, nbodies, size, comp_bodies_s2);
+}
