@@ -28,6 +28,8 @@ namespace nbd {
 
   void deallocRightHandSides(RightHandSides* st, int64_t levels);
 
+  void RightHandSides_mem(int64_t* bytes, const RightHandSides* st, int64_t levels);
+
   void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Vector* X, int64_t levels);
 
   void solveSpDense(RightHandSides st[], const SpDense& sp, const Vector* X);

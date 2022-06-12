@@ -62,6 +62,10 @@ void mvec(char ta, const struct Matrix* A, const struct Vector* X, struct Vector
 void normalizeA(struct Matrix* A, const struct Matrix* B);
 
 void vnrm2(const struct Vector* A, double* nrm);
+
+void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA);
+
+void vector_mem(int64_t* bytes, const struct Vector* X, int64_t lenX);
   
 #ifdef __cplusplus
 }

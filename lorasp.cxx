@@ -89,11 +89,19 @@ int main(int argc, char* argv[]) {
   int64_t dim = 3;
   commRank(&mpi_rank, &mpi_levels);
 
+  int64_t mem_basis, mem_A, mem_X;
+  basis_mem(&mem_basis, &sp.Basis[0], levels);
+  node_mem(&mem_A, &sp.D[0], levels);
+  RightHandSides_mem(&mem_X, &rhs[0], levels);
+
   if (mpi_rank == 0) {
     std::cout << "LORASP: " << Nbody << "," << (int64_t)(Nbody / Nleaf) << "," << theta << "," << dim << "," << (int64_t)(1 << mpi_levels) << std::endl;
     std::cout << "Construct: " << construct_time << " COMM: " << construct_comm_time << std::endl;
     std::cout << "Factorize: " << factor_time << " COMM: " << factor_comm_time << std::endl;
     std::cout << "Solution: " << solve_time << " COMM: " << solve_comm_time << std::endl;
+    std::cout << "Basis Memory: " << (double)mem_basis * 1.e-9 << " GiB." << std::endl;
+    std::cout << "Matrix Memory: " << (double)mem_A * 1.e-9 << " GiB." << std::endl;
+    std::cout << "Vector Memory: " << (double)mem_X * 1.e-9 << " GiB." << std::endl;
     std::cout << "Err: " << err << std::endl;
   }
 

@@ -278,3 +278,17 @@ void normalizeA(struct Matrix* A, const struct Matrix* B) {
 void vnrm2(const struct Vector* A, double* nrm) {
   *nrm = cblas_dnrm2(A->N, A->X, 1);
 }
+
+void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA) {
+  int64_t count = sizeof(struct Matrix) * lenA;
+  for (int64_t i = 0; i < lenA; i++)
+    count = count + sizeof(double) * A[i].M * A[i].N;
+  *bytes = count;
+}
+
+void vector_mem(int64_t* bytes, const struct Vector* X, int64_t lenX) {
+  int64_t count = sizeof(struct Vector) * lenX;
+  for (int64_t i = 0; i < lenX; i++)
+    count = count + sizeof(double) * X[i].N;
+  *bytes = count;
+}

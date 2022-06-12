@@ -120,6 +120,28 @@ void nbd::deallocNode(Node* node, int64_t levels) {
   }
 }
 
+void nbd::node_mem(int64_t* bytes, const Node* node, int64_t levels) {
+  int64_t count = 0;
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nnz = node[i].lenA;
+    int64_t nnz_f = node[i].lenS;
+
+    int64_t bytes_a, bytes_cc, bytes_oc, bytes_oo;
+    int64_t bytes_s, bytes_soo;
+
+    matrix_mem(&bytes_a, &node[i].A[0], nnz);
+    matrix_mem(&bytes_cc, &node[i].A_cc[0], nnz);
+    matrix_mem(&bytes_oc, &node[i].A_oc[0], nnz);
+    matrix_mem(&bytes_oo, &node[i].A_oo[0], nnz);
+
+    matrix_mem(&bytes_s, &node[i].S[0], nnz_f);
+    matrix_mem(&bytes_soo, &node[i].S_oo[0], nnz_f);
+
+    count = count + bytes_a + bytes_cc + bytes_oc + bytes_oo + bytes_s + bytes_soo;
+  }
+  *bytes = count;
+}
+
 void nbd::allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level) {
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);

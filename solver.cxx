@@ -205,6 +205,20 @@ void nbd::deallocRightHandSides(RightHandSides* st, int64_t levels) {
   }
 }
 
+void nbd::RightHandSides_mem(int64_t* bytes, const RightHandSides* st, int64_t levels) {
+  int64_t count = 0;
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes = st[i].Xlen;
+    int64_t bytes_x, bytes_o, bytes_c;
+    vector_mem(&bytes_x, &st[i].X[0], nodes);
+    vector_mem(&bytes_o, &st[i].Xo[0], nodes);
+    vector_mem(&bytes_c, &st[i].Xc[0], nodes);
+
+    count = count + bytes_x + bytes_o + bytes_c;
+  }
+  *bytes = count;
+}
+
 void nbd::solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Vector* X, int64_t levels) {
   int64_t ibegin = 0;
   int64_t iend = (int64_t)1 << levels;

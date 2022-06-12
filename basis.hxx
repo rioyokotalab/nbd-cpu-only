@@ -18,6 +18,8 @@ namespace nbd {
 
   void deallocBasis(Base* basis, int64_t levels);
 
+  void basis_mem(int64_t* bytes, const Base* basis, int64_t levels);
+
   void evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
 
   void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
