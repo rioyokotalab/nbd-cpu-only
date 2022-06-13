@@ -97,16 +97,16 @@ void nbd::deallocNode(Node* node, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nnz = node[i].lenA;
     for (int64_t n = 0; n < nnz; n++) {
-      cMatrix(&node[i].A[n], 0, 0);
-      cMatrix(&node[i].A_cc[n], 0, 0);
-      cMatrix(&node[i].A_oc[n], 0, 0);
-      cMatrix(&node[i].A_oo[n], 0, 0);
+      matrixDestroy(&node[i].A[n]);
+      matrixDestroy(&node[i].A_cc[n]);
+      matrixDestroy(&node[i].A_oc[n]);
+      matrixDestroy(&node[i].A_oo[n]);
     }
 
     int64_t nnz_f = node[i].lenS;
     for (int64_t n = 0; n < nnz_f; n++) {
-      cMatrix(&node[i].S[n], 0, 0);
-      cMatrix(&node[i].S_oo[n], 0, 0);
+      matrixDestroy(&node[i].S[n]);
+      matrixDestroy(&node[i].S_oo[n]);
     }
 
     node[i].A.clear();
@@ -157,7 +157,7 @@ void nbd::allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level
       int64_t n_i = dims[box_i];
 
       Matrix& A_ij = A[ij];
-      cMatrix(&A_ij, n_i, n_j);
+      matrixCreate(&A_ij, n_i, n_j);
       zeroMatrix(&A_ij);
     }
   }
@@ -178,7 +178,7 @@ void nbd::allocS(Matrix* S, const CSC& rels, const int64_t diml[], int64_t level
       int64_t n_i = diml[box_i];
 
       Matrix& S_ij = S[ij];
-      cMatrix(&S_ij, n_i, n_j);
+      matrixCreate(&S_ij, n_i, n_j);
       zeroMatrix(&S_ij);
     }
   }
@@ -200,9 +200,9 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
       int64_t diml_i = diml[box_i];
       int64_t dimc_i = dims[box_i] - diml_i;
 
-      cMatrix(&n.A_cc[ij], dimc_i, dimc_j);
-      cMatrix(&n.A_oc[ij], diml_i, dimc_j);
-      cMatrix(&n.A_oo[ij], diml_i, diml_j);
+      matrixCreate(&n.A_cc[ij], dimc_i, dimc_j);
+      matrixCreate(&n.A_oc[ij], diml_i, dimc_j);
+      matrixCreate(&n.A_oo[ij], diml_i, diml_j);
     }
 
     for (int64_t ij = rels.COLS_FAR[j]; ij < rels.COLS_FAR[j + 1]; ij++) {
@@ -210,7 +210,7 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
       int64_t box_i = i;
       iLocal(&box_i, i, level);
       int64_t diml_i = diml[box_i];
-      cMatrix(&n.S_oo[ij], diml_i, diml_j);
+      matrixCreate(&n.S_oo[ij], diml_i, diml_j);
     }
   }
 }

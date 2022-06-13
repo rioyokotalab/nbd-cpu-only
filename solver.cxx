@@ -179,9 +179,9 @@ void nbd::allocRightHandSides(RightHandSides st[], const Base base[], int64_t le
       int64_t dim = base[i].DIMS[n];
       int64_t dim_o = base[i].DIML[n];
       int64_t dim_c = dim - dim_o;
-      cVector(&rhs_i.X[n], dim);
-      cVector(&rhs_i.Xc[n], dim_c);
-      cVector(&rhs_i.Xo[n], dim_o);
+      vectorCreate(&rhs_i.X[n], dim);
+      vectorCreate(&rhs_i.Xc[n], dim_c);
+      vectorCreate(&rhs_i.Xo[n], dim_o);
       zeroVector(&rhs_i.X[n]);
       zeroVector(&rhs_i.Xc[n]);
       zeroVector(&rhs_i.Xo[n]);
@@ -193,9 +193,9 @@ void nbd::deallocRightHandSides(RightHandSides* st, int64_t levels) {
   for (int i = 0; i <= levels; i++) {
     int64_t nodes = st[i].Xlen;
     for (int64_t n = 0; n < nodes; n++) {
-      cVector(&st[i].X[n], 0);
-      cVector(&st[i].Xc[n], 0);
-      cVector(&st[i].Xo[n], 0);
+      vectorDestroy(&st[i].X[n]);
+      vectorDestroy(&st[i].Xc[n]);
+      vectorDestroy(&st[i].Xo[n]);
     }
 
     st[i].Xlen = 0;
@@ -265,14 +265,14 @@ void nbd::solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64
   for (int64_t i = ibegin; i < iend; i++) {
     double e, n;
     Vector work;
-    cVector(&work, X[i].N);
+    vectorCreate(&work, X[i].N);
 
     vaxpby(&work, X[i].X, 1., 0.);
     vaxpby(&work, ref[i].X, -1., 1.);
     vnrm2(&work, &e);
     vnrm2(&ref[i], &n);
 
-    cVector(&work, 0);
+    vectorDestroy(&work);
     err = err + e * e;
     nrm = nrm + n * n;
   }

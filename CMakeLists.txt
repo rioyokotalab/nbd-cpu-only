@@ -24,6 +24,7 @@ find_package(OpenMP REQUIRED)
 add_library(nbd STATIC 
   kernel.c kernel.h
   linalg.c linalg.h
+  csc.c csc.h
   build_tree.cxx build_tree.hxx
   basis.cxx basis.hxx
   umv.cxx umv.hxx

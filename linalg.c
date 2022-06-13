@@ -38,7 +38,7 @@ void cRandom(int64_t lenR, double min, double max, unsigned int seed) {
   }
 }
 
-void cMatrix(struct Matrix* mat, int64_t m, int64_t n) {
+void matrixCreate(struct Matrix* mat, int64_t m, int64_t n) {
   int64_t size = m * n;
   if (size > 0) {
     mat->A = (double*)malloc(sizeof(double) * size);
@@ -46,25 +46,34 @@ void cMatrix(struct Matrix* mat, int64_t m, int64_t n) {
     mat->N = n;
   }
   else {
-    if (mat->A != NULL)
-      free(mat->A);
     mat->A = NULL;
     mat->M = 0;
     mat->N = 0;
   }
 }
 
-void cVector(struct Vector* vec, int64_t n) {
+void matrixDestroy(struct Matrix* mat) {
+  free(mat->A);
+  mat->A = NULL;
+  mat->M = 0;
+  mat->N = 0;
+}
+
+void vectorCreate(struct Vector* vec, int64_t n) {
   if (n > 0) {
     vec->X = (double*)malloc(sizeof(double) * n);
     vec->N = n;
   }
   else {
-    if (vec->X != NULL)
-      free(vec->X);
     vec->X = NULL;
     vec->N = 0;
   }
+}
+
+void vectorDestroy(struct Vector* vec) {
+  free(vec->X);
+  vec->X = NULL;
+  vec->N = 0;
 }
 
 void cpyFromMatrix(const struct Matrix* A, double* v) {

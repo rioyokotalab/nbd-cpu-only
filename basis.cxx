@@ -24,9 +24,9 @@ void nbd::deallocBasis(Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = basis[i].Ulen;
     for (int64_t n = 0; n < nodes; n++) {
-      cMatrix(&basis[i].Uo[n], 0, 0);
-      cMatrix(&basis[i].Uc[n], 0, 0);
-      cMatrix(&basis[i].R[n], 0, 0);
+      matrixDestroy(&basis[i].Uo[n]);
+      matrixDestroy(&basis[i].Uc[n]);
+      matrixDestroy(&basis[i].R[n]);
     }
 
     basis[i].Ulen = 0;
@@ -68,42 +68,42 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
     Matrix work_a, work_b, work_c, work_s;
     int64_t len_s = n1 + (n2 > 0 ? m : 0);
     if (len_s > 0)
-      cMatrix(&work_s, m, len_s);
+      matrixCreate(&work_s, m, len_s);
 
     if (n1 > 0) {
-      cMatrix(&work_a, m, n1);
+      matrixCreate(&work_a, m, n1);
       gen_matrix(ef, m, n1, cell->BODY, remote.data(), work_a.A, cellm.data(), NULL);
       cpyMatToMat(m, n1, &work_a, &work_s, 0, 0, 0, 0);
     }
 
     if (n2 > 0) {
-      cMatrix(&work_b, m, n2);
-      cMatrix(&work_c, m, m);
+      matrixCreate(&work_b, m, n2);
+      matrixCreate(&work_c, m, m);
       gen_matrix(ef, m, n2, cell->BODY, close.data(), work_b.A, cellm.data(), NULL);
       mmult('N', 'T', &work_b, &work_b, &work_c, 1., 0.);
       if (n1 > 0)
         normalizeA(&work_c, &work_a);
       cpyMatToMat(m, m, &work_c, &work_s, 0, 0, 0, n1);
-      cMatrix(&work_b, 0, 0);
-      cMatrix(&work_c, 0, 0);
+      matrixDestroy(&work_b);
+      matrixDestroy(&work_c);
     }
 
     if (n1 > 0)
-      cMatrix(&work_a, 0, 0);
+      matrixCreate(&work_a, 0, 0);
 
     if (len_s > 0) {
       int64_t rank = mrank > 0 ? std::min(mrank, m) : m;
       Matrix work_u;
       std::vector<int64_t> pa(rank);
-      cMatrix(&work_u, m, rank);
+      matrixCreate(&work_u, m, rank);
 
       int64_t iters = rank;
       lraID(epi, &work_s, &work_u, pa.data(), &iters);
 
-      cMatrix(&Base, m, iters);
+      matrixCreate(&Base, m, iters);
       cpyMatToMat(m, iters, &work_u, &Base, 0, 0, 0, 0);
-      cMatrix(&work_s, 0, 0);
-      cMatrix(&work_u, 0, 0);
+      matrixDestroy(&work_s);
+      matrixDestroy(&work_u);
 
       int64_t len_m = cell->Multipole.size();
       if (len_m != iters)
@@ -153,7 +153,7 @@ void nbd::evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, co
     int64_t n = diml[i];
     int64_t msize = m * n;
     if (msize > 0 && (i < ibegin || i >= iend))
-      cMatrix(&basis.Uo[i], m, n);
+      matrixCreate(&basis.Uo[i], m, n);
   }
   DistributeMatricesList(basis.Uo.data(), level);
 }
@@ -251,8 +251,8 @@ void nbd::orth_base_all(Base* basis, int64_t levels) {
       Matrix& Uo_i = base_i->Uo[j];
       Matrix& Uc_i = base_i->Uc[j];
       Matrix& Ul_i = base_i->R[j];
-      cMatrix(&Uc_i, dim, dim_c);
-      cMatrix(&Ul_i, dim_l, dim_l);
+      matrixCreate(&Uc_i, dim, dim_c);
+      matrixCreate(&Ul_i, dim_l, dim_l);
 
       if (j >= lbegin && j < lend && dim > 0)
         qr_with_complements(&Uo_i, &Uc_i, &Ul_i);

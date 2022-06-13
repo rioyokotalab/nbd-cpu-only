@@ -21,9 +21,13 @@ struct Vector {
 
 void cRandom(int64_t lenR, double min, double max, unsigned int seed);
 
-void cMatrix(struct Matrix* mat, int64_t m, int64_t n);
+void matrixCreate(struct Matrix* mat, int64_t m, int64_t n);
 
-void cVector(struct Vector* vec, int64_t n);
+void matrixDestroy(struct Matrix* mat);
+
+void vectorCreate(struct Vector* vec, int64_t n);
+
+void vectorDestroy(struct Vector* vec);
 
 void cpyFromMatrix(const struct Matrix* A, double* v);
 

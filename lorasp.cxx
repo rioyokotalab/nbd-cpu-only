@@ -108,9 +108,9 @@ int main(int argc, char* argv[]) {
   deallocSpDense(&sp);
   deallocRightHandSides(&rhs[0], levels);
   for (int64_t i = 0; i < xlen; i++) {
-    cVector(&X[i], 0);
-    cVector(&Xref[i], 0);
-    cVector(&B[i], 0);
+    vectorDestroy(&X[i]);
+    vectorDestroy(&Xref[i]);
+    vectorDestroy(&B[i]);
   }
   
   closeComm();
