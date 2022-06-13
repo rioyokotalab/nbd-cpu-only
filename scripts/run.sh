@@ -31,4 +31,5 @@ echo Generating plots..
 python3 plot_serial.py $LOGS/serial.csv $LOGS/factor_serial.png
 python3 plot_strong.py $LOGS/strong.csv $LOGS/factor_strong.png
 python3 plot_serial_memory.py $LOGS/serial.csv $LOGS/mem_serial.png
+python3 plot_strong_memory.py $LOGS/strong.csv $LOGS/mem_strong.png
 echo Finish!
