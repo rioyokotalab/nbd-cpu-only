@@ -70,14 +70,14 @@ void evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, i
 
     if (n1 > 0) {
       matrixCreate(&work_a, m, n1);
-      gen_matrix(ef, m, n1, &bodies[cell->BODY[0]], bodies, work_a.A, cellm.data(), remote.data());
+      gen_matrix(ef, m, n1, bodies, bodies, work_a.A, cellm.data(), remote.data());
       cpyMatToMat(m, n1, &work_a, &work_s, 0, 0, 0, 0);
     }
 
     if (n2 > 0) {
       matrixCreate(&work_b, m, n2);
       matrixCreate(&work_c, m, m);
-      gen_matrix(ef, m, n2, &bodies[cell->BODY[0]], bodies, work_b.A, cellm.data(), close.data());
+      gen_matrix(ef, m, n2, bodies, bodies, work_b.A, cellm.data(), close.data());
       mmult('N', 'T', &work_b, &work_b, &work_c, 1., 0.);
       if (n1 > 0)
         normalizeA(&work_c, &work_a);

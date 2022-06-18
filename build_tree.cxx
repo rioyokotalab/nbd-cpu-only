@@ -143,23 +143,9 @@ void getList(Cell* Ci, Cell* Cj, double theta) {
     for (Cell* cj = Cj->CHILD; cj != Cj->CHILD + Cj->NCHILD; cj++)
       getList(Ci, cj, theta);
   else {
-    double dCi[3], dRi[3], dRj[3];
-    dCi[0] = Ci->C[0] - Cj->C[0];
-    dCi[1] = Ci->C[1] - Cj->C[1];
-    dCi[2] = Ci->C[2] - Cj->C[2];
-
-    dRi[0] = Ci->R[0] * Ci->R[0];
-    dRi[1] = Ci->R[1] * Ci->R[1];
-    dRi[2] = Ci->R[2] * Ci->R[2];
-
-    dRj[0] = Cj->R[0] * Cj->R[0];
-    dRj[1] = Cj->R[1] * Cj->R[1];
-    dRj[2] = Cj->R[2] * Cj->R[2];
-
-    double dC = dCi[0] * dCi[0] + dCi[1] * dCi[1] + dCi[2] * dCi[2];
-    double dR = (dRi[0] + dRi[1] + dRi[2] + dRj[0] + dRj[1] + dRj[2]) * theta;
-
-    if (dC > dR)
+    int admis;
+    admis_check(&admis, theta, Ci->C, Cj->C, Ci->R, Cj->R);
+    if (admis)
       Ci->listFar.push_back(Cj);
     else {
       Ci->listNear.push_back(Cj);
@@ -352,10 +338,9 @@ void collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
     int64_t count = 0;
     for (int64_t i = 0; i < cell.NCHILD; i++) {
       const Cell& c = cell.CHILD[i];
-      int64_t loc = c.BODY[0] - cell.BODY[0];
       int64_t len = c.Multipole.size();
       for (int64_t n = 0; n < len; n++) {
-        int64_t nloc = loc + c.Multipole[n];
+        int64_t nloc = c.Multipole[n];
         multipoles[count] = nloc;
         count += 1;
       }
@@ -363,7 +348,7 @@ void collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
   }
   else {
     int64_t len = cell.BODY[1] - cell.BODY[0];
-    std::iota(multipoles, multipoles + len, 0);
+    std::iota(multipoles, multipoles + len, cell.BODY[0]);
   }
 }
 
@@ -467,12 +452,10 @@ void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, 
       int64_t len = cell->listFar.size();
       int64_t off = csc.COLS_FAR[N];
       for (int64_t i = 0; i < len; i++) {
-        int64_t i_begin = cell->listFar[i]->BODY[0];
-        int64_t j_begin = cell->BODY[0];
         int64_t m = cell->listFar[i]->Multipole.size();
         int64_t n = cell->Multipole.size();
         matrixCreate(&s[off + i], m, n);
-        gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], s[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
+        gen_matrix(ef, m, n, bodies, bodies, s[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
       }
     }
   }
