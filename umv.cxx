@@ -3,7 +3,7 @@
 #include "dist.h"
 
 void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, const Matrix* V, int64_t level) {
-  int64_t ibegin = 0, iend;
+  int64_t ibegin = 0, iend = 0;
   selfLocalRange(&ibegin, &iend, level);
   const Matrix* vlocal = &V[ibegin];
 
@@ -19,7 +19,7 @@ void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, co
 }
 
 void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, const Matrix* V, int64_t level) {
-  int64_t ibegin = 0, iend;
+  int64_t ibegin = 0, iend = 0;
   selfLocalRange(&ibegin, &iend, level);
   const Matrix* vlocal = &V[ibegin];
 
@@ -34,12 +34,15 @@ void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, co
   }
 }
 
-void factorAcc(Matrix* A_cc, const CSC& rels) {
-  int64_t lbegin = rels.CBGN;
+void factorAcc(Matrix* A_cc, const CSC& rels, int64_t level) {
+  int64_t ibegin = 0, iend = 0, lbegin = 0;
+  selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&lbegin, ibegin, level);
+
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i);
     Matrix& A_ii = A_cc[ii];
     chol_decomp(&A_ii);
 
@@ -51,24 +54,30 @@ void factorAcc(Matrix* A_cc, const CSC& rels) {
   }
 }
 
-void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels) {
-  int64_t lbegin = rels.CBGN;
+void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels, int64_t level) {
+  int64_t ibegin = 0, iend = 0, lbegin = 0;
+  selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&lbegin, ibegin, level);
+
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i);
     const Matrix& A_ii = A_cc[ii];
     for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++)
       trsm_lowerA(&A_oc[yi], &A_ii);
   }
 }
 
-void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels) {
-  int64_t lbegin = rels.CBGN;
+void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels, int64_t level) {
+  int64_t ibegin = 0, iend = 0, lbegin = 0;
+  selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&lbegin, ibegin, level);
+
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i);
     const Matrix& A_ii = A_oc[ii];
     Matrix& S_i = S[ii];
     mmult('N', 'T', &A_ii, &A_ii, &S_i, -1., 1.);
@@ -221,9 +230,9 @@ void factorNode(Node& n, const Base& basis, const CSC& rels, int64_t level) {
   splitA(n.A_oo.data(), rels, n.A.data(), basis.Uo.data(), basis.Uo.data(), level);
   splitS(n.S_oo.data(), rels, n.S.data(), basis.R.data(), basis.R.data(), level);
 
-  factorAcc(n.A_cc.data(), rels);
-  factorAoc(n.A_oc.data(), n.A_cc.data(), rels);
-  schurCmplm(n.A_oo.data(), n.A_oc.data(), rels);
+  factorAcc(n.A_cc.data(), rels, level);
+  factorAoc(n.A_oc.data(), n.A_cc.data(), rels, level);
+  schurCmplm(n.A_oo.data(), n.A_oc.data(), rels, level);
 }
 
 void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rels_low, int64_t nlevel) {
@@ -231,14 +240,24 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rel
   const Matrix* Mlow = Aprev.A_oo.data();
   const Matrix* Slow = Aprev.S_oo.data();
 
-  int64_t nbegin = rels_up.CBGN;
-  int64_t clevel = nlevel + 1;
+  int64_t plevel = nlevel + 1;
+  int64_t nloc = 0;
+  int64_t nend = (int64_t)1 << nlevel;
+  int64_t ploc = 0;
+  int64_t pend = (int64_t)1 << plevel;
+  selfLocalRange(&nloc, &nend, nlevel);
+  selfLocalRange(&ploc, &pend, plevel);
+
+  int64_t nbegin = 0;
+  int64_t pbegin = 0;
+  iGlobal(&nbegin, nloc, nlevel);
+  iGlobal(&pbegin, ploc, plevel);
 
 #pragma omp parallel for
   for (int64_t j = 0; j < rels_up.N; j++) {
-    int64_t gj = j + nbegin;
-    int64_t cj0 = (gj << 1);
-    int64_t cj1 = (gj << 1) + 1;
+    int64_t cj = (j + nbegin) << 1;
+    int64_t cj0 = cj - pbegin;
+    int64_t cj1 = cj + 1 - pbegin;
 
     for (int64_t ij = rels_up.COLS_NEAR[j]; ij < rels_up.COLS_NEAR[j + 1]; ij++) {
       int64_t i = rels_up.ROWS_NEAR[ij];
@@ -306,9 +325,9 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rel
   }
   
   int comm_needed;
-  butterflyComm(&comm_needed, clevel);
+  butterflyComm(&comm_needed, plevel);
   if (comm_needed)
-    butterflySumA(Mup, Anext.lenA, clevel);
+    butterflySumA(Mup, Anext.lenA, plevel);
 }
 
 

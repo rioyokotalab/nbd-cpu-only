@@ -462,18 +462,17 @@ void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, 
 }
 
 void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
-  int64_t lj = j - rels.CBGN;
-  if (lj < 0 || lj >= rels.N)
+  if (j < 0 || j >= rels.N)
   { ij = -1; return; }
   if (NoF == 'N' || NoF == 'n') {
     int64_t k = std::distance(rels.ROWS_NEAR.data(), 
-      std::find(rels.ROWS_NEAR.data() + rels.COLS_NEAR[lj], rels.ROWS_NEAR.data() + rels.COLS_NEAR[lj + 1], i));
-    ij = (k < rels.COLS_NEAR[lj + 1]) ? k : -1;
+      std::find(rels.ROWS_NEAR.data() + rels.COLS_NEAR[j], rels.ROWS_NEAR.data() + rels.COLS_NEAR[j + 1], i));
+    ij = (k < rels.COLS_NEAR[j + 1]) ? k : -1;
   }
   else if (NoF == 'F' || NoF == 'f') {
     int64_t k = std::distance(rels.ROWS_FAR.data(), 
-      std::find(rels.ROWS_FAR.data() + rels.COLS_FAR[lj], rels.ROWS_FAR.data() + rels.COLS_FAR[lj + 1], i));
-    ij = (k < rels.COLS_FAR[lj + 1]) ? k : -1;
+      std::find(rels.ROWS_FAR.data() + rels.COLS_FAR[j], rels.ROWS_FAR.data() + rels.COLS_FAR[j + 1], i));
+    ij = (k < rels.COLS_FAR[j + 1]) ? k : -1;
   }
 }
 

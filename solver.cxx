@@ -24,15 +24,15 @@ void basisXoc(char fwbk, RightHandSides& vx, const Base& basis, int64_t level) {
 
 
 void svAccFw(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
-  int64_t lbegin = rels.CBGN;
-  int64_t ibegin = 0, iend;
+  int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&lbegin, ibegin, level);
   recvFwSubstituted(Xc, level);
 
   Vector* xlocal = &Xc[ibegin];
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i);
     const Matrix& A_ii = A_cc[ii];
     mat_solve('F', &xlocal[i], &A_ii);
 
@@ -51,9 +51,9 @@ void svAccFw(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
 }
 
 void svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
-  int64_t lbegin = rels.CBGN;
-  int64_t ibegin = 0, iend;
+  int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&lbegin, ibegin, level);
   recvBkSubstituted(Xc, level);
 
   Vector* xlocal = &Xc[ibegin];
@@ -69,7 +69,7 @@ void svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
     }
 
     int64_t ii;
-    lookupIJ('N', ii, rels, i + lbegin, i + lbegin);
+    lookupIJ('N', ii, rels, i + lbegin, i);
     const Matrix& A_ii = A_cc[ii];
     mat_solve('B', &xlocal[i], &A_ii);
   }

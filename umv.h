@@ -29,11 +29,11 @@ void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, co
 
 void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, const Matrix* V, int64_t level);
 
-void factorAcc(Matrix* A_cc, const CSC& rels);
+void factorAcc(Matrix* A_cc, const CSC& rels, int64_t level);
 
-void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels);
+void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels, int64_t level);
 
-void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels);
+void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels, int64_t level);
 
 void allocNodes(Node* nodes, const CSC rels[], int64_t levels);
 
