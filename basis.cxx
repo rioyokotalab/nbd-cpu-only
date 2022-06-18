@@ -1,13 +1,11 @@
 
-#include "basis.hxx"
-#include "dist.hxx"
+#include "basis.h"
+#include "dist.h"
 
 #include <unordered_set>
 #include <iterator>
 
-using namespace nbd;
-
-void nbd::allocBasis(Base* basis, int64_t levels) {
+void allocBasis(Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = (int64_t)1 << i;
     contentLength(&nodes, i);
@@ -20,7 +18,7 @@ void nbd::allocBasis(Base* basis, int64_t levels) {
   }
 }
 
-void nbd::deallocBasis(Base* basis, int64_t levels) {
+void deallocBasis(Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = basis[i].Ulen;
     for (int64_t n = 0; n < nodes; n++) {
@@ -38,7 +36,7 @@ void nbd::deallocBasis(Base* basis, int64_t levels) {
   }
 }
 
-void nbd::basis_mem(int64_t* bytes, const Base* basis, int64_t levels) {
+void basis_mem(int64_t* bytes, const Base* basis, int64_t levels) {
   int64_t count = 0;
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = basis[i].Ulen;
@@ -52,7 +50,7 @@ void nbd::basis_mem(int64_t* bytes, const Base* basis, int64_t levels) {
   *bytes = count;
 }
 
-void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+void evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
   int64_t m;
   childMultipoleSize(&m, *cell);
 
@@ -116,7 +114,7 @@ void nbd::evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodi
   }
 }
 
-void nbd::evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
   int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
   int64_t iend = xlen;
@@ -158,7 +156,7 @@ void nbd::evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, co
   DistributeMatricesList(basis.Uo.data(), level);
 }
 
-void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
+void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
   int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
   int64_t iend = xlen;
@@ -211,7 +209,7 @@ void nbd::writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
   }
 }
 
-void nbd::evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
   for (int64_t i = levels; i >= 0; i--) {
     Cell* vlocal = findLocalAtLevelModify(&cells[0], i);
     evaluateLocal(ef, basis[i], vlocal, i, bodies, nbodies, epi, mrank, sp_pts);
@@ -233,7 +231,7 @@ void nbd::evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t level
 }
 
 
-void nbd::orth_base_all(Base* basis, int64_t levels) {
+void orth_base_all(Base* basis, int64_t levels) {
   for (int64_t i = levels; i > 0; i--) {
     Base* base_i = basis + i;
     int64_t len = (int64_t)1 << i;

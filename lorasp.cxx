@@ -1,14 +1,12 @@
 
 
-#include "solver.hxx"
-#include "dist.hxx"
+#include "solver.h"
+#include "dist.h"
 
 #include <random>
 #include <cstdio>
 #include <cmath>
 #include <iostream>
-
-using namespace nbd;
 
 int main(int argc, char* argv[]) {
 

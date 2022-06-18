@@ -1,12 +1,10 @@
 
-#include "solver.hxx"
-#include "dist.hxx"
+#include "solver.h"
+#include "dist.h"
 
 #include "math.h"
 
-using namespace nbd;
-
-void nbd::basisXoc(char fwbk, RightHandSides& vx, const Base& basis, int64_t level) {
+void basisXoc(char fwbk, RightHandSides& vx, const Base& basis, int64_t level) {
   int64_t len = basis.DIMS.size();
   int64_t lbegin = 0;
   int64_t lend = len;
@@ -25,7 +23,7 @@ void nbd::basisXoc(char fwbk, RightHandSides& vx, const Base& basis, int64_t lev
 }
 
 
-void nbd::svAccFw(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
+void svAccFw(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
   int64_t lbegin = rels.CBGN;
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
@@ -52,7 +50,7 @@ void nbd::svAccFw(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level
   sendFwSubstituted(Xc, level);
 }
 
-void nbd::svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
+void svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
   int64_t lbegin = rels.CBGN;
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
@@ -79,7 +77,7 @@ void nbd::svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level
   sendBkSubstituted(Xc, level);
 }
 
-void nbd::svAocFw(Vector* Xo, const Vector* Xc, const Matrix* A_oc, const CSC& rels, int64_t level) {
+void svAocFw(Vector* Xo, const Vector* Xc, const Matrix* A_oc, const CSC& rels, int64_t level) {
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
   const Vector* xlocal = &Xc[ibegin];
@@ -95,7 +93,7 @@ void nbd::svAocFw(Vector* Xo, const Vector* Xc, const Matrix* A_oc, const CSC& r
   distributeSubstituted(Xo, level);
 }
 
-void nbd::svAocBk(Vector* Xc, const Vector* Xo, const Matrix* A_oc, const CSC& rels, int64_t level) {
+void svAocBk(Vector* Xc, const Vector* Xo, const Matrix* A_oc, const CSC& rels, int64_t level) {
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
   Vector* xlocal = &Xc[ibegin];
@@ -110,7 +108,7 @@ void nbd::svAocBk(Vector* Xc, const Vector* Xo, const Matrix* A_oc, const CSC& r
     }
 }
 
-void nbd::permuteAndMerge(char fwbk, Vector* px, Vector* nx, int64_t nlevel) {
+void permuteAndMerge(char fwbk, Vector* px, Vector* nx, int64_t nlevel) {
   int64_t plevel = nlevel + 1;
   int64_t nloc = 0;
   int64_t nend = (int64_t)1 << nlevel;
@@ -164,7 +162,7 @@ void nbd::permuteAndMerge(char fwbk, Vector* px, Vector* nx, int64_t nlevel) {
   }
 }
 
-void nbd::allocRightHandSides(RightHandSides st[], const Base base[], int64_t levels) {
+void allocRightHandSides(RightHandSides st[], const Base base[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = (int64_t)1 << i;
     contentLength(&nodes, i);
@@ -189,7 +187,7 @@ void nbd::allocRightHandSides(RightHandSides st[], const Base base[], int64_t le
   }
 }
 
-void nbd::deallocRightHandSides(RightHandSides* st, int64_t levels) {
+void deallocRightHandSides(RightHandSides* st, int64_t levels) {
   for (int i = 0; i <= levels; i++) {
     int64_t nodes = st[i].Xlen;
     for (int64_t n = 0; n < nodes; n++) {
@@ -205,7 +203,7 @@ void nbd::deallocRightHandSides(RightHandSides* st, int64_t levels) {
   }
 }
 
-void nbd::RightHandSides_mem(int64_t* bytes, const RightHandSides* st, int64_t levels) {
+void RightHandSides_mem(int64_t* bytes, const RightHandSides* st, int64_t levels) {
   int64_t count = 0;
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = st[i].Xlen;
@@ -219,7 +217,7 @@ void nbd::RightHandSides_mem(int64_t* bytes, const RightHandSides* st, int64_t l
   *bytes = count;
 }
 
-void nbd::solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Vector* X, int64_t levels) {
+void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Vector* X, int64_t levels) {
   int64_t ibegin = 0;
   int64_t iend = (int64_t)1 << levels;
   selfLocalRange(&ibegin, &iend, levels);
@@ -250,12 +248,12 @@ void nbd::solveA(RightHandSides st[], const Node A[], const Base B[], const CSC 
   }
 }
 
-void nbd::solveSpDense(RightHandSides st[], const SpDense& sp, const Vector* X) {
+void solveSpDense(RightHandSides st[], const SpDense& sp, const Vector* X) {
   allocRightHandSides(st, &sp.Basis[0], sp.Levels);
   solveA(st, &sp.D[0], &sp.Basis[0], &sp.Rels[0], X, sp.Levels);
 }
 
-void nbd::solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64_t level) {
+void solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64_t level) {
   int64_t ibegin = 0;
   int64_t iend = (int64_t)1 << level;
   selfLocalRange(&ibegin, &iend, level);

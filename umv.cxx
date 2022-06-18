@@ -1,10 +1,8 @@
 
-#include "umv.hxx"
-#include "dist.hxx"
+#include "umv.h"
+#include "dist.h"
 
-using namespace nbd;
-
-void nbd::splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, const Matrix* V, int64_t level) {
+void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, const Matrix* V, int64_t level) {
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
   const Matrix* vlocal = &V[ibegin];
@@ -20,7 +18,7 @@ void nbd::splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* 
   }
 }
 
-void nbd::splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, const Matrix* V, int64_t level) {
+void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, const Matrix* V, int64_t level) {
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
   const Matrix* vlocal = &V[ibegin];
@@ -36,7 +34,7 @@ void nbd::splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* 
   }
 }
 
-void nbd::factorAcc(Matrix* A_cc, const CSC& rels) {
+void factorAcc(Matrix* A_cc, const CSC& rels) {
   int64_t lbegin = rels.CBGN;
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
@@ -53,7 +51,7 @@ void nbd::factorAcc(Matrix* A_cc, const CSC& rels) {
   }
 }
 
-void nbd::factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels) {
+void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels) {
   int64_t lbegin = rels.CBGN;
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
@@ -65,7 +63,7 @@ void nbd::factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels) {
   }
 }
 
-void nbd::schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels) {
+void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels) {
   int64_t lbegin = rels.CBGN;
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
@@ -78,14 +76,15 @@ void nbd::schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels) {
 }
 
 
-void nbd::allocNodes(Node* nodes, const CSC rels[], int64_t levels) {
+void allocNodes(Node* nodes, const CSC rels[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t nnz = rels[i].NNZ_NEAR;
+    int64_t n_i = rels[i].N;
+    int64_t nnz = rels[i].COLS_NEAR[n_i];
     nodes[i].A.resize(nnz);
     nodes[i].A_cc.resize(nnz);
     nodes[i].A_oc.resize(nnz);
     nodes[i].A_oo.resize(nnz);
-    int64_t nnz_f = rels[i].NNZ_FAR;
+    int64_t nnz_f = rels[i].COLS_FAR[n_i];
     nodes[i].S.resize(nnz_f);
     nodes[i].S_oo.resize(nnz_f);
     nodes[i].lenA = nnz;
@@ -93,7 +92,7 @@ void nbd::allocNodes(Node* nodes, const CSC rels[], int64_t levels) {
   }
 }
 
-void nbd::deallocNode(Node* node, int64_t levels) {
+void deallocNode(Node* node, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nnz = node[i].lenA;
     for (int64_t n = 0; n < nnz; n++) {
@@ -120,7 +119,7 @@ void nbd::deallocNode(Node* node, int64_t levels) {
   }
 }
 
-void nbd::node_mem(int64_t* bytes, const Node* node, int64_t levels) {
+void node_mem(int64_t* bytes, const Node* node, int64_t levels) {
   int64_t count = 0;
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nnz = node[i].lenA;
@@ -142,7 +141,7 @@ void nbd::node_mem(int64_t* bytes, const Node* node, int64_t levels) {
   *bytes = count;
 }
 
-void nbd::allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level) {
+void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level) {
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
 
@@ -163,7 +162,7 @@ void nbd::allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level
   }
 }
 
-void nbd::allocS(Matrix* S, const CSC& rels, const int64_t diml[], int64_t level) {
+void allocS(Matrix* S, const CSC& rels, const int64_t diml[], int64_t level) {
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
 
@@ -184,7 +183,7 @@ void nbd::allocS(Matrix* S, const CSC& rels, const int64_t diml[], int64_t level
   }
 }
 
-void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t diml[], int64_t level) {
+void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t diml[], int64_t level) {
   int64_t ibegin = 0, iend;
   selfLocalRange(&ibegin, &iend, level);
 
@@ -215,7 +214,7 @@ void nbd::allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const
   }
 }
 
-void nbd::factorNode(Node& n, const Base& basis, const CSC& rels, int64_t level) {
+void factorNode(Node& n, const Base& basis, const CSC& rels, int64_t level) {
   allocSubMatrices(n, rels, &basis.DIMS[0], &basis.DIML[0], level);
   splitA(n.A_cc.data(), rels, n.A.data(), basis.Uc.data(), basis.Uc.data(), level);
   splitA(n.A_oc.data(), rels, n.A.data(), basis.Uo.data(), basis.Uc.data(), level);
@@ -227,7 +226,7 @@ void nbd::factorNode(Node& n, const Base& basis, const CSC& rels, int64_t level)
   schurCmplm(n.A_oo.data(), n.A_oc.data(), rels);
 }
 
-void nbd::nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rels_low, int64_t nlevel) {
+void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rels_low, int64_t nlevel) {
   Matrix* Mup = Anext.A.data();
   const Matrix* Mlow = Aprev.A_oo.data();
   const Matrix* Slow = Aprev.S_oo.data();
@@ -313,7 +312,7 @@ void nbd::nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC
 }
 
 
-void nbd::factorA(Node A[], const Base B[], const CSC rels[], int64_t levels) {
+void factorA(Node A[], const Base B[], const CSC rels[], int64_t levels) {
   for (int64_t i = levels - 1; i >= 0; i--)
     allocA(A[i].A.data(), rels[i], B[i].DIMS.data(), i);
 
@@ -330,7 +329,7 @@ void nbd::factorA(Node A[], const Base B[], const CSC rels[], int64_t levels) {
   chol_decomp(&A[0].A[0]);
 }
 
-void nbd::allocSpDense(SpDense& sp, const Cell* cells, int64_t levels) {
+void allocSpDense(SpDense& sp, const Cell* cells, int64_t levels) {
   sp.Levels = levels;
   sp.D.resize(levels + 1);
   sp.Basis.resize(levels + 1);
@@ -341,7 +340,7 @@ void nbd::allocSpDense(SpDense& sp, const Cell* cells, int64_t levels) {
   allocBasis(sp.Basis.data(), levels);
 }
 
-void nbd::deallocSpDense(SpDense* sp) {
+void deallocSpDense(SpDense* sp) {
   int64_t level = sp->Levels;
   deallocBasis(&(sp->Basis)[0], level);
   deallocNode(&(sp->D)[0], level);
@@ -352,6 +351,6 @@ void nbd::deallocSpDense(SpDense* sp) {
   sp->Rels.clear();
 }
 
-void nbd::factorSpDense(SpDense& sp) {
+void factorSpDense(SpDense& sp) {
   factorA(&sp.D[0], &sp.Basis[0], &sp.Rels[0], sp.Levels);
 }
