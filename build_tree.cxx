@@ -16,11 +16,11 @@ int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   int64_t ncells = nleaves + nleaves - 1;
 
   Cell* root = &cells[0];
-  root->BODY = &bodies[0];
-  root->NBODY = nbodies;
+  root->BODY[0] = 0;
+  root->BODY[1] = nbodies;
   root->ZID = 0;
   root->LEVEL = 0;
-  get_bounds(root->BODY, root->NBODY, root->R, root->C);
+  get_bounds(bodies, nbodies, root->R, root->C);
 
   for (int64_t i = 0; i < ncells; i++) {
     Cell* ci = &cells[i];
@@ -33,8 +33,11 @@ int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
       if (ci->R[2] > maxR)
       { sdim = 2; maxR = ci->R[2]; }
 
-      sort_bodies(ci->BODY, ci->NBODY, sdim);
-      int64_t loc = ci->NBODY / 2;
+      int64_t i_begin = ci->BODY[0];
+      int64_t i_end = ci->BODY[1];
+      int64_t nbody_i = i_end - i_begin;
+      sort_bodies(&bodies[i_begin], nbody_i, sdim);
+      int64_t loc = i_begin + nbody_i / 2;
 
       Cell* c0 = &cells[(i << 1) + 1];
       Cell* c1 = &cells[(i << 1) + 2];
@@ -42,19 +45,19 @@ int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
       ci->NCHILD = 2;
 
       c0->SIBL = c1;
-      c0->BODY = ci->BODY;
-      c0->NBODY = loc;
+      c0->BODY[0] = i_begin;
+      c0->BODY[1] = loc;
       c0->ZID = (ci->ZID) << 1;
       c0->LEVEL = ci->LEVEL + 1;
 
       c1->SIBL = c0;
-      c1->BODY = ci->BODY + loc;
-      c1->NBODY = ci->NBODY - loc;
+      c1->BODY[0] = loc;
+      c1->BODY[1] = i_end;
       c1->ZID = ((ci->ZID) << 1) + 1;
       c1->LEVEL = ci->LEVEL + 1;
 
-      get_bounds(c0->BODY, c0->NBODY, c0->R, c0->C);
-      get_bounds(c1->BODY, c1->NBODY, c1->R, c1->C);
+      get_bounds(&bodies[i_begin], loc - i_begin, c0->R, c0->C);
+      get_bounds(&bodies[loc], i_end - loc, c1->R, c1->C);
     }
     else {
       ci->CHILD = NULL;
@@ -100,16 +103,16 @@ void buildTreeBuckets(Cell* cells, Body* bodies, const int64_t buckets[], int64_
     Cell* ci = &cells[ileaf + i];
     ci->CHILD = NULL;
     ci->NCHILD = 0;
-    ci->BODY = bodies + offset;
-    ci->NBODY = buckets[i];
+    ci->BODY[0] = offset;
+    ci->BODY[1] = offset + buckets[i];
     ci->SIBL = NULL;
     ci->ZID = i;
     ci->LEVEL = levels;
     ci->listNear.clear();
     ci->listFar.clear();
     ci->Multipole.clear();
-    get_bounds(ci->BODY, ci->NBODY, ci->R, ci->C);
-    offset = offset + ci->NBODY;
+    get_bounds(&bodies[offset], buckets[i], ci->R, ci->C);
+    offset = ci->BODY[1];
   }
 
   for (int64_t i = ileaf - 1; i >= 0; i--) {
@@ -118,15 +121,15 @@ void buildTreeBuckets(Cell* cells, Body* bodies, const int64_t buckets[], int64_
     Cell* c1 = &cells[(i << 1) + 2];
     ci->CHILD = c0;
     ci->NCHILD = 2;
-    ci->BODY = c0->BODY;
-    ci->NBODY = c0->NBODY + c1->NBODY;
+    ci->BODY[0] = c0->BODY[0];
+    ci->BODY[1] = c1->BODY[1];
     ci->SIBL = NULL;
     ci->ZID = (c0->ZID) >> 1;
     ci->LEVEL = c0->LEVEL - 1;
     ci->listNear.clear();
     ci->listFar.clear();
     ci->Multipole.clear();
-    get_bounds(ci->BODY, ci->NBODY, ci->R, ci->C);
+    get_bounds(&bodies[ci->BODY[0]], ci->BODY[1] - ci->BODY[0], ci->R, ci->C);
     c0->SIBL = c1;
     c1->SIBL = c0;
   }
@@ -140,16 +143,21 @@ void getList(Cell* Ci, Cell* Cj, double theta) {
     for (Cell* cj = Cj->CHILD; cj != Cj->CHILD + Cj->NCHILD; cj++)
       getList(Ci, cj, theta);
   else {
-    double dC = 0.;
-    double dRi = 0.;
-    double dRj = 0.;
-    for (int64_t d = 0; d < 3; d++) {
-      double diff = Ci->C[d] - Cj->C[d];
-      dC = dC + diff * diff;
-      dRi = dRi + Ci->R[d] * Ci->R[d];
-      dRj = dRj + Cj->R[d] * Cj->R[d];
-    }
-    double dR = (dRi + dRj) * theta;
+    double dCi[3], dRi[3], dRj[3];
+    dCi[0] = Ci->C[0] - Cj->C[0];
+    dCi[1] = Ci->C[1] - Cj->C[1];
+    dCi[2] = Ci->C[2] - Cj->C[2];
+
+    dRi[0] = Ci->R[0] * Ci->R[0];
+    dRi[1] = Ci->R[1] * Ci->R[1];
+    dRi[2] = Ci->R[2] * Ci->R[2];
+
+    dRj[0] = Cj->R[0] * Cj->R[0];
+    dRj[1] = Cj->R[1] * Cj->R[1];
+    dRj[2] = Cj->R[2] * Cj->R[2];
+
+    double dC = dCi[0] * dCi[0] + dCi[1] * dCi[1] + dCi[2] * dCi[2];
+    double dR = (dRi[0] + dRi[1] + dRi[2] + dRj[0] + dRj[1] + dRj[2]) * theta;
 
     if (dC > dR)
       Ci->listFar.push_back(Cj);
@@ -278,18 +286,17 @@ void traverse(Cell* cells, int64_t levels, int64_t theta) {
   }
 }
 
-int64_t remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies) {
+int64_t remoteBodies(int64_t* remote, int64_t size, const Cell& cell, int64_t nbodies) {
   int64_t avail = nbodies;
   int64_t len = cell.listNear.size();
   std::vector<int64_t> offsets(len);
   std::vector<int64_t> lens(len);
 
-  const Body* begin = &bodies[0];
   for (int64_t i = 0; i < len; i++) {
     const Cell* c = cell.listNear[i];
-    avail = avail - c->NBODY;
-    offsets[i] = c->BODY - begin;
-    lens[i] = c->NBODY;
+    offsets[i] = c->BODY[0];
+    lens[i] = c->BODY[1] - c->BODY[0];
+    avail = avail - lens[i];
   }
 
   size = size > avail ? avail : size;
@@ -299,29 +306,24 @@ int64_t remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* b
     for (int64_t j = 0; j < len; j++)
       if (loc >= offsets[j])
         loc = loc + lens[j];
-
-    remote[i].X[0] = bodies[loc].X[0];
-    remote[i].X[1] = bodies[loc].X[1];
-    remote[i].X[2] = bodies[loc].X[2];
-    remote[i].B = bodies[loc].B;
+    remote[i] = loc;
   }
   return size;
 }
 
-int64_t closeBodies(Body* remote, int64_t size, const Cell& cell) {
+int64_t closeBodies(int64_t* remote, int64_t size, const Cell& cell) {
   int64_t avail = 0;
   int64_t len = cell.listNear.size();
   std::vector<int64_t> offsets(len);
   std::vector<int64_t> lens(len);
 
   int64_t cpos = -1;
-  const Body* begin = cell.BODY;
   for (int64_t i = 0; i < len; i++) {
     const Cell* c = cell.listNear[i];
-    offsets[i] = c->BODY - begin;
-    lens[i] = c->NBODY;
+    offsets[i] = c->BODY[0];
+    lens[i] = c->BODY[1] - c->BODY[0];
     if (c != &cell)
-      avail = avail + c->NBODY;
+      avail = avail + lens[i];
     else
       cpos = i;
   }
@@ -340,10 +342,7 @@ int64_t closeBodies(Body* remote, int64_t size, const Cell& cell) {
         else
           loc = loc - lens[j];
       }
-    remote[i].X[0] = begin[loc].X[0];
-    remote[i].X[1] = begin[loc].X[1];
-    remote[i].X[2] = begin[loc].X[2];
-    remote[i].B = begin[loc].B;
+    remote[i] = loc;
   }
   return size;
 }
@@ -353,7 +352,7 @@ void collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
     int64_t count = 0;
     for (int64_t i = 0; i < cell.NCHILD; i++) {
       const Cell& c = cell.CHILD[i];
-      int64_t loc = c.BODY - cell.BODY;
+      int64_t loc = c.BODY[0] - cell.BODY[0];
       int64_t len = c.Multipole.size();
       for (int64_t n = 0; n < len; n++) {
         int64_t nloc = loc + c.Multipole[n];
@@ -363,7 +362,7 @@ void collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
     }
   }
   else {
-    int64_t len = cell.NBODY;
+    int64_t len = cell.BODY[1] - cell.BODY[0];
     std::iota(multipoles, multipoles + len, 0);
   }
 }
@@ -376,7 +375,7 @@ void childMultipoleSize(int64_t* size, const Cell& cell) {
     *size = s;
   }
   else
-    *size = cell.NBODY;
+    *size = cell.BODY[1] - cell.BODY[0];
 }
 
 
@@ -437,39 +436,43 @@ void relationsNear(CSC rels[], const Cell* cells, int64_t levels) {
   }
 }
 
-void evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const CSC& csc) {
+void evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc) {
   if (cell->NCHILD > 0)
     for (int64_t i = 0; i < cell->NCHILD; i++)
-      evaluateLeafNear(d, ef, cell->CHILD + i, csc);
+      evaluateLeafNear(d, ef, cell->CHILD + i, bodies, csc);
   else {
-    int64_t n = cell->ZID - csc.CBGN;
-    if (n >= 0 && n < csc.N) {
+    int64_t N = cell->ZID - csc.CBGN;
+    if (N >= 0 && N < csc.N) {
       int64_t len = cell->listNear.size();
-      int64_t off = csc.COLS_NEAR[n];
+      int64_t off = csc.COLS_NEAR[N];
       for (int64_t i = 0; i < len; i++) {
-        int64_t m = cell->listNear[i]->NBODY;
-        int64_t n = cell->NBODY;
+        int64_t i_begin = cell->listNear[i]->BODY[0];
+        int64_t j_begin = cell->BODY[0];
+        int64_t m = cell->listNear[i]->BODY[1] - i_begin;
+        int64_t n = cell->BODY[1] - j_begin;
         matrixCreate(&d[off + i], m, n);
-        gen_matrix(ef, m, n, cell->listNear[i]->BODY, cell->BODY, d[off + i].A, NULL, NULL);
+        gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], d[off + i].A, NULL, NULL);
       }
     }
   }
 }
 
-void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const CSC& csc, int64_t level) {
+void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level) {
   if (cell->LEVEL < level)
     for (int64_t i = 0; i < cell->NCHILD; i++)
-      evaluateFar(s, ef, cell->CHILD + i, csc, level);
+      evaluateFar(s, ef, cell->CHILD + i, bodies, csc, level);
   else {
-    int64_t n = cell->ZID - csc.CBGN;
-    if (n >= 0 && n < csc.N) {
+    int64_t N = cell->ZID - csc.CBGN;
+    if (N >= 0 && N < csc.N) {
       int64_t len = cell->listFar.size();
-      int64_t off = csc.COLS_FAR[n];
+      int64_t off = csc.COLS_FAR[N];
       for (int64_t i = 0; i < len; i++) {
+        int64_t i_begin = cell->listFar[i]->BODY[0];
+        int64_t j_begin = cell->BODY[0];
         int64_t m = cell->listFar[i]->Multipole.size();
         int64_t n = cell->Multipole.size();
         matrixCreate(&s[off + i], m, n);
-        gen_matrix(ef, m, n, cell->listFar[i]->BODY, cell->BODY, s[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
+        gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], s[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
       }
     }
   }
@@ -492,7 +495,7 @@ void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
 }
 
 
-void loadX(Vector* X, const Cell* cell, int64_t level) {
+void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
   contentLength(&xlen, level);
 
@@ -511,11 +514,13 @@ void loadX(Vector* X, const Cell* cell, int64_t level) {
     int64_t li = ci->ZID;
     iLocal(&li, ci->ZID, level);
     Vector& Xi = X[li];
-    vectorCreate(&Xi, ci->NBODY);
-    dims[li] = ci->NBODY;
+    int64_t ni = ci->BODY[1] - ci->BODY[0];
+    int64_t n_begin = ci->BODY[0];
+    vectorCreate(&Xi, ni);
+    dims[li] = ni;
 
-    for (int64_t n = 0; n < ci->NBODY; n++)
-      Xi.X[n] = ci->BODY[n].B;
+    for (int64_t n = 0; n < ni; n++)
+      Xi.X[n] = bodies[n + n_begin].B;
   }
 
   DistributeDims(&dims[0], level);
@@ -526,7 +531,7 @@ void loadX(Vector* X, const Cell* cell, int64_t level) {
   DistributeVectorsList(X, level);
 }
 
-void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, int64_t levels) {
+void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, const Body* bodies, int64_t levels) {
   int64_t len = 0, lenj = 0;
   std::vector<const Cell*> cells((int64_t)1 << levels);
   std::vector<const Cell*> cells_leaf((int64_t)1 << levels);
@@ -541,20 +546,22 @@ void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, int64_t levels
     int64_t li = ci->ZID;
     iLocal(&li, ci->ZID, levels);
     Vector& Bi = B[li];
-    vectorCreate(&Bi, ci->NBODY);
+    int64_t m = ci->BODY[1] - ci->BODY[0];
+    int64_t i_begin = ci->BODY[0];
+    vectorCreate(&Bi, m);
     zeroVector(&Bi);
 
     for (int64_t j = 0; j < lenj; j++) {
       Vector X;
-      int64_t m = ci->NBODY;
-      int64_t n = cells_leaf[j]->NBODY;
+      int64_t n = cells_leaf[j]->BODY[1] - cells_leaf[j]->BODY[0];
+      int64_t j_begin = cells_leaf[j]->BODY[0];
       vectorCreate(&X, n);
       for (int64_t k = 0; k < n; k++)
-        X.X[k] = cells_leaf[j]->BODY[k].B;
+        X.X[k] = bodies[k + j_begin].B;
       
       Matrix Aij;
       matrixCreate(&Aij, m, n);
-      gen_matrix(ef, m, n, ci->BODY, cells_leaf[j]->BODY, Aij.A, NULL, NULL);
+      gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], Aij.A, NULL, NULL);
       mvec('N', &Aij, &X, &Bi, 1., 1.);
       matrixDestroy(&Aij);
       vectorDestroy(&X);

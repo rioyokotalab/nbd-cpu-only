@@ -24,11 +24,11 @@ find_package(OpenMP REQUIRED)
 add_library(nbd STATIC 
   kernel.c kernel.h
   linalg.c linalg.h
-  build_tree.cxx build_tree.hxx
-  basis.cxx basis.hxx
-  umv.cxx umv.hxx
-  solver.cxx solver.hxx
-  dist.cxx dist.hxx
+  build_tree.cxx build_tree.h
+  basis.cxx basis.h
+  umv.cxx umv.h
+  solver.cxx solver.h
+  dist.cxx dist.h
 )
 target_include_directories(nbd PRIVATE "./")
 target_compile_options(nbd PRIVATE "-DUSE_MKL")

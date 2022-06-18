@@ -11,10 +11,9 @@ extern "C" {
 
 struct Cell {
   int64_t NCHILD;
-  int64_t NBODY;
+  int64_t BODY[2];
   Cell* CHILD;
   Cell* SIBL;
-  Body* BODY;
   double R[3];
   double C[3];
   int64_t ZID;
@@ -53,9 +52,9 @@ Cell* findLocalAtLevelModify(Cell* cell, int64_t level);
 
 void traverse(Cell* cells, int64_t levels, int64_t theta);
 
-int64_t remoteBodies(Body* remote, int64_t size, const Cell& cell, const Body* bodies, int64_t nbodies);
+int64_t remoteBodies(int64_t* remote, int64_t size, const Cell& cell, int64_t nbodies);
 
-int64_t closeBodies(Body* remote, int64_t size, const Cell& cell);
+int64_t closeBodies(int64_t* remote, int64_t size, const Cell& cell);
 
 void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
 
@@ -63,15 +62,15 @@ void childMultipoleSize(int64_t* size, const Cell& cell);
 
 void relationsNear(CSC rels[], const Cell* cells, int64_t levels);
 
-void evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const CSC& csc);
+void evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc);
 
-void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const CSC& csc, int64_t level);
+void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level);
 
 void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
-void loadX(Vector* X, const Cell* cell, int64_t level);
+void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level);
 
-void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, int64_t levels);
+void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, const Body* bodies, int64_t levels);
 
 #ifdef __cplusplus
 }

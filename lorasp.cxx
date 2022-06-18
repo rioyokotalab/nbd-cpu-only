@@ -52,9 +52,9 @@ int main(int argc, char* argv[]) {
 
   orth_base_all(&sp.Basis[0], levels);
 
-  evaluateLeafNear(sp.D[levels].A.data(), ef, &cell[0], sp.Rels[levels]);
+  evaluateLeafNear(sp.D[levels].A.data(), ef, &cell[0], body.data(), sp.Rels[levels]);
   for (int64_t i = 0; i <= levels; i++)
-    evaluateFar(sp.D[i].S.data(), ef, &cell[0], sp.Rels[i], i);
+    evaluateFar(sp.D[i].S.data(), ef, &cell[0], body.data(), sp.Rels[i], i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
@@ -65,11 +65,11 @@ int main(int argc, char* argv[]) {
   int64_t xlen = (int64_t)1 << levels;
   contentLength(&xlen, levels);
   std::vector<Vector> X(xlen), Xref(xlen);
-  loadX(X.data(), lcleaf, levels);
-  loadX(Xref.data(), lcleaf, levels);
+  loadX(X.data(), lcleaf, body.data(), levels);
+  loadX(Xref.data(), lcleaf, body.data(), levels);
 
   std::vector<Vector> B(xlen);
-  h2MatVecReference(B.data(), ef, &cell[0], levels);
+  h2MatVecReference(B.data(), ef, &cell[0], body.data(), levels);
 
   std::vector<RightHandSides> rhs(levels + 1);
 

@@ -1,11 +1,15 @@
 
 #pragma once
 
-#include "linalg.h"
+#include "stddef.h"
+#include "stdint.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct Vector;
+struct Matrix;
 
 void initComm(int* argc, char** argv[]);
 

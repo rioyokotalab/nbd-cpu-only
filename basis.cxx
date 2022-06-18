@@ -55,9 +55,9 @@ void evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, i
   childMultipoleSize(&m, *cell);
 
   if (m > 0) {
-    std::vector<Body> remote(sp_pts);
-    std::vector<Body> close(sp_pts);
-    int64_t n1 = remoteBodies(remote.data(), sp_pts, *cell, bodies, nbodies);
+    std::vector<int64_t> remote(sp_pts);
+    std::vector<int64_t> close(sp_pts);
+    int64_t n1 = remoteBodies(remote.data(), sp_pts, *cell, nbodies);
     int64_t n2 = closeBodies(close.data(), sp_pts, *cell);
 
     std::vector<int64_t> cellm(m);
@@ -70,14 +70,14 @@ void evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, i
 
     if (n1 > 0) {
       matrixCreate(&work_a, m, n1);
-      gen_matrix(ef, m, n1, cell->BODY, remote.data(), work_a.A, cellm.data(), NULL);
+      gen_matrix(ef, m, n1, &bodies[cell->BODY[0]], bodies, work_a.A, cellm.data(), remote.data());
       cpyMatToMat(m, n1, &work_a, &work_s, 0, 0, 0, 0);
     }
 
     if (n2 > 0) {
       matrixCreate(&work_b, m, n2);
       matrixCreate(&work_c, m, m);
-      gen_matrix(ef, m, n2, cell->BODY, close.data(), work_b.A, cellm.data(), NULL);
+      gen_matrix(ef, m, n2, &bodies[cell->BODY[0]], bodies, work_b.A, cellm.data(), close.data());
       mmult('N', 'T', &work_b, &work_b, &work_c, 1., 0.);
       if (n1 > 0)
         normalizeA(&work_c, &work_a);
