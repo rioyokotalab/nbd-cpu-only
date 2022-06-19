@@ -151,7 +151,7 @@ void node_mem(int64_t* bytes, const Node* node, int64_t levels) {
 }
 
 void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level) {
-  int64_t ibegin = 0, iend;
+  int64_t ibegin = 0, iend = 0;
   selfLocalRange(&ibegin, &iend, level);
 
   for (int64_t j = 0; j < rels.N; j++) {
@@ -171,29 +171,8 @@ void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level) {
   }
 }
 
-void allocS(Matrix* S, const CSC& rels, const int64_t diml[], int64_t level) {
-  int64_t ibegin = 0, iend;
-  selfLocalRange(&ibegin, &iend, level);
-
-  for (int64_t j = 0; j < rels.N; j++) {
-    int64_t box_j = ibegin + j;
-    int64_t n_j = diml[box_j];
-
-    for (int64_t ij = rels.COL_INDEX[j]; ij < rels.COL_INDEX[j + 1]; ij++) {
-      int64_t i = rels.ROW_INDEX[ij];
-      int64_t box_i = i;
-      iLocal(&box_i, i, level);
-      int64_t n_i = diml[box_i];
-
-      Matrix& S_ij = S[ij];
-      matrixCreate(&S_ij, n_i, n_j);
-      zeroMatrix(&S_ij);
-    }
-  }
-}
-
 void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t diml[], int64_t level) {
-  int64_t ibegin = 0, iend;
+  int64_t ibegin = 0, iend = 0;
   selfLocalRange(&ibegin, &iend, level);
 
   for (int64_t j = 0; j < rels.N; j++) {
@@ -217,7 +196,7 @@ void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int6
 
 void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level) {
   allocSubMatrices(n, rels_near, &basis.DIMS[0], &basis.DIML[0], level);
-  allocS(n.S_oo.data(), rels_far, &basis.DIML[0], level);
+  allocA(n.S_oo.data(), rels_far, &basis.DIML[0], level);
 
   splitA(n.A_cc.data(), rels_near, n.A.data(), basis.Uc.data(), basis.Uc.data(), level);
   splitA(n.A_oc.data(), rels_near, n.A.data(), basis.Uo.data(), basis.Uc.data(), level);

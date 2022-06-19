@@ -371,7 +371,6 @@ void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
 
   for (int64_t i = 0; i <= levels; i++) {
     int64_t mpi_boxes = i > mpi_levels ? (int64_t)1 << (i - mpi_levels) : 1;
-    int64_t mpi_dups = i < mpi_levels ? (mpi_levels - i) : 0;
     CSC& csc = rels[i];
 
     csc.M = (int64_t)1 << i;

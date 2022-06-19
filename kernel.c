@@ -6,6 +6,10 @@
 #include "math.h"
 #include "inttypes.h"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 double _singularity = 1.e-8;
 double _alpha = 1.;
 
