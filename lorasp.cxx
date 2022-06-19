@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
   loadX(Xref.data(), cell.data(), body.data(), levels);
 
   std::vector<Vector> B(xlen);
-  h2MatVecReference(B.data(), ef, &cell[0], body.data(), Nbody, levels);
+  h2MatVecReference(B.data(), ef, &cell[0], body.data(), levels);
 
   std::vector<RightHandSides> rhs(levels + 1);
 

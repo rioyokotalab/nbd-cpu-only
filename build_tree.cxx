@@ -351,34 +351,39 @@ void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
 }
 
 void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level) {
-  int64_t ibegin = 0, iend = 0, lbegin = 0;
-  selfLocalRange(&ibegin, &iend, level);
-  iGlobal(&lbegin, ibegin, level);
+  int64_t len = (int64_t)1 << level;
+  const Cell* leaves = &cell[len - 1];
 
-  int64_t N = cell->ZID - lbegin;
-  if (cell->LEVEL < level)
-    for (int64_t i = 0; i < cell->NCHILD; i++)
-      evaluate(NoF, d, ef, cell->CHILD + i, bodies, csc, level);
-  else if ((NoF == 'N' || NoF == 'n') && N >= 0 && N < csc.N) {
-    int64_t len = cell->listNear.size();
-    int64_t off = csc.COL_INDEX[N];
-    for (int64_t i = 0; i < len; i++) {
-      int64_t i_begin = cell->listNear[i]->BODY[0];
-      int64_t j_begin = cell->BODY[0];
-      int64_t m = cell->listNear[i]->BODY[1] - i_begin;
-      int64_t n = cell->BODY[1] - j_begin;
-      matrixCreate(&d[off + i], m, n);
-      gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], d[off + i].A, NULL, NULL);
+  int64_t ibegin = 0, iend = 0;
+  selfLocalRange(&ibegin, &iend, level);
+  int64_t nodes = iend - ibegin;
+
+#pragma omp parallel for
+  for (int64_t i = 0; i < nodes; i++) {
+    int64_t gi = i + ibegin;
+    iGlobal(&gi, i + ibegin, level);
+    const Cell* ci = &leaves[gi];
+    int64_t off = csc.COL_INDEX[i];
+
+    if (NoF == 'N' || NoF == 'n') {
+      int64_t len = ci->listNear.size();
+      for (int64_t j = 0; j < len; j++) {
+        int64_t i_begin = ci->listNear[j]->BODY[0];
+        int64_t j_begin = ci->BODY[0];
+        int64_t m = ci->listNear[j]->BODY[1] - i_begin;
+        int64_t n = ci->BODY[1] - j_begin;
+        matrixCreate(&d[off + j], m, n);
+        gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], d[off + j].A, NULL, NULL);
+      }
     }
-  }
-  else if ((NoF == 'F' || NoF == 'f') && N >= 0 && N < csc.N) {
-    int64_t len = cell->listFar.size();
-    int64_t off = csc.COL_INDEX[N];
-    for (int64_t i = 0; i < len; i++) {
-      int64_t m = cell->listFar[i]->Multipole.size();
-      int64_t n = cell->Multipole.size();
-      matrixCreate(&d[off + i], m, n);
-      gen_matrix(ef, m, n, bodies, bodies, d[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
+    else if (NoF == 'F' || NoF == 'f') {
+      int64_t len = ci->listFar.size();
+      for (int64_t j = 0; j < len; j++) {
+        int64_t m = ci->listFar[j]->Multipole.size();
+        int64_t n = ci->Multipole.size();
+        matrixCreate(&d[off + j], m, n);
+        gen_matrix(ef, m, n, bodies, bodies, d[off + j].A, ci->listFar[j]->Multipole.data(), ci->Multipole.data());
+      }
     }
   }
 }
@@ -393,38 +398,45 @@ void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
 
 
 void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level) {
-  int64_t zi = cell->ZID;
-  int64_t li = zi;
-  iLocal(&li, zi, cell->LEVEL);
+  int64_t xlen = (int64_t)1 << level;
+  contentLength(&xlen, level);
+  int64_t len = (int64_t)1 << level;
+  const Cell* leaves = &cell[len - 1];
 
-  if (cell->LEVEL < level)
-    for (int64_t i = 0; i < cell->NCHILD; i++)
-      loadX(X, cell->CHILD + i, bodies, level);
-  else if (li >= 0) {
-    Vector& Xi = X[li];
-    int64_t nbegin = cell->BODY[0];
-    int64_t ni = cell->BODY[1] - nbegin;
+#pragma omp parallel for
+  for (int64_t i = 0; i < xlen; i++) {
+    int64_t gi = i;
+    iGlobal(&gi, i, level);
+    const Cell* ci = &leaves[gi];
+
+    Vector& Xi = X[i];
+    int64_t nbegin = ci->BODY[0];
+    int64_t ni = ci->BODY[1] - nbegin;
     vectorCreate(&Xi, ni);
     for (int64_t n = 0; n < ni; n++)
       Xi.X[n] = bodies[n + nbegin].B;
   }
 }
 
-void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t nbodies, int64_t level) {
-  int64_t zi = cell->ZID;
-  int64_t li = zi;
-  iLocal(&li, zi, cell->LEVEL);
+void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t level) {
+  int64_t nbodies = cell->BODY[1];
+  int64_t xlen = (int64_t)1 << level;
+  contentLength(&xlen, level);
+  int64_t len = (int64_t)1 << level;
+  const Cell* leaves = &cell[len - 1];
 
-  if (cell->LEVEL < level)
-    for (int64_t i = 0; i < cell->NCHILD; i++)
-      h2MatVecReference(B, ef, cell->CHILD + i, bodies, nbodies, level);
-  else if (li >= 0) {
-    Vector& Bi = B[li];
-    int64_t ibegin = cell->BODY[0];
-    int64_t m = cell->BODY[1] - ibegin;
+#pragma omp parallel for
+  for (int64_t i = 0; i < xlen; i++) {
+    int64_t gi = i;
+    iGlobal(&gi, i, level);
+    const Cell* ci = &leaves[gi];
+
+    Vector& Bi = B[i];
+    int64_t ibegin = ci->BODY[0];
+    int64_t m = ci->BODY[1] - ibegin;
     vectorCreate(&Bi, m);
 
-    int64_t block = 512;
+    int64_t block = 500;
     int64_t last = nbodies % block;
     if (last > 0) {
       Vector X;

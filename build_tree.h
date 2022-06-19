@@ -57,7 +57,7 @@ void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
 void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level);
 
-void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t nbodies, int64_t level);
+void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t level);
 
 #ifdef __cplusplus
 }
