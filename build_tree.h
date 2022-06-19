@@ -27,11 +27,8 @@ struct Cell {
 struct CSC {
   int64_t M;
   int64_t N;
-  int64_t CBGN;
-  std::vector<int64_t> COLS_NEAR;
-  std::vector<int64_t> ROWS_NEAR;
-  std::vector<int64_t> COLS_FAR;
-  std::vector<int64_t> ROWS_FAR;
+  std::vector<int64_t> COL_INDEX;
+  std::vector<int64_t> ROW_INDEX;
 };
 
 int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
@@ -60,13 +57,11 @@ void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
 
 void childMultipoleSize(int64_t* size, const Cell& cell);
 
-void relationsNear(CSC rels[], const Cell* cells, int64_t levels);
+void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels);
 
-void evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc);
+void evaluate(char NoF, Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level);
 
-void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level);
-
-void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j);
+void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
 void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level);
 

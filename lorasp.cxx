@@ -52,9 +52,9 @@ int main(int argc, char* argv[]) {
 
   orth_base_all(&sp.Basis[0], levels);
 
-  evaluateLeafNear(sp.D[levels].A.data(), ef, &cell[0], body.data(), sp.Rels[levels]);
+  evaluate('N', sp.D[levels].A.data(), ef, &cell[0], body.data(), sp.RelsNear[levels], levels);
   for (int64_t i = 0; i <= levels; i++)
-    evaluateFar(sp.D[i].S.data(), ef, &cell[0], body.data(), sp.Rels[i], i);
+    evaluate('F', sp.D[i].S.data(), ef, &cell[0], body.data(), sp.RelsFar[i], i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);

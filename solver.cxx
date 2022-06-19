@@ -32,12 +32,12 @@ void svAccFw(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
   Vector* xlocal = &Xc[ibegin];
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ('N', ii, rels, i + lbegin, i);
+    lookupIJ(ii, rels, i + lbegin, i);
     const Matrix& A_ii = A_cc[ii];
     mat_solve('F', &xlocal[i], &A_ii);
 
-    for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++) {
-      int64_t y = rels.ROWS_NEAR[yi];
+    for (int64_t yi = rels.COL_INDEX[i]; yi < rels.COL_INDEX[i + 1]; yi++) {
+      int64_t y = rels.ROW_INDEX[yi];
       const Matrix& A_yi = A_cc[yi];
       if (y > i + lbegin) {
         int64_t box_y = y;
@@ -58,8 +58,8 @@ void svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
 
   Vector* xlocal = &Xc[ibegin];
   for (int64_t i = rels.N - 1; i >= 0; i--) {
-    for (int64_t yi = rels.COLS_NEAR[i]; yi < rels.COLS_NEAR[i + 1]; yi++) {
-      int64_t y = rels.ROWS_NEAR[yi];
+    for (int64_t yi = rels.COL_INDEX[i]; yi < rels.COL_INDEX[i + 1]; yi++) {
+      int64_t y = rels.ROW_INDEX[yi];
       const Matrix& A_yi = A_cc[yi];
       if (y > i + lbegin) {
         int64_t box_y = y;
@@ -69,7 +69,7 @@ void svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
     }
 
     int64_t ii;
-    lookupIJ('N', ii, rels, i + lbegin, i);
+    lookupIJ(ii, rels, i + lbegin, i);
     const Matrix& A_ii = A_cc[ii];
     mat_solve('B', &xlocal[i], &A_ii);
   }
@@ -83,8 +83,8 @@ void svAocFw(Vector* Xo, const Vector* Xc, const Matrix* A_oc, const CSC& rels, 
   const Vector* xlocal = &Xc[ibegin];
 
   for (int64_t x = 0; x < rels.N; x++)
-    for (int64_t yx = rels.COLS_NEAR[x]; yx < rels.COLS_NEAR[x + 1]; yx++) {
-      int64_t y = rels.ROWS_NEAR[yx];
+    for (int64_t yx = rels.COL_INDEX[x]; yx < rels.COL_INDEX[x + 1]; yx++) {
+      int64_t y = rels.ROW_INDEX[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
       const Matrix& A_yx = A_oc[yx];
@@ -99,8 +99,8 @@ void svAocBk(Vector* Xc, const Vector* Xo, const Matrix* A_oc, const CSC& rels, 
   Vector* xlocal = &Xc[ibegin];
 
   for (int64_t x = 0; x < rels.N; x++)
-    for (int64_t yx = rels.COLS_NEAR[x]; yx < rels.COLS_NEAR[x + 1]; yx++) {
-      int64_t y = rels.ROWS_NEAR[yx];
+    for (int64_t yx = rels.COL_INDEX[x]; yx < rels.COL_INDEX[x + 1]; yx++) {
+      int64_t y = rels.ROW_INDEX[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
       const Matrix& A_yx = A_oc[yx];
@@ -250,7 +250,7 @@ void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[
 
 void solveSpDense(RightHandSides st[], const SpDense& sp, const Vector* X) {
   allocRightHandSides(st, &sp.Basis[0], sp.Levels);
-  solveA(st, &sp.D[0], &sp.Basis[0], &sp.Rels[0], X, sp.Levels);
+  solveA(st, &sp.D[0], &sp.Basis[0], &sp.RelsNear[0], X, sp.Levels);
 }
 
 void solveRelErr(double* err_out, const Vector* X, const Vector* ref, int64_t level) {

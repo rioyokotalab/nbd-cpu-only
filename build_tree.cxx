@@ -364,7 +364,7 @@ void childMultipoleSize(int64_t* size, const Cell& cell) {
 }
 
 
-void relationsNear(CSC rels[], const Cell* cells, int64_t levels) {
+void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
   int64_t mpi_rank;
   int64_t mpi_levels;
   commRank(&mpi_rank, &mpi_levels);
@@ -376,13 +376,9 @@ void relationsNear(CSC rels[], const Cell* cells, int64_t levels) {
 
     csc.M = (int64_t)1 << i;
     csc.N = mpi_boxes;
-    csc.COLS_NEAR.resize(mpi_boxes + 1);
-    csc.COLS_FAR.resize(mpi_boxes + 1);
-    std::fill(csc.COLS_NEAR.begin(), csc.COLS_NEAR.end(), 0);
-    std::fill(csc.COLS_FAR.begin(), csc.COLS_FAR.end(), 0);
-    csc.ROWS_NEAR.clear();
-    csc.ROWS_FAR.clear();
-    csc.CBGN = (mpi_rank >> mpi_dups) * mpi_boxes;
+    csc.COL_INDEX.resize(mpi_boxes + 1);
+    std::fill(csc.COL_INDEX.begin(), csc.COL_INDEX.end(), 0);
+    csc.ROW_INDEX.clear();
   }
 
   int64_t nleaves = (int64_t)1 << levels;
@@ -392,88 +388,76 @@ void relationsNear(CSC rels[], const Cell* cells, int64_t levels) {
     const Cell& c = cells[i];
     int64_t l = c.LEVEL;
     CSC& csc = rels[l];
-    int64_t n = c.ZID - csc.CBGN;
-    if (n >= 0 && n < csc.N) {
-      int64_t ent = c.listNear.size();
-      csc.COLS_NEAR[n] = ent;
-      for (int64_t j = 0; j < ent; j++)
-        csc.ROWS_NEAR.emplace_back((c.listNear[j])->ZID);
 
-      ent = c.listFar.size();
-      csc.COLS_FAR[n] = ent;
+    int64_t ibegin = 0, iend = 0, lbegin = 0;
+    selfLocalRange(&ibegin, &iend, l);
+    iGlobal(&lbegin, ibegin, l);
+
+    int64_t n = c.ZID - lbegin;
+    if ((NoF == 'N' || NoF == 'n') && n >= 0 && n < csc.N) {
+      int64_t ent = c.listNear.size();
+      csc.COL_INDEX[n] = ent;
       for (int64_t j = 0; j < ent; j++)
-        csc.ROWS_FAR.emplace_back((c.listFar[j])->ZID);
+        csc.ROW_INDEX.emplace_back((c.listNear[j])->ZID);
+    }
+    else if ((NoF == 'F' || NoF == 'f') && n >= 0 && n < csc.N) {
+      int64_t ent = c.listFar.size();
+      csc.COL_INDEX[n] = ent;
+      for (int64_t j = 0; j < ent; j++)
+        csc.ROW_INDEX.emplace_back((c.listFar[j])->ZID);
     }
   }
 
   for (int64_t i = 0; i <= levels; i++) {
     CSC& csc = rels[i];
-    int64_t count_n = 0;
-    int64_t count_f = 0;
+    int64_t count = 0;
     for (int64_t j = 0; j <= csc.N; j++) {
-      int64_t ent_n = csc.COLS_NEAR[j];
-      int64_t ent_f = csc.COLS_FAR[j];
-      csc.COLS_NEAR[j] = count_n;
-      csc.COLS_FAR[j] = count_f;
-      count_n = count_n + ent_n;
-      count_f = count_f + ent_f;
+      int64_t ent = csc.COL_INDEX[j];
+      csc.COL_INDEX[j] = count;
+      count = count + ent;
     }
   }
 }
 
-void evaluateLeafNear(Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc) {
-  if (cell->NCHILD > 0)
-    for (int64_t i = 0; i < cell->NCHILD; i++)
-      evaluateLeafNear(d, ef, cell->CHILD + i, bodies, csc);
-  else {
-    int64_t N = cell->ZID - csc.CBGN;
-    if (N >= 0 && N < csc.N) {
-      int64_t len = cell->listNear.size();
-      int64_t off = csc.COLS_NEAR[N];
-      for (int64_t i = 0; i < len; i++) {
-        int64_t i_begin = cell->listNear[i]->BODY[0];
-        int64_t j_begin = cell->BODY[0];
-        int64_t m = cell->listNear[i]->BODY[1] - i_begin;
-        int64_t n = cell->BODY[1] - j_begin;
-        matrixCreate(&d[off + i], m, n);
-        gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], d[off + i].A, NULL, NULL);
-      }
-    }
-  }
-}
+void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level) {
+  int64_t ibegin = 0, iend = 0, lbegin = 0;
+  selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&lbegin, ibegin, level);
 
-void evaluateFar(Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level) {
+  int64_t N = cell->ZID - lbegin;
   if (cell->LEVEL < level)
     for (int64_t i = 0; i < cell->NCHILD; i++)
-      evaluateFar(s, ef, cell->CHILD + i, bodies, csc, level);
-  else {
-    int64_t N = cell->ZID - csc.CBGN;
-    if (N >= 0 && N < csc.N) {
-      int64_t len = cell->listFar.size();
-      int64_t off = csc.COLS_FAR[N];
-      for (int64_t i = 0; i < len; i++) {
-        int64_t m = cell->listFar[i]->Multipole.size();
-        int64_t n = cell->Multipole.size();
-        matrixCreate(&s[off + i], m, n);
-        gen_matrix(ef, m, n, bodies, bodies, s[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
-      }
+      evaluate(NoF, d, ef, cell->CHILD + i, bodies, csc, level);
+  else if ((NoF == 'N' || NoF == 'n') && N >= 0 && N < csc.N) {
+    int64_t len = cell->listNear.size();
+    int64_t off = csc.COL_INDEX[N];
+    for (int64_t i = 0; i < len; i++) {
+      int64_t i_begin = cell->listNear[i]->BODY[0];
+      int64_t j_begin = cell->BODY[0];
+      int64_t m = cell->listNear[i]->BODY[1] - i_begin;
+      int64_t n = cell->BODY[1] - j_begin;
+      matrixCreate(&d[off + i], m, n);
+      gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], d[off + i].A, NULL, NULL);
+    }
+  }
+  else if ((NoF == 'F' || NoF == 'f') && N >= 0 && N < csc.N) {
+    int64_t len = cell->listFar.size();
+    int64_t off = csc.COL_INDEX[N];
+    for (int64_t i = 0; i < len; i++) {
+      int64_t m = cell->listFar[i]->Multipole.size();
+      int64_t n = cell->Multipole.size();
+      matrixCreate(&d[off + i], m, n);
+      gen_matrix(ef, m, n, bodies, bodies, d[off + i].A, cell->listFar[i]->Multipole.data(), cell->Multipole.data());
     }
   }
 }
 
-void lookupIJ(char NoF, int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
+void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
   if (j < 0 || j >= rels.N)
   { ij = -1; return; }
-  if (NoF == 'N' || NoF == 'n') {
-    int64_t k = std::distance(rels.ROWS_NEAR.data(), 
-      std::find(rels.ROWS_NEAR.data() + rels.COLS_NEAR[j], rels.ROWS_NEAR.data() + rels.COLS_NEAR[j + 1], i));
-    ij = (k < rels.COLS_NEAR[j + 1]) ? k : -1;
-  }
-  else if (NoF == 'F' || NoF == 'f') {
-    int64_t k = std::distance(rels.ROWS_FAR.data(), 
-      std::find(rels.ROWS_FAR.data() + rels.COLS_FAR[j], rels.ROWS_FAR.data() + rels.COLS_FAR[j + 1], i));
-    ij = (k < rels.COLS_FAR[j + 1]) ? k : -1;
-  }
+  int64_t k = std::distance(rels.ROW_INDEX.data(), 
+    std::find(rels.ROW_INDEX.data() + rels.COL_INDEX[j], rels.ROW_INDEX.data() + rels.COL_INDEX[j + 1], i));
+  ij = (k < rels.COL_INDEX[j + 1]) ? k : -1;
 }
 
 
