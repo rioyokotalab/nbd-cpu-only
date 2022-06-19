@@ -87,7 +87,7 @@ void evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, i
     }
 
     if (n1 > 0)
-      matrixCreate(&work_a, 0, 0);
+      matrixDestroy(&work_a);
 
     if (len_s > 0) {
       int64_t rank = mrank > 0 ? std::min(mrank, m) : m;

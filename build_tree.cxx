@@ -11,7 +11,7 @@
 #include <iostream>
 #include <fstream>
 
-int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
+void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = nleaves + nleaves - 1;
 
@@ -64,8 +64,6 @@ int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
       ci->NCHILD = 0;
     }
   }
-
-  return levels;
 }
 
 
@@ -396,14 +394,18 @@ void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
     if ((NoF == 'N' || NoF == 'n') && n >= 0 && n < csc.N) {
       int64_t ent = c.listNear.size();
       csc.COL_INDEX[n] = ent;
-      for (int64_t j = 0; j < ent; j++)
-        csc.ROW_INDEX.emplace_back((c.listNear[j])->ZID);
+      for (int64_t j = 0; j < ent; j++) {
+        int64_t zi = c.listNear[j]->ZID;
+        csc.ROW_INDEX.emplace_back(zi);
+      }
     }
     else if ((NoF == 'F' || NoF == 'f') && n >= 0 && n < csc.N) {
       int64_t ent = c.listFar.size();
       csc.COL_INDEX[n] = ent;
-      for (int64_t j = 0; j < ent; j++)
-        csc.ROW_INDEX.emplace_back((c.listFar[j])->ZID);
+      for (int64_t j = 0; j < ent; j++) {
+        int64_t zi = c.listFar[j]->ZID;
+        csc.ROW_INDEX.emplace_back(zi);
+      }
     }
   }
 
@@ -461,72 +463,64 @@ void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
 
 
 void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level) {
-  int64_t xlen = (int64_t)1 << level;
-  contentLength(&xlen, level);
+  int64_t zi = cell->ZID;
+  int64_t li = zi;
+  iLocal(&li, zi, cell->LEVEL);
 
-  int64_t ibegin = 0;
-  int64_t iend = (int64_t)1 << level;
-  selfLocalRange(&ibegin, &iend, level);
-  int64_t nodes = iend - ibegin;
-
-  int64_t len = 0;
-  std::vector<const Cell*> cells(nodes);
-  std::vector<int64_t> dims(xlen);
-  findCellsAtLevel(&cells[0], &len, cell, level);
-
-  for (int64_t i = 0; i < len; i++) {
-    const Cell* ci = cells[i];
-    int64_t li = ci->ZID;
-    iLocal(&li, ci->ZID, level);
+  if (cell->LEVEL < level)
+    for (int64_t i = 0; i < cell->NCHILD; i++)
+      loadX(X, cell->CHILD + i, bodies, level);
+  else if (li >= 0) {
     Vector& Xi = X[li];
-    int64_t ni = ci->BODY[1] - ci->BODY[0];
-    int64_t n_begin = ci->BODY[0];
+    int64_t nbegin = cell->BODY[0];
+    int64_t ni = cell->BODY[1] - nbegin;
     vectorCreate(&Xi, ni);
-    dims[li] = ni;
-
     for (int64_t n = 0; n < ni; n++)
-      Xi.X[n] = bodies[n + n_begin].B;
+      Xi.X[n] = bodies[n + nbegin].B;
   }
-
-  DistributeDims(&dims[0], level);
-
-  for (int64_t i = 0; i < xlen; i++)
-    if (X[i].N != dims[i])
-      vectorCreate(&X[i], dims[i]);
-  DistributeVectorsList(X, level);
 }
 
-void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, const Body* bodies, int64_t levels) {
-  int64_t len = 0, lenj = 0;
-  std::vector<const Cell*> cells((int64_t)1 << levels);
-  std::vector<const Cell*> cells_leaf((int64_t)1 << levels);
+void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t nbodies, int64_t level) {
+  int64_t zi = cell->ZID;
+  int64_t li = zi;
+  iLocal(&li, zi, cell->LEVEL);
 
-  const Cell* local = findLocalAtLevel(root, levels);
-  findCellsAtLevel(&cells[0], &len, local, levels);
-  findCellsAtLevel(&cells_leaf[0], &lenj, root, levels);
-
-#pragma omp parallel for
-  for (int64_t i = 0; i < len; i++) {
-    const Cell* ci = cells[i];
-    int64_t li = ci->ZID;
-    iLocal(&li, ci->ZID, levels);
+  if (cell->LEVEL < level)
+    for (int64_t i = 0; i < cell->NCHILD; i++)
+      h2MatVecReference(B, ef, cell->CHILD + i, bodies, nbodies, level);
+  else if (li >= 0) {
     Vector& Bi = B[li];
-    int64_t m = ci->BODY[1] - ci->BODY[0];
-    int64_t i_begin = ci->BODY[0];
+    int64_t ibegin = cell->BODY[0];
+    int64_t m = cell->BODY[1] - ibegin;
     vectorCreate(&Bi, m);
-    zeroVector(&Bi);
 
-    for (int64_t j = 0; j < lenj; j++) {
+    int64_t block = 512;
+    int64_t last = nbodies % block;
+    if (last > 0) {
       Vector X;
-      int64_t n = cells_leaf[j]->BODY[1] - cells_leaf[j]->BODY[0];
-      int64_t j_begin = cells_leaf[j]->BODY[0];
-      vectorCreate(&X, n);
-      for (int64_t k = 0; k < n; k++)
-        X.X[k] = bodies[k + j_begin].B;
+      vectorCreate(&X, last);
+      for (int64_t k = 0; k < last; k++)
+        X.X[k] = bodies[k].B;
       
       Matrix Aij;
-      matrixCreate(&Aij, m, n);
-      gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], Aij.A, NULL, NULL);
+      matrixCreate(&Aij, m, last);
+      gen_matrix(ef, m, last, &bodies[ibegin], bodies, Aij.A, NULL, NULL);
+      mvec('N', &Aij, &X, &Bi, 1., 0.);
+      matrixDestroy(&Aij);
+      vectorDestroy(&X);
+    }
+    else
+      zeroVector(&Bi);
+
+    for (int64_t j = last; j < nbodies; j += block) {
+      Vector X;
+      vectorCreate(&X, block);
+      for (int64_t k = 0; k < block; k++)
+        X.X[k] = bodies[k + j].B;
+      
+      Matrix Aij;
+      matrixCreate(&Aij, m, block);
+      gen_matrix(ef, m, block, &bodies[ibegin], &bodies[j], Aij.A, NULL, NULL);
       mvec('N', &Aij, &X, &Bi, 1., 1.);
       matrixDestroy(&Aij);
       vectorDestroy(&X);

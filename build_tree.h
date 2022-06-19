@@ -31,7 +31,7 @@ struct CSC {
   std::vector<int64_t> ROW_INDEX;
 };
 
-int64_t buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
+void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
 
 void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim);
 
@@ -65,7 +65,7 @@ void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j);
 
 void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level);
 
-void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* root, const Body* bodies, int64_t levels);
+void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t nbodies, int64_t level);
 
 #ifdef __cplusplus
 }
