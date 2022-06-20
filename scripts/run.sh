@@ -34,4 +34,6 @@ python3 $SCRIPT/plot_serial.py $LOGS/serial.csv $LOGS/factor_serial.png
 python3 $SCRIPT/plot_strong.py $LOGS/strong.csv $LOGS/factor_strong.png
 python3 $SCRIPT/plot_memory.py $LOGS/serial.csv $LOGS/mem_serial.png
 python3 $SCRIPT/plot_memory.py $LOGS/strong.csv $LOGS/mem_strong.png
+python3 $SCRIPT/plot_comm.py $LOGS/strong.csv $LOGS/comm_strong.png
+
 echo Finish!
