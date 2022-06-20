@@ -45,10 +45,6 @@ int64_t remoteBodies(int64_t* remote, int64_t size, const Cell& cell, int64_t nb
 
 int64_t closeBodies(int64_t* remote, int64_t size, const Cell& cell);
 
-void collectChildMultipoles(const Cell& cell, int64_t multipoles[]);
-
-void childMultipoleSize(int64_t* size, const Cell& cell);
-
 void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels);
 
 void evaluate(char NoF, Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level);

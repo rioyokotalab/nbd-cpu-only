@@ -260,37 +260,6 @@ int64_t closeBodies(int64_t* remote, int64_t size, const Cell& cell) {
   return size;
 }
 
-void collectChildMultipoles(const Cell& cell, int64_t multipoles[]) {
-  if (cell.NCHILD > 0) {
-    int64_t count = 0;
-    for (int64_t i = 0; i < cell.NCHILD; i++) {
-      const Cell& c = cell.CHILD[i];
-      int64_t len = c.Multipole.size();
-      for (int64_t n = 0; n < len; n++) {
-        int64_t nloc = c.Multipole[n];
-        multipoles[count] = nloc;
-        count += 1;
-      }
-    }
-  }
-  else {
-    int64_t len = cell.BODY[1] - cell.BODY[0];
-    std::iota(multipoles, multipoles + len, cell.BODY[0]);
-  }
-}
-
-void childMultipoleSize(int64_t* size, const Cell& cell) {
-  if (cell.NCHILD > 0) {
-    int64_t s = 0;
-    for (int64_t i = 0; i < cell.NCHILD; i++)
-      s += cell.CHILD[i].Multipole.size();
-    *size = s;
-  }
-  else
-    *size = cell.BODY[1] - cell.BODY[0];
-}
-
-
 void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
   int64_t mpi_rank;
   int64_t mpi_levels;

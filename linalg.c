@@ -191,26 +191,13 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
     cblas_dscal(A->M, s.X[i], &(U->A)[i * A->M], 1);
   memcpy(A->A, U->A, sizeof(double) * A->M * rank);
 
-  int64_t* ipiv = (int64_t*)malloc(sizeof(int64_t) * (rank + A->M));
-  int64_t* rows = &ipiv[rank];
-  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, (long long int*)ipiv);
+  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, (long long int*)arows);
   if (info > 0)
     rank = info - 1;
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
 
-  memset(rows, 0xFF, sizeof(int64_t) * A->M);
-  for (int64_t i = 0; i < rank; i++) {
-    int64_t piv_i = ipiv[i] - 1;
-    int64_t row_piv = rows[piv_i];
-    int64_t row_i = rows[i];
-    rows[piv_i] = row_i == (int64_t)-1 ? i : row_i;
-    rows[i] = row_piv == (int64_t)-1 ? piv_i : row_piv;
-    arows[i] = rows[i];
-  }
-
   free(work);
-  free(ipiv);
 }
 
 void zeroMatrix(struct Matrix* A) {

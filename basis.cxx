@@ -2,6 +2,7 @@
 #include "basis.h"
 #include "dist.h"
 
+#include <numeric>
 #include <unordered_set>
 #include <iterator>
 
@@ -50,67 +51,58 @@ void basis_mem(int64_t* bytes, const Base* basis, int64_t levels) {
   *bytes = count;
 }
 
-void evaluateBasis(KerFunc_t ef, Matrix& Base, Cell* cell, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
-  int64_t m;
-  childMultipoleSize(&m, *cell);
+void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix& Base, int64_t m, int64_t n1, int64_t n2, 
+  int64_t cellm[], const int64_t remote[], const int64_t close[], const Body* bodies) {
+  Matrix work_a, work_b, work_c, work_s;
+  int64_t len_s = n1 + (n2 > 0 ? m : 0);
+  if (len_s > 0)
+    matrixCreate(&work_s, m, len_s);
 
-  if (m > 0) {
-    std::vector<int64_t> remote(sp_pts);
-    std::vector<int64_t> close(sp_pts);
-    int64_t n1 = remoteBodies(remote.data(), sp_pts, *cell, nbodies);
-    int64_t n2 = closeBodies(close.data(), sp_pts, *cell);
+  if (n1 > 0) {
+    matrixCreate(&work_a, m, n1);
+    gen_matrix(ef, m, n1, bodies, bodies, work_a.A, cellm, remote);
+    cpyMatToMat(m, n1, &work_a, &work_s, 0, 0, 0, 0);
+  }
 
-    std::vector<int64_t> cellm(m);
-    collectChildMultipoles(*cell, cellm.data());
-    
-    Matrix work_a, work_b, work_c, work_s;
-    int64_t len_s = n1 + (n2 > 0 ? m : 0);
-    if (len_s > 0)
-      matrixCreate(&work_s, m, len_s);
-
-    if (n1 > 0) {
-      matrixCreate(&work_a, m, n1);
-      gen_matrix(ef, m, n1, bodies, bodies, work_a.A, cellm.data(), remote.data());
-      cpyMatToMat(m, n1, &work_a, &work_s, 0, 0, 0, 0);
-    }
-
-    if (n2 > 0) {
-      matrixCreate(&work_b, m, n2);
-      matrixCreate(&work_c, m, m);
-      gen_matrix(ef, m, n2, bodies, bodies, work_b.A, cellm.data(), close.data());
-      mmult('N', 'T', &work_b, &work_b, &work_c, 1., 0.);
-      if (n1 > 0)
-        normalizeA(&work_c, &work_a);
-      cpyMatToMat(m, m, &work_c, &work_s, 0, 0, 0, n1);
-      matrixDestroy(&work_b);
-      matrixDestroy(&work_c);
-    }
-
+  if (n2 > 0) {
+    matrixCreate(&work_b, m, n2);
+    matrixCreate(&work_c, m, m);
+    gen_matrix(ef, m, n2, bodies, bodies, work_b.A, cellm, close);
+    mmult('N', 'T', &work_b, &work_b, &work_c, 1., 0.);
     if (n1 > 0)
-      matrixDestroy(&work_a);
+      normalizeA(&work_c, &work_a);
+    cpyMatToMat(m, m, &work_c, &work_s, 0, 0, 0, n1);
+    matrixDestroy(&work_b);
+    matrixDestroy(&work_c);
+  }
 
-    if (len_s > 0) {
-      int64_t rank = mrank > 0 ? std::min(mrank, m) : m;
-      Matrix work_u;
-      std::vector<int64_t> pa(rank);
-      matrixCreate(&work_u, m, rank);
+  if (n1 > 0)
+    matrixDestroy(&work_a);
 
-      int64_t iters = rank;
-      lraID(epi, &work_s, &work_u, pa.data(), &iters);
+  if (len_s > 0) {
+    int64_t mrank = *rank;
+    int64_t n = mrank > 0 ? std::min(mrank, m) : m;
+    Matrix work_u;
+    std::vector<int64_t> pa(n);
+    matrixCreate(&work_u, m, n);
 
-      matrixCreate(&Base, m, iters);
-      cpyMatToMat(m, iters, &work_u, &Base, 0, 0, 0, 0);
-      matrixDestroy(&work_s);
-      matrixDestroy(&work_u);
+    int64_t iters = n;
+    lraID(epi, &work_s, &work_u, pa.data(), &iters);
 
-      int64_t len_m = cell->Multipole.size();
-      if (len_m != iters)
-        cell->Multipole.resize(iters);
-      for (int64_t i = 0; i < iters; i++) {
-        int64_t ai = pa[i];
-        cell->Multipole[i] = cellm[ai];
+    matrixCreate(&Base, m, iters);
+    cpyMatToMat(m, iters, &work_u, &Base, 0, 0, 0, 0);
+    matrixDestroy(&work_s);
+    matrixDestroy(&work_u);
+
+    for (int64_t i = 0; i < iters; i++) {
+      int64_t piv_i = pa[i] - 1;
+      if (piv_i != i) {
+        int64_t row_piv = cellm[piv_i];
+        cellm[piv_i] = cellm[i];
+        cellm[i] = row_piv;
       }
     }
+    *rank = iters;
   }
 }
 
@@ -136,9 +128,42 @@ void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const B
     int64_t box_i = ii;
     iLocal(&box_i, ii, level);
 
-    evaluateBasis(ef, basis.Uo[box_i], ci, bodies, nbodies, epi, mrank, sp_pts);
-    int64_t ni;
-    childMultipoleSize(&ni, *ci);
+    int64_t ni = 0;
+    std::vector<int64_t> cellm;
+
+    if (ci->NCHILD > 0) {
+      for (int64_t j = 0; j < ci->NCHILD; j++)
+        ni += (ci->CHILD[j]).Multipole.size();
+      cellm.resize(ni);
+
+      int64_t count = 0;
+      for (int64_t j = 0; j < ci->NCHILD; j++) {
+        int64_t len = (ci->CHILD[j]).Multipole.size();
+        std::copy(&(ci->CHILD[j]).Multipole[0], &(ci->CHILD[j]).Multipole[len], &cellm[count]);
+        count += len;
+      }
+    }
+    else {
+      ni = ci->BODY[1] - ci->BODY[0];
+      cellm.resize(ni);
+      std::iota(&cellm[0], &cellm[ni], ci->BODY[0]);
+    }
+    
+    if (ni > 0) {
+      std::vector<int64_t> remote(sp_pts);
+      std::vector<int64_t> close(sp_pts);
+      int64_t n1 = remoteBodies(remote.data(), sp_pts, *ci, nbodies);
+      int64_t n2 = closeBodies(close.data(), sp_pts, *ci);
+
+      int64_t rank = mrank;
+      evaluateBasis(ef, epi, &rank, basis.Uo[box_i], ni, n1, n2, cellm.data(), remote.data(), close.data(), bodies);
+
+      int64_t len_m = ci->Multipole.size();
+      if (len_m != rank)
+        ci->Multipole.resize(rank);
+      std::copy(&cellm[0], &cellm[rank], &ci->Multipole[0]);
+    }
+
     int64_t mi = ci->Multipole.size();
     dims[box_i] = ni;
     diml[box_i] = mi;
