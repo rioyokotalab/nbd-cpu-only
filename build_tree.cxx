@@ -38,12 +38,10 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
       ci->CHILD = c0;
       ci->NCHILD = 2;
 
-      c0->SIBL = c1;
       c0->BODY[0] = i_begin;
       c0->BODY[1] = loc;
       c0->LEVEL = ci->LEVEL + 1;
 
-      c1->SIBL = c0;
       c1->BODY[0] = loc;
       c1->BODY[1] = i_end;
       c1->LEVEL = ci->LEVEL + 1;
@@ -69,9 +67,9 @@ void getList(Cell* Ci, Cell* Cj, double theta) {
     int admis;
     admis_check(&admis, theta, Ci->C, Cj->C, Ci->R, Cj->R);
     if (admis)
-      Ci->listFar.push_back(Cj);
+      Ci->listFar.emplace_back(Cj);
     else {
-      Ci->listNear.push_back(Cj);
+      Ci->listNear.emplace_back(Cj);
 
       if (Ci->NCHILD > 0)
         for (Cell* ci = Ci->CHILD; ci != Ci->CHILD + Ci->NCHILD; ci++)

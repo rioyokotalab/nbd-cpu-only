@@ -13,7 +13,6 @@ struct Cell {
   int64_t NCHILD;
   int64_t BODY[2];
   Cell* CHILD;
-  Cell* SIBL;
   double R[3];
   double C[3];
   int64_t LEVEL;
