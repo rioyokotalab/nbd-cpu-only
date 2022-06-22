@@ -30,13 +30,11 @@ int main(int argc, char* argv[]) {
   
   std::vector<Body> body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
-  //readPartitionedBodies(DATA, body.data(), Nbody, buckets.data(), dim);
   mesh_unit_sphere(body.data(), Nbody);
   //uniform_unit_cube(body.data(), Nbody, 3, 1234);
   body_neutral_charge(body.data(), Nbody, 1., 0);
 
   std::vector<Cell> cell(Nleaf + Nleaf - 1);
-  //buildTreeBuckets(cell, body.data(), Nbody, buckets.data(), levels, dim);
   buildTree(cell.data(), body.data(), Nbody, levels);
   traverse(cell.data(), levels, theta);
 

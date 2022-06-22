@@ -4,7 +4,6 @@
 #include "dist.h"
 
 #include <cmath>
-#include <numeric>
 #include <algorithm>
 #include <set>
 #include <iostream>
@@ -62,73 +61,6 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
       ci->CHILD = NULL;
       ci->NCHILD = 0;
     }
-  }
-}
-
-
-void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim) {
-  std::ifstream file;
-  file.open(fname, std::ios_base::in);
-
-  int64_t count = 0;
-  int64_t bucket_i = 1;
-  for (int64_t i = 0; i < nbodies; i++) {
-    double* arr = bodies[i].X;
-    for (int64_t d = 0; d < dim; d++)
-      file >> arr[d];
-    
-    int64_t loc;
-    file >> loc;
-    if (loc > bucket_i) {
-      buckets[bucket_i - 1] = count;
-      count = 0;
-      bucket_i = loc;
-    }
-    count = count + 1;
-  }
-  file.close();
-  if (count > 0)
-    buckets[bucket_i - 1] = count;
-}
-
-void buildTreeBuckets(Cell* cells, Body* bodies, const int64_t buckets[], int64_t levels) {
-  int64_t nleaves = (int64_t)1 << levels;
-  int64_t ileaf = nleaves - 1;
-
-  int64_t offset = 0;
-  for (int64_t i = 0; i < nleaves; i++) {
-    Cell* ci = &cells[ileaf + i];
-    ci->CHILD = NULL;
-    ci->NCHILD = 0;
-    ci->BODY[0] = offset;
-    ci->BODY[1] = offset + buckets[i];
-    ci->SIBL = NULL;
-    ci->ZID = i;
-    ci->LEVEL = levels;
-    ci->listNear.clear();
-    ci->listFar.clear();
-    ci->Multipole.clear();
-    get_bounds(&bodies[offset], buckets[i], ci->R, ci->C);
-    offset = ci->BODY[1];
-  }
-
-  for (int64_t i = ileaf - 1; i >= 0; i--) {
-    Cell* ci = &cells[i];
-    Cell* c0 = &cells[(i << 1) + 1];
-    Cell* c1 = &cells[(i << 1) + 2];
-    ci->CHILD = c0;
-    ci->NCHILD = 2;
-    ci->BODY[0] = c0->BODY[0];
-    ci->BODY[1] = c1->BODY[1];
-    ci->SIBL = NULL;
-    ci->ZID = (c0->ZID) >> 1;
-    ci->LEVEL = c0->LEVEL - 1;
-    ci->listNear.clear();
-    ci->listFar.clear();
-    ci->Multipole.clear();
-    get_bounds(&bodies[ci->BODY[0]], ci->BODY[1] - ci->BODY[0], ci->R, ci->C);
-    c0->SIBL = c1;
-    c1->SIBL = c0;
   }
 }
 
@@ -199,66 +131,6 @@ void traverse(Cell* cells, int64_t levels, int64_t theta) {
   }
 }
 
-int64_t remoteBodies(int64_t* remote, int64_t size, const Cell& cell, int64_t nbodies) {
-  int64_t avail = nbodies;
-  int64_t len = cell.listNear.size();
-  std::vector<int64_t> offsets(len);
-  std::vector<int64_t> lens(len);
-
-  for (int64_t i = 0; i < len; i++) {
-    const Cell* c = cell.listNear[i];
-    offsets[i] = c->BODY[0];
-    lens[i] = c->BODY[1] - c->BODY[0];
-    avail = avail - lens[i];
-  }
-
-  size = size > avail ? avail : size;
-
-  for (int64_t i = 0; i < size; i++) {
-    int64_t loc = (int64_t)((double)(avail * i) / size);
-    for (int64_t j = 0; j < len; j++)
-      if (loc >= offsets[j])
-        loc = loc + lens[j];
-    remote[i] = loc;
-  }
-  return size;
-}
-
-int64_t closeBodies(int64_t* remote, int64_t size, const Cell& cell) {
-  int64_t avail = 0;
-  int64_t len = cell.listNear.size();
-  std::vector<int64_t> offsets(len);
-  std::vector<int64_t> lens(len);
-
-  int64_t cpos = -1;
-  for (int64_t i = 0; i < len; i++) {
-    const Cell* c = cell.listNear[i];
-    offsets[i] = c->BODY[0];
-    lens[i] = c->BODY[1] - c->BODY[0];
-    if (c != &cell)
-      avail = avail + lens[i];
-    else
-      cpos = i;
-  }
-
-  size = size > avail ? avail : size;
-
-  for (int64_t i = 0; i < size; i++) {
-    int64_t loc = (int64_t)((double)(avail * i) / size);
-    int64_t region = -1;
-    for (int64_t j = 0; j < len; j++)
-      if (j != cpos && region == -1) {
-        if (loc < lens[j]) {
-          region = j;
-          loc = loc + offsets[region];
-        }
-        else
-          loc = loc - lens[j];
-      }
-    remote[i] = loc;
-  }
-  return size;
-}
 
 void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
   int64_t mpi_rank;
@@ -406,34 +278,30 @@ void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bo
 
     int64_t block = 500;
     int64_t last = nbodies % block;
+    Vector X;
+    Matrix Aij;
+    vectorCreate(&X, block);
+    matrixCreate(&Aij, m, block);
+    zeroVector(&X);
+    zeroMatrix(&Aij);
+
     if (last > 0) {
-      Vector X;
-      vectorCreate(&X, last);
       for (int64_t k = 0; k < last; k++)
         X.X[k] = bodies[k].B;
-      
-      Matrix Aij;
-      matrixCreate(&Aij, m, last);
       gen_matrix(ef, m, last, &bodies[ibegin], bodies, Aij.A, NULL, NULL);
       mvec('N', &Aij, &X, &Bi, 1., 0.);
-      matrixDestroy(&Aij);
-      vectorDestroy(&X);
     }
     else
       zeroVector(&Bi);
 
     for (int64_t j = last; j < nbodies; j += block) {
-      Vector X;
-      vectorCreate(&X, block);
       for (int64_t k = 0; k < block; k++)
         X.X[k] = bodies[k + j].B;
-      
-      Matrix Aij;
-      matrixCreate(&Aij, m, block);
       gen_matrix(ef, m, block, &bodies[ibegin], &bodies[j], Aij.A, NULL, NULL);
       mvec('N', &Aij, &X, &Bi, 1., 1.);
-      matrixDestroy(&Aij);
-      vectorDestroy(&X);
     }
+
+    matrixDestroy(&Aij);
+    vectorDestroy(&X);
   }
 }

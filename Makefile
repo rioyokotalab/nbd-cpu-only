@@ -7,7 +7,7 @@ MPICXX	= mpicxx
 CCFLAGS	= -std=c99 -O3 -Wall -Wextra -fopenmp -I. -DMKL_ILP64 -I"${MKLROOT}/include"
 CXXFLAGS	= -std=c++11 -O3 -Wall -Wextra -fopenmp -I. -DMKL_ILP64 -I"${MKLROOT}/include"
 
-LDFLAGS	= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl
+LDFLAGS	= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.so ${MKLROOT}/lib/intel64/libmkl_sequential.so ${MKLROOT}/lib/intel64/libmkl_core.so -Wl,--end-group -lpthread -lm -ldl
 
 all:
 	make lorasp

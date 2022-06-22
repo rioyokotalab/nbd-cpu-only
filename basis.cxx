@@ -106,6 +106,57 @@ void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix& Base, int64_
   }
 }
 
+
+void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* cell, int64_t nbodies) {
+  int64_t len = cell->listNear.size();
+  std::vector<int64_t> offsets(len);
+  std::vector<int64_t> lens(len);
+
+  int64_t sum_len = 0;
+  int64_t cpos = -1;
+  for (int64_t i = 0; i < len; i++) {
+    const Cell* c = cell->listNear[i];
+    offsets[i] = c->BODY[0];
+    lens[i] = c->BODY[1] - c->BODY[0];
+    sum_len = sum_len + lens[i];
+    if (c == cell)
+      cpos = i;
+  }
+
+  int64_t avail = nbodies - sum_len;
+  int64_t msize = size[0];
+  msize = msize > avail ? avail : msize;
+
+  for (int64_t i = 0; i < msize; i++) {
+    int64_t loc = (int64_t)((double)(avail * i) / msize);
+    for (int64_t j = 0; j < len; j++)
+      if (loc >= offsets[j])
+        loc = loc + lens[j];
+    remote[i] = loc;
+  }
+  size[0] = msize;
+
+  avail = sum_len - lens[cpos];
+  msize = size[1];
+  msize = msize > avail ? avail : msize;
+
+  for (int64_t i = 0; i < msize; i++) {
+    int64_t loc = (int64_t)((double)(avail * i) / msize);
+    int64_t region = -1;
+    for (int64_t j = 0; j < len; j++)
+      if (j != cpos && region == -1) {
+        if (loc < lens[j]) {
+          region = j;
+          loc = loc + offsets[region];
+        }
+        else
+          loc = loc - lens[j];
+      }
+    close[i] = loc;
+  }
+  size[1] = msize;
+}
+
 void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
   int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
@@ -152,11 +203,11 @@ void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const B
     if (ni > 0) {
       std::vector<int64_t> remote(sp_pts);
       std::vector<int64_t> close(sp_pts);
-      int64_t n1 = remoteBodies(remote.data(), sp_pts, *ci, nbodies);
-      int64_t n2 = closeBodies(close.data(), sp_pts, *ci);
+      int64_t n[2] = { sp_pts, sp_pts };
+      remoteBodies(remote.data(), close.data(), n, ci, nbodies);
 
       int64_t rank = mrank;
-      evaluateBasis(ef, epi, &rank, basis.Uo[box_i], ni, n1, n2, cellm.data(), remote.data(), close.data(), bodies);
+      evaluateBasis(ef, epi, &rank, basis.Uo[box_i], ni, n[0], n[1], cellm.data(), remote.data(), close.data(), bodies);
 
       int64_t len_m = ci->Multipole.size();
       if (len_m != rank)

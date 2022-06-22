@@ -33,17 +33,9 @@ struct CSC {
 
 void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
 
-void readPartitionedBodies(const char fname[], Body* bodies, int64_t nbodies, int64_t buckets[], int64_t dim);
-
-void buildTreeBuckets(Cell* cells, Body* bodies, const int64_t buckets[], int64_t levels);
-
 void getList(Cell* Ci, Cell* Cj, double theta);
 
 void traverse(Cell* cells, int64_t levels, int64_t theta);
-
-int64_t remoteBodies(int64_t* remote, int64_t size, const Cell& cell, int64_t nbodies);
-
-int64_t closeBodies(int64_t* remote, int64_t size, const Cell& cell);
 
 void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels);
 
