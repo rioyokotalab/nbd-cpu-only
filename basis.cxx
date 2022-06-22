@@ -3,8 +3,6 @@
 #include "dist.h"
 
 #include <numeric>
-#include <unordered_set>
-#include <iterator>
 
 void allocBasis(Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
@@ -237,7 +235,10 @@ void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
   int64_t xlen = basis.DIMS.size();
   int64_t ibegin = 0;
   int64_t iend = xlen;
+  int64_t gbegin = ibegin;
   selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&gbegin, ibegin, level);
+  int64_t nodes = iend - ibegin;
 
   int64_t count = 0;
   std::vector<int64_t> offsets(xlen);
@@ -248,40 +249,31 @@ void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
 
   int64_t len = (int64_t)1 << level;
   Cell* leaves = &cell[len - 1];
-  std::unordered_set<Cell*> neighbors;
 
   std::vector<int64_t> mps_comm(count);
-  for (int64_t i = 0; i < len; i++) {
-    const Cell* ci = &leaves[i];
+  for (int64_t i = 0; i < nodes; i++) {
+    const Cell* ci = &leaves[i + gbegin];
     int64_t ii = ci->ZID;
     int64_t box_i = ii;
     iLocal(&box_i, ii, level);
 
     int64_t offset_i = offsets[box_i];
     std::copy(ci->Multipole.begin(), ci->Multipole.end(), &mps_comm[offset_i]);
-
-    int64_t nlen = ci->listFar.size();
-    for (int64_t n = 0; n < nlen; n++)
-      neighbors.emplace((ci->listFar)[n]);
   }
 
   DistributeMultipoles(mps_comm.data(), basis.DIML.data(), level);
 
-  std::unordered_set<Cell*>::iterator iter = neighbors.begin();
-  int64_t nlen = neighbors.size();
-  for (int64_t i = 0; i < nlen; i++) {
-    Cell* ci = *iter;
-    int64_t ii = ci->ZID;
-    int64_t box_i = ii;
-    iLocal(&box_i, ii, level);
+  for (int64_t i = 0; i < xlen; i++) {
+    int64_t gi = i;
+    iGlobal(&gi, i, level);
+    Cell* ci = &leaves[gi];
 
-    int64_t offset_i = offsets[box_i];
-    int64_t end_i = offset_i + basis.DIML[box_i];
+    int64_t offset_i = offsets[i];
+    int64_t end_i = offset_i + basis.DIML[i];
     int64_t len_m = ci->Multipole.size();
-    if (len_m != basis.DIML[box_i])
-      ci->Multipole.resize(basis.DIML[box_i]);
+    if (len_m != basis.DIML[i])
+      ci->Multipole.resize(basis.DIML[i]);
     std::copy(&mps_comm[offset_i], &mps_comm[end_i], ci->Multipole.begin());
-    iter = std::next(iter);
   }
 }
 
