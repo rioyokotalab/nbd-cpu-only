@@ -4,8 +4,8 @@ CXX	= g++
 MPICC	= mpicc
 MPICXX	= mpicxx
 
-CCFLAGS	= -std=c99 -O3 -Wall -Wextra -fopenmp -I. -DMKL_ILP64 -I"${MKLROOT}/include"
-CXXFLAGS	= -std=c++11 -O3 -Wall -Wextra -fopenmp -I. -DMKL_ILP64 -I"${MKLROOT}/include"
+CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -fopenmp -I. -I"${MKLROOT}/include"
+CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -fopenmp -I. -I"${MKLROOT}/include"
 
 LDFLAGS	= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.so ${MKLROOT}/lib/intel64/libmkl_sequential.so ${MKLROOT}/lib/intel64/libmkl_core.so -Wl,--end-group -lpthread -lm -ldl
 

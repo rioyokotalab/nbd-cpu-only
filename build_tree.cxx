@@ -5,9 +5,6 @@
 
 #include <cmath>
 #include <algorithm>
-#include <set>
-#include <iostream>
-#include <fstream>
 
 void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   int64_t nleaves = (int64_t)1 << levels;
@@ -16,7 +13,6 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   Cell* root = &cells[0];
   root->BODY[0] = 0;
   root->BODY[1] = nbodies;
-  root->ZID = 0;
   root->LEVEL = 0;
   get_bounds(bodies, nbodies, root->R, root->C);
 
@@ -45,13 +41,11 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
       c0->SIBL = c1;
       c0->BODY[0] = i_begin;
       c0->BODY[1] = loc;
-      c0->ZID = (ci->ZID) << 1;
       c0->LEVEL = ci->LEVEL + 1;
 
       c1->SIBL = c0;
       c1->BODY[0] = loc;
       c1->BODY[1] = i_end;
-      c1->ZID = ((ci->ZID) << 1) + 1;
       c1->LEVEL = ci->LEVEL + 1;
 
       get_bounds(&bodies[i_begin], loc - i_begin, c0->R, c0->C);
@@ -101,88 +95,73 @@ void traverse(Cell* cells, int64_t levels, int64_t theta) {
 
     int64_t len = (int64_t)1 << i;
     Cell* leaves = &cells[len - 1];
-    std::set<int64_t> ngbs;
+    std::vector<int64_t> ngbs;
 
     for (int64_t n = 0; n < nodes; n++) {
       const Cell* c = &leaves[n + gbegin];
       int64_t nlen = c->listNear.size();
       for (int64_t j = 0; j < nlen; j++) {
         const Cell* cj = (c->listNear)[j];
-        int64_t ngb = (cj->ZID) / nodes;
-        ngbs.emplace(ngb);
+        int64_t ngb = cj - leaves;
+        ngb /= nodes;
+        ngbs.emplace_back(ngb);
       }
       int64_t flen = c->listFar.size();
       for (int64_t j = 0; j < flen; j++) {
         const Cell* cj = (c->listFar)[j];
-        int64_t ngb = (cj->ZID) / nodes;
-        ngbs.emplace(ngb);
+        int64_t ngb = cj - leaves;
+        ngb /= nodes;
+        ngbs.emplace_back(ngb);
       }
     }
 
-    int64_t size = ngbs.size();
-    std::vector<int64_t> ngbs_v(size);
-    std::set<int64_t>::iterator iter = ngbs.begin();
-    for (int64_t n = 0; n < size; n++) {
-      ngbs_v[n] = *iter;
-      iter = std::next(iter);
-    }
-
-    configureComm(i, &ngbs_v[0], size);
+    std::sort(ngbs.begin(), ngbs.end());
+    std::vector<int64_t>::iterator iter = std::unique(ngbs.begin(), ngbs.end());
+    int64_t size = std::distance(ngbs.begin(), iter);
+    configureComm(i, &ngbs[0], size);
   }
 }
 
 
 void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
-  int64_t mpi_rank;
-  int64_t mpi_levels;
-  commRank(&mpi_rank, &mpi_levels);
-
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t mpi_boxes = i > mpi_levels ? (int64_t)1 << (i - mpi_levels) : 1;
+    int64_t ibegin = 0, iend = 0, lbegin = 0;
+    selfLocalRange(&ibegin, &iend, i);
+    iGlobal(&lbegin, ibegin, i);
+    int64_t nodes = iend - ibegin;
     CSC& csc = rels[i];
 
     csc.M = (int64_t)1 << i;
-    csc.N = mpi_boxes;
-    csc.COL_INDEX.resize(mpi_boxes + 1);
+    csc.N = nodes;
+    csc.COL_INDEX.resize(nodes + 1);
     std::fill(csc.COL_INDEX.begin(), csc.COL_INDEX.end(), 0);
     csc.ROW_INDEX.clear();
-  }
 
-  int64_t nleaves = (int64_t)1 << levels;
-  int64_t ncells = nleaves + nleaves - 1;
+    int64_t len = (int64_t)1 << i;
+    const Cell* leaves = &cells[len - 1];
 
-  for (int64_t i = 0; i < ncells; i++) {
-    const Cell& c = cells[i];
-    int64_t l = c.LEVEL;
-    CSC& csc = rels[l];
-
-    int64_t ibegin = 0, iend = 0, lbegin = 0;
-    selfLocalRange(&ibegin, &iend, l);
-    iGlobal(&lbegin, ibegin, l);
-
-    int64_t n = c.ZID - lbegin;
-    if ((NoF == 'N' || NoF == 'n') && n >= 0 && n < csc.N) {
-      int64_t ent = c.listNear.size();
-      csc.COL_INDEX[n] = ent;
-      for (int64_t j = 0; j < ent; j++) {
-        int64_t zi = c.listNear[j]->ZID;
-        csc.ROW_INDEX.emplace_back(zi);
+    for (int64_t j = 0; j < nodes; j++) {
+      const Cell* c = &leaves[j + lbegin];
+      if (NoF == 'N' || NoF == 'n') {
+        int64_t ent = c->listNear.size();
+        csc.COL_INDEX[j] = ent;
+        for (int64_t k = 0; k < ent; k++) {
+          int64_t zi = c->listNear[k] - leaves;
+          csc.ROW_INDEX.emplace_back(zi);
+        }
+      }
+      else if (NoF == 'F' || NoF == 'f') {
+        int64_t ent = c->listFar.size();
+        csc.COL_INDEX[j] = ent;
+        for (int64_t k = 0; k < ent; k++) {
+          int64_t zi = c->listFar[k] - leaves;
+          csc.ROW_INDEX.emplace_back(zi);
+        }
       }
     }
-    else if ((NoF == 'F' || NoF == 'f') && n >= 0 && n < csc.N) {
-      int64_t ent = c.listFar.size();
-      csc.COL_INDEX[n] = ent;
-      for (int64_t j = 0; j < ent; j++) {
-        int64_t zi = c.listFar[j]->ZID;
-        csc.ROW_INDEX.emplace_back(zi);
-      }
-    }
-  }
 
-  for (int64_t i = 0; i <= levels; i++) {
-    CSC& csc = rels[i];
     int64_t count = 0;
-    for (int64_t j = 0; j <= csc.N; j++) {
+    for (int64_t j = 0; j <= nodes; j++) {
       int64_t ent = csc.COL_INDEX[j];
       csc.COL_INDEX[j] = count;
       count = count + ent;

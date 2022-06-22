@@ -9,6 +9,7 @@
 #include "inttypes.h"
 
 #ifdef USE_MKL
+#define MKL_ILP64
 #include "mkl.h"
 #else
 #include "cblas.h"

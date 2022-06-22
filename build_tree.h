@@ -16,7 +16,6 @@ struct Cell {
   Cell* SIBL;
   double R[3];
   double C[3];
-  int64_t ZID;
   int64_t LEVEL;
   
   std::vector<Cell*> listFar;
