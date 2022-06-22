@@ -168,9 +168,7 @@ void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const B
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
     Cell* ci = &leaves[i + gbegin];
-    int64_t ii = ci->ZID;
-    int64_t box_i = ii;
-    iLocal(&box_i, ii, level);
+    int64_t box_i = i + ibegin;
 
     int64_t ni = 0;
     std::vector<int64_t> cellm;
@@ -235,9 +233,7 @@ void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const B
   std::vector<int64_t> mps_comm(count);
   for (int64_t i = 0; i < nodes; i++) {
     const Cell* ci = &leaves[i + gbegin];
-    int64_t ii = ci->ZID;
-    int64_t box_i = ii;
-    iLocal(&box_i, ii, level);
+    int64_t box_i = i + ibegin;
 
     int64_t offset_i = offsets[box_i];
     std::copy(ci->Multipole.begin(), ci->Multipole.end(), &mps_comm[offset_i]);
