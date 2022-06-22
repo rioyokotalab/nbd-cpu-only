@@ -37,10 +37,6 @@ void DistributeDims(int64_t dims[], int64_t level);
 
 void DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64_t level);
 
-void butterflyUpdateDims(int64_t my_dim, int64_t* rm_dim, int64_t level);
-
-void butterflyUpdateMultipoles(const int64_t multipoles[], int64_t my_dim, int64_t rm[], int64_t rm_dim, int64_t level);
-
 void butterflySumA(Matrix A[], int64_t lenA, int64_t level);
 
 void sendFwSubstituted(const Vector X[], int64_t level);

@@ -27,8 +27,6 @@ void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix& Base, int64_
 
 void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
 
-void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level);
-
 void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
 
 void orth_base_all(Base* basis, int64_t levels);

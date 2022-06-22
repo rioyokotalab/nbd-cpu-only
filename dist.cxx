@@ -391,32 +391,6 @@ void DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64_t le
   tot_time = tot_time + etime;
 }
 
-void butterflyUpdateDims(int64_t my_dim, int64_t* rm_dim, int64_t level) {
-  int64_t rm_rank = COMMS[level].TWIN_RANK;
-  MPI_Request request;
-
-  double stime = MPI_Wtime();
-  int tag = 4;
-  MPI_Isend(&my_dim, 1, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, &request);
-  MPI_Recv(rm_dim, 1, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Wait(&request, MPI_STATUS_IGNORE);
-  double etime = MPI_Wtime() - stime;
-  tot_time = tot_time + etime;
-}
-
-void butterflyUpdateMultipoles(const int64_t multipoles[], int64_t my_dim, int64_t rm[], int64_t rm_dim, int64_t level) {
-  int64_t rm_rank = COMMS[level].TWIN_RANK;
-  MPI_Request request;
-
-  double stime = MPI_Wtime();
-  int tag = 5;
-  MPI_Isend(multipoles, (int)my_dim, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, &request);
-  MPI_Recv(rm, (int)rm_dim, MPI_INT64_T, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Wait(&request, MPI_STATUS_IGNORE);
-  double etime = MPI_Wtime() - stime;
-  tot_time = tot_time + etime;
-}
-
 
 void butterflySumA(Matrix A[], int64_t lenA, int64_t level) {
   int64_t rm_rank = COMMS[level].TWIN_RANK;

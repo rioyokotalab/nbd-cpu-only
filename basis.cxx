@@ -2,8 +2,6 @@
 #include "basis.h"
 #include "dist.h"
 
-#include <numeric>
-
 void allocBasis(Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = (int64_t)1 << i;
@@ -167,9 +165,6 @@ void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const B
   int64_t len = (int64_t)1 << level;
   Cell* leaves = &cell[len - 1];
 
-  std::vector<int64_t>& dims = basis.DIMS;
-  std::vector<int64_t>& diml = basis.DIML;
-
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
     Cell* ci = &leaves[i + gbegin];
@@ -193,9 +188,11 @@ void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const B
       }
     }
     else {
-      ni = ci->BODY[1] - ci->BODY[0];
+      int64_t nbegin = ci->BODY[0];
+      ni = ci->BODY[1] - nbegin;
       cellm.resize(ni);
-      std::iota(&cellm[0], &cellm[ni], ci->BODY[0]);
+      for (int64_t i = 0; i < ni; i++)
+        cellm[i] = nbegin + i;
     }
     
     if (ni > 0) {
@@ -214,41 +211,26 @@ void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const B
     }
 
     int64_t mi = ci->Multipole.size();
-    dims[box_i] = ni;
-    diml[box_i] = mi;
+    basis.DIMS[box_i] = ni;
+    basis.DIML[box_i] = mi;
   }
 
-  DistributeDims(&dims[0], level);
-  DistributeDims(&diml[0], level);
+  DistributeDims(&basis.DIMS[0], level);
+  DistributeDims(&basis.DIML[0], level);
 
+  int64_t count = 0;
+  std::vector<int64_t> offsets(xlen);
   for (int64_t i = 0; i < xlen; i++) {
-    int64_t m = dims[i];
-    int64_t n = diml[i];
+    int64_t m = basis.DIMS[i];
+    int64_t n = basis.DIML[i];
+    offsets[i] = count;
+    count = count + n;
+
     int64_t msize = m * n;
     if (msize > 0 && (i < ibegin || i >= iend))
       matrixCreate(&basis.Uo[i], m, n);
   }
   DistributeMatricesList(basis.Uo.data(), level);
-}
-
-void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
-  int64_t xlen = basis.DIMS.size();
-  int64_t ibegin = 0;
-  int64_t iend = xlen;
-  int64_t gbegin = ibegin;
-  selfLocalRange(&ibegin, &iend, level);
-  iGlobal(&gbegin, ibegin, level);
-  int64_t nodes = iend - ibegin;
-
-  int64_t count = 0;
-  std::vector<int64_t> offsets(xlen);
-  for (int64_t i = 0; i < xlen; i++) {
-    offsets[i] = count;
-    count = count + basis.DIML[i];
-  }
-
-  int64_t len = (int64_t)1 << level;
-  Cell* leaves = &cell[len - 1];
 
   std::vector<int64_t> mps_comm(count);
   for (int64_t i = 0; i < nodes; i++) {
@@ -260,7 +242,6 @@ void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
     int64_t offset_i = offsets[box_i];
     std::copy(ci->Multipole.begin(), ci->Multipole.end(), &mps_comm[offset_i]);
   }
-
   DistributeMultipoles(mps_comm.data(), basis.DIML.data(), level);
 
   for (int64_t i = 0; i < xlen; i++) {
@@ -278,32 +259,9 @@ void writeRemoteCoupling(const Base& basis, Cell* cell, int64_t level) {
 }
 
 void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
-  for (int64_t i = levels; i >= 0; i--) {
+  for (int64_t i = levels; i >= 0; i--)
     evaluateLocal(ef, basis[i], cells, i, bodies, nbodies, epi, mrank, sp_pts);
-    writeRemoteCoupling(basis[i], cells, i);
-    
-    int comm_needed;
-    butterflyComm(&comm_needed, i);
-    if (comm_needed) {
-      int64_t ibegin = 0;
-      int64_t iend = (int64_t)1 << i;
-      int64_t gbegin = ibegin;
-      selfLocalRange(&ibegin, &iend, i);
-      iGlobal(&gbegin, ibegin, i);
-      Cell* mlocal = &cells[((int64_t)1 << i) + gbegin - 1];
-
-      int64_t mlen = mlocal->Multipole.size();
-      int64_t msib;
-      butterflyUpdateDims(mlen, &msib, i);
-      Cell* vsib = mlocal->SIBL;
-      int64_t len_m = vsib->Multipole.size();
-      if (len_m != msib)
-        vsib->Multipole.resize(msib);
-      butterflyUpdateMultipoles(mlocal->Multipole.data(), mlen, vsib->Multipole.data(), msib, i);
-    }
-  }
 }
-
 
 void orth_base_all(Base* basis, int64_t levels) {
   for (int64_t i = levels; i > 0; i--) {
