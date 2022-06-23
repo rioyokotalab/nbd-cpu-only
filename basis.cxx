@@ -102,7 +102,6 @@ void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix& Base, int64_
   }
 }
 
-
 void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* cell, int64_t nbodies) {
   int64_t len = cell->listNear.size();
   std::vector<int64_t> offsets(len);
@@ -123,12 +122,15 @@ void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* c
   int64_t msize = size[0];
   msize = msize > avail ? avail : msize;
 
+  int64_t box_i = 0;
+  int64_t s_lens = 0;
   for (int64_t i = 0; i < msize; i++) {
     int64_t loc = (int64_t)((double)(avail * i) / msize);
-    for (int64_t j = 0; j < len; j++)
-      if (loc >= offsets[j])
-        loc = loc + lens[j];
-    remote[i] = loc;
+    while (box_i < len && loc + s_lens >= offsets[box_i]) {
+      s_lens = s_lens + lens[box_i];
+      box_i = box_i + 1;
+    }
+    remote[i] = loc + s_lens;
   }
   size[0] = msize;
 
@@ -136,19 +138,17 @@ void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* c
   msize = size[1];
   msize = msize > avail ? avail : msize;
 
+  box_i = (int64_t)(cpos == 0);
+  s_lens = 0;
   for (int64_t i = 0; i < msize; i++) {
     int64_t loc = (int64_t)((double)(avail * i) / msize);
-    int64_t region = -1;
-    for (int64_t j = 0; j < len; j++)
-      if (j != cpos && region == -1) {
-        if (loc < lens[j]) {
-          region = j;
-          loc = loc + offsets[region];
-        }
-        else
-          loc = loc - lens[j];
-      }
-    close[i] = loc;
+    while (loc - s_lens >= lens[box_i]) {
+      s_lens = s_lens + lens[box_i];
+      box_i = box_i + 1;
+      if (box_i == cpos)
+        box_i = box_i + 1;
+    }
+    close[i] = loc + offsets[box_i] - s_lens;
   }
   size[1] = msize;
 }

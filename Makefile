@@ -12,7 +12,9 @@ ifneq (${MKLROOT},)
 	MKLFLAG	= -DUSE_MKL
 	CCFLAGS	+=  -I"${MKLROOT}/include"
 	CXXFLAGS	+=  -I"${MKLROOT}/include"
-	LDFLAGS	+= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.so ${MKLROOT}/lib/intel64/libmkl_sequential.so ${MKLROOT}/lib/intel64/libmkl_core.so -Wl,--end-group
+	LDFLAGS	+= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.so \
+	  ${MKLROOT}/lib/intel64/libmkl_sequential.so \
+	  ${MKLROOT}/lib/intel64/libmkl_core.so -Wl,--end-group
 	MSG	= *** Successfully found Intel MKL! ***
 else
 	LDFLAGS	+= -lblas -llapacke
