@@ -13,13 +13,12 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   Cell* root = &cells[0];
   root->BODY[0] = 0;
   root->BODY[1] = nbodies;
-  root->LEVEL = 0;
   get_bounds(bodies, nbodies, root->R, root->C);
 
   for (int64_t i = 0; i < ncells; i++) {
     Cell* ci = &cells[i];
 
-    if (ci->LEVEL < levels) {
+    if (i < nleaves - 1) {
       int64_t sdim = 0;
       double maxR = ci->R[0];
       if (ci->R[1] > maxR)
@@ -40,11 +39,9 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
 
       c0->BODY[0] = i_begin;
       c0->BODY[1] = loc;
-      c0->LEVEL = ci->LEVEL + 1;
 
       c1->BODY[0] = loc;
       c1->BODY[1] = i_end;
-      c1->LEVEL = ci->LEVEL + 1;
 
       get_bounds(&bodies[i_begin], loc - i_begin, c0->R, c0->C);
       get_bounds(&bodies[loc], i_end - loc, c1->R, c1->C);
@@ -56,13 +53,13 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   }
 }
 
-void getList(Cell* Ci, Cell* Cj, double theta) {
-  if (Ci->LEVEL < Cj->LEVEL)
+void getList(Cell* Ci, Cell* Cj, int64_t ilevel, int64_t jlevel, double theta) {
+  if (ilevel < jlevel)
     for (Cell* ci = Ci->CHILD; ci != Ci->CHILD + Ci->NCHILD; ci++)
-      getList(ci, Cj, theta);
-  else if (Cj->LEVEL < Ci->LEVEL)
+      getList(ci, Cj, ilevel + 1, jlevel, theta);
+  else if (jlevel < ilevel)
     for (Cell* cj = Cj->CHILD; cj != Cj->CHILD + Cj->NCHILD; cj++)
-      getList(Ci, cj, theta);
+      getList(Ci, cj, ilevel, jlevel + 1, theta);
   else {
     int admis;
     admis_check(&admis, theta, Ci->C, Cj->C, Ci->R, Cj->R);
@@ -73,14 +70,17 @@ void getList(Cell* Ci, Cell* Cj, double theta) {
 
       if (Ci->NCHILD > 0)
         for (Cell* ci = Ci->CHILD; ci != Ci->CHILD + Ci->NCHILD; ci++)
-          getList(ci, Cj, theta);
+          getList(ci, Cj, ilevel + 1, jlevel, theta);
+      else if (Cj->NCHILD > 0)
+        for (Cell* cj = Cj->CHILD; cj != Cj->CHILD + Cj->NCHILD; cj++)
+          getList(Ci, cj, ilevel, jlevel + 1, theta);
     }
   }
 }
 
 
 void traverse(Cell* cells, int64_t levels, int64_t theta) {
-  getList(&cells[0], &cells[0], theta);
+  getList(&cells[0], &cells[0], 0, 0, theta);
   int64_t mpi_rank, mpi_levels;
   commRank(&mpi_rank, &mpi_levels);
 

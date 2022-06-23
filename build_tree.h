@@ -13,9 +13,8 @@ struct Cell {
   int64_t NCHILD;
   int64_t BODY[2];
   Cell* CHILD;
-  double R[3];
-  double C[3];
-  int64_t LEVEL;
+  double R[DIM_MAX];
+  double C[DIM_MAX];
   
   std::vector<Cell*> listFar;
   std::vector<Cell*> listNear;
@@ -31,7 +30,7 @@ struct CSC {
 
 void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
 
-void getList(Cell* Ci, Cell* Cj, double theta);
+void getList(Cell* Ci, Cell* Cj, int64_t ilevel, int64_t jlevel, double theta);
 
 void traverse(Cell* cells, int64_t levels, int64_t theta);
 

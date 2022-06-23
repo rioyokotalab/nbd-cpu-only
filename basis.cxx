@@ -145,8 +145,7 @@ void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* c
     while (loc - s_lens >= lens[box_i]) {
       s_lens = s_lens + lens[box_i];
       box_i = box_i + 1;
-      if (box_i == cpos)
-        box_i = box_i + 1;
+      box_i = box_i + (int)(box_i == cpos);
     }
     close[i] = loc + offsets[box_i] - s_lens;
   }
