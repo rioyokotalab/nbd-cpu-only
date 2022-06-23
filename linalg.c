@@ -9,7 +9,9 @@
 #include "inttypes.h"
 
 #ifdef USE_MKL
+#ifndef MKL_ILP64
 #define MKL_ILP64
+#endif
 #include "mkl.h"
 #else
 #include "cblas.h"
@@ -192,12 +194,22 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
     cblas_dscal(A->M, s.X[i], &(U->A)[i * A->M], 1);
   memcpy(A->A, U->A, sizeof(double) * A->M * rank);
 
-  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, (long long int*)arows);
+#ifdef USE_MKL
+  MKL_INT* ipiv = (MKL_INT*)arows;
+#else
+  int* ipiv = (int*)malloc(sizeof(int) * rank);
+#endif
+  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, ipiv);
   if (info > 0)
     rank = info - 1;
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
 
+#ifndef USE_MKL
+  for (int64_t i = 0; i < rank; i++)
+    arows[i] = ipiv[i];
+  free(ipiv);
+#endif
   free(work);
 }
 

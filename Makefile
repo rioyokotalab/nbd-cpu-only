@@ -4,16 +4,26 @@ CXX	= g++
 MPICC	= mpicc
 MPICXX	= mpicxx
 
-CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -fopenmp -I. -I"${MKLROOT}/include"
-CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -fopenmp -I. -I"${MKLROOT}/include"
+CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -fopenmp -I.
+CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -fopenmp -I.
+LDFLAGS	= -lpthread -lm -ldl
 
-LDFLAGS	= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.so ${MKLROOT}/lib/intel64/libmkl_sequential.so ${MKLROOT}/lib/intel64/libmkl_core.so -Wl,--end-group -lpthread -lm -ldl
+ifneq (${MKLROOT},)
+	MKLFLAG	= -DUSE_MKL
+	CCFLAGS	+=  -I"${MKLROOT}/include"
+	CXXFLAGS	+=  -I"${MKLROOT}/include"
+	LDFLAGS	+= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.so ${MKLROOT}/lib/intel64/libmkl_sequential.so ${MKLROOT}/lib/intel64/libmkl_core.so -Wl,--end-group
+	MSG	= *** Successfully found Intel MKL! ***
+else
+	LDFLAGS	+= -lblas -llapacke
+	MSG	= *** ENV MKLROOT not set, linking with netlib BLAS. ***
+endif
 
-all:
-	make lorasp
+all: lorasp
+	$(info $(MSG))
 
 linalg: linalg.c linalg.h
-	$(CC) $(CCFLAGS) -DUSE_MKL -c linalg.c
+	$(CC) $(CCFLAGS) $(MKLFLAG) -c linalg.c
 
 kernel: kernel.c kernel.h
 	$(CC) $(CCFLAGS) -c kernel.c
