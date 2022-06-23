@@ -46,8 +46,6 @@ int main(int argc, char* argv[]) {
   evaluateBaseAll(ef, &sp.Basis[0], cell.data(), levels, body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
 
-  orth_base_all(&sp.Basis[0], levels);
-
   evaluate('N', sp.D[levels].A.data(), ef, &cell[0], body.data(), sp.RelsNear[levels], levels);
   for (int64_t i = 0; i <= levels; i++)
     evaluate('F', sp.D[i].S.data(), ef, &cell[0], body.data(), sp.RelsFar[i], i);

@@ -47,7 +47,7 @@ void basis_mem(int64_t* bytes, const Base* basis, int64_t levels) {
   *bytes = count;
 }
 
-void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix& Base, int64_t m, int64_t n1, int64_t n2, 
+void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix* Base, int64_t m, int64_t n1, int64_t n2, 
   int64_t cellm[], const int64_t remote[], const int64_t close[], const Body* bodies) {
   Matrix work_a, work_b, work_c, work_s;
   int64_t len_s = n1 + (n2 > 0 ? m : 0);
@@ -85,8 +85,8 @@ void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix& Base, int64_
     int64_t iters = n;
     lraID(epi, &work_s, &work_u, pa.data(), &iters);
 
-    matrixCreate(&Base, m, iters);
-    cpyMatToMat(m, iters, &work_u, &Base, 0, 0, 0, 0);
+    matrixCreate(Base, m, iters);
+    cpyMatToMat(m, iters, &work_u, Base, 0, 0, 0, 0);
     matrixDestroy(&work_s);
     matrixDestroy(&work_u);
 
@@ -152,161 +152,150 @@ void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* c
   size[1] = msize;
 }
 
-void evaluateLocal(KerFunc_t ef, Base& basis, Cell* cell, int64_t level, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
-  int64_t xlen = basis.DIMS.size();
-  int64_t ibegin = 0;
-  int64_t iend = xlen;
-  int64_t gbegin = ibegin;
-  selfLocalRange(&ibegin, &iend, level);
-  iGlobal(&gbegin, ibegin, level);
-  int64_t nodes = iend - ibegin;
+void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+  for (int64_t l = levels; l >= 0; l--) {
+    Base* base_i = basis + l;
+    int64_t xlen = (int64_t)1 << l;
+    int64_t ibegin = 0;
+    int64_t iend = xlen;
+    int64_t gbegin = ibegin;
+    selfLocalRange(&ibegin, &iend, l);
+    iGlobal(&gbegin, ibegin, l);
+    contentLength(&xlen, l);
+    int64_t nodes = iend - ibegin;
 
-  int64_t len = (int64_t)1 << level;
-  Cell* leaves = &cell[len - 1];
+    int64_t len = (int64_t)1 << l;
+    Cell* leaves = &cells[len - 1];
 
-#pragma omp parallel for
-  for (int64_t i = 0; i < nodes; i++) {
-    Cell* ci = &leaves[i + gbegin];
-    int64_t box_i = i + ibegin;
-
-    int64_t ni = 0;
-    std::vector<int64_t> cellm;
-
-    if (ci->NCHILD > 0) {
-      for (int64_t j = 0; j < ci->NCHILD; j++)
-        ni += (ci->CHILD[j]).Multipole.size();
-      cellm.resize(ni);
-
-      int64_t count = 0;
-      for (int64_t j = 0; j < ci->NCHILD; j++) {
-        int64_t len = (ci->CHILD[j]).Multipole.size();
-        std::copy(&(ci->CHILD[j]).Multipole[0], &(ci->CHILD[j]).Multipole[len], &cellm[count]);
-        count += len;
-      }
-    }
-    else {
-      int64_t nbegin = ci->BODY[0];
-      ni = ci->BODY[1] - nbegin;
-      cellm.resize(ni);
-      for (int64_t i = 0; i < ni; i++)
-        cellm[i] = nbegin + i;
-    }
-    
-    if (ni > 0) {
+  #pragma omp parallel for
+    for (int64_t i = 0; i < nodes; i++) {
+      Cell* ci = &leaves[i + gbegin];
+      int64_t box_i = i + ibegin;
+      int64_t cic = ci->CHILD;
+      int64_t ni = 0;
+      std::vector<int64_t> cellm;
       std::vector<int64_t> remote(sp_pts);
       std::vector<int64_t> close(sp_pts);
-      int64_t n[2] = { sp_pts, sp_pts };
-      remoteBodies(remote.data(), close.data(), n, ci, nbodies);
 
-      int64_t rank = mrank;
-      evaluateBasis(ef, epi, &rank, basis.Uo[box_i], ni, n[0], n[1], cellm.data(), remote.data(), close.data(), bodies);
+      if (cic >= 0) {
+        int64_t len0 = cells[cic].Multipole.size();
+        int64_t len1 = cells[cic + 1].Multipole.size();
+        ni = len0 + len1;
+        cellm.resize(ni);
 
-      int64_t len_m = ci->Multipole.size();
-      if (len_m != rank)
-        ci->Multipole.resize(rank);
-      std::copy(&cellm[0], &cellm[rank], &ci->Multipole[0]);
+        std::copy(&cells[cic].Multipole[0], &cells[cic].Multipole[len0], &cellm[0]);
+        std::copy(&cells[cic + 1].Multipole[0], &cells[cic + 1].Multipole[len1], &cellm[len0]);
+      }
+      else {
+        int64_t nbegin = ci->BODY[0];
+        ni = ci->BODY[1] - nbegin;
+        cellm.resize(ni);
+        for (int64_t i = 0; i < ni; i++)
+          cellm[i] = nbegin + i;
+      }
+      
+      if (ni > 0) {
+        int64_t n[2] = { sp_pts, sp_pts };
+        remoteBodies(remote.data(), close.data(), n, ci, nbodies);
+
+        int64_t rank = mrank;
+        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n[0], n[1], cellm.data(), remote.data(), close.data(), bodies);
+
+        matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
+        matrixCreate(&(base_i->R)[box_i], rank, rank);
+
+        int64_t len_m = ci->Multipole.size();
+        if (len_m != rank)
+          ci->Multipole.resize(rank);
+        std::copy(&cellm[0], &cellm[rank], &ci->Multipole[0]);
+      }
+
+      int64_t mi = ci->Multipole.size();
+      base_i->DIMS[box_i] = ni;
+      base_i->DIML[box_i] = mi;
     }
 
-    int64_t mi = ci->Multipole.size();
-    basis.DIMS[box_i] = ni;
-    basis.DIML[box_i] = mi;
+    DistributeDims(&(base_i->DIMS)[0], l);
+    DistributeDims(&(base_i->DIML)[0], l);
+
+    int64_t count = 0;
+    std::vector<int64_t> offsets(xlen);
+    for (int64_t i = 0; i < xlen; i++) {
+      int64_t m = base_i->DIMS[i];
+      int64_t n = base_i->DIML[i];
+      offsets[i] = count;
+      count = count + n;
+
+      int64_t msize = m * n;
+      if (msize > 0 && (i < ibegin || i >= iend)) {
+        matrixCreate(&(base_i->Uo)[i], m, n);
+        matrixCreate(&(base_i->Uc)[i], m, m - n);
+        matrixCreate(&(base_i->R)[i], n, n);
+      }
+    }
+
+    std::vector<int64_t> mps_comm(count);
+    for (int64_t i = 0; i < nodes; i++) {
+      const Cell* ci = &leaves[i + gbegin];
+      int64_t offset_i = offsets[i + ibegin];
+      std::copy(ci->Multipole.begin(), ci->Multipole.end(), &mps_comm[offset_i]);
+    }
+    DistributeMultipoles(mps_comm.data(), &(base_i->DIML)[0], l);
+
+    for (int64_t i = 0; i < xlen; i++) {
+      int64_t gi = i;
+      iGlobal(&gi, i, l);
+      Cell* ci = &leaves[gi];
+
+      int64_t mi = base_i->DIML[i];
+      int64_t offset_i = offsets[i];
+      int64_t end_i = offset_i + mi;
+      int64_t len_m = ci->Multipole.size();
+      if (len_m != mi)
+        ci->Multipole.resize(mi);
+      std::copy(&mps_comm[offset_i], &mps_comm[end_i], ci->Multipole.begin());
+    }
   }
 
-  DistributeDims(&basis.DIMS[0], level);
-  DistributeDims(&basis.DIML[0], level);
-
-  int64_t count = 0;
-  std::vector<int64_t> offsets(xlen);
-  for (int64_t i = 0; i < xlen; i++) {
-    int64_t m = basis.DIMS[i];
-    int64_t n = basis.DIML[i];
-    offsets[i] = count;
-    count = count + n;
-
-    int64_t msize = m * n;
-    if (msize > 0 && (i < ibegin || i >= iend))
-      matrixCreate(&basis.Uo[i], m, n);
-  }
-  DistributeMatricesList(basis.Uo.data(), level);
-
-  std::vector<int64_t> mps_comm(count);
-  for (int64_t i = 0; i < nodes; i++) {
-    const Cell* ci = &leaves[i + gbegin];
-    int64_t box_i = i + ibegin;
-
-    int64_t offset_i = offsets[box_i];
-    std::copy(ci->Multipole.begin(), ci->Multipole.end(), &mps_comm[offset_i]);
-  }
-  DistributeMultipoles(mps_comm.data(), basis.DIML.data(), level);
-
-  for (int64_t i = 0; i < xlen; i++) {
-    int64_t gi = i;
-    iGlobal(&gi, i, level);
-    Cell* ci = &leaves[gi];
-
-    int64_t offset_i = offsets[i];
-    int64_t end_i = offset_i + basis.DIML[i];
-    int64_t len_m = ci->Multipole.size();
-    if (len_m != basis.DIML[i])
-      ci->Multipole.resize(basis.DIML[i]);
-    std::copy(&mps_comm[offset_i], &mps_comm[end_i], ci->Multipole.begin());
-  }
-}
-
-void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
-  for (int64_t i = levels; i >= 0; i--)
-    evaluateLocal(ef, basis[i], cells, i, bodies, nbodies, epi, mrank, sp_pts);
-}
-
-void orth_base_all(Base* basis, int64_t levels) {
-  for (int64_t i = levels; i > 0; i--) {
-    Base* base_i = basis + i;
-    int64_t len = (int64_t)1 << i;
+  for (int64_t l = levels; l > 0; l--) {
+    Base* base_i = basis + l;
     int64_t lbegin = 0;
-    int64_t lend = len;
-    selfLocalRange(&lbegin, &lend, i);
-    contentLength(&len, i);
+    int64_t lend = (int64_t)1 << l;
+    selfLocalRange(&lbegin, &lend, l);
+    int64_t len = lend - lbegin;
 
 #pragma omp parallel for
-    for (int64_t j = 0; j < len; j++) {
-      int64_t dim = base_i->DIMS[j];
-      int64_t dim_l = base_i->DIML[j];
-      int64_t dim_c = dim - dim_l;
-
-      Matrix& Uo_i = base_i->Uo[j];
-      Matrix& Uc_i = base_i->Uc[j];
-      Matrix& Ul_i = base_i->R[j];
-      matrixCreate(&Uc_i, dim, dim_c);
-      matrixCreate(&Ul_i, dim_l, dim_l);
-
-      if (j >= lbegin && j < lend && dim > 0)
-        qr_with_complements(&Uo_i, &Uc_i, &Ul_i);
+    for (int64_t i = 0; i < len; i++) {
+      int64_t li = i + lbegin;
+      if (base_i->DIMS[li] > 0)
+        qr_with_complements(&(base_i->Uo)[li], &(base_i->Uc)[li], &(base_i->R)[li]);
     }
 
-    DistributeMatricesList(base_i->Uc.data(), i);
-    DistributeMatricesList(base_i->Uo.data(), i);
-    DistributeMatricesList(base_i->R.data(), i);
+    DistributeMatricesList(&(base_i->Uc)[0], l);
+    DistributeMatricesList(&(base_i->Uo)[0], l);
+    DistributeMatricesList(&(base_i->R)[0], l);
 
-    int64_t nlevel = i - 1;
+    int64_t nlevel = l - 1;
     int64_t nbegin = 0;
     int64_t nend = (int64_t)1 << nlevel;
     selfLocalRange(&nbegin, &nend, nlevel);
     int64_t nodes = nend - nbegin;
 
 #pragma omp parallel for
-    for (int64_t j = 0; j < nodes; j++) {
-      int64_t lj = j + nbegin;
-      int64_t gj = j;
-      iGlobal(&gj, lj, nlevel);
+    for (int64_t i = 0; i < nodes; i++) {
+      int64_t li = i + nbegin;
+      int64_t gi = i;
+      iGlobal(&gi, li, nlevel);
 
-      int64_t cj0 = (gj << 1);
-      int64_t cj1 = (gj << 1) + 1;
-      int64_t lj0 = cj0;
-      int64_t lj1 = cj1;
-      iLocal(&lj0, cj0, i);
-      iLocal(&lj1, cj1, i);
+      int64_t ci0 = (gi << 1);
+      int64_t ci1 = (gi << 1) + 1;
+      int64_t li0 = ci0;
+      int64_t li1 = ci1;
+      iLocal(&li0, ci0, l);
+      iLocal(&li1, ci1, l);
 
-      updateSubU(&basis[nlevel].Uo[lj], &base_i->R[lj0], &base_i->R[lj1]);
+      updateSubU(&(basis[nlevel].Uo)[li], &(base_i->R)[li0], &(base_i->R)[li1]);
     }
   }
 }
+

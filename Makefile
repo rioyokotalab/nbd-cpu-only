@@ -15,7 +15,7 @@ ifneq (${MKLROOT},)
 	LDFLAGS	+= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.so \
 	  ${MKLROOT}/lib/intel64/libmkl_sequential.so \
 	  ${MKLROOT}/lib/intel64/libmkl_core.so -Wl,--end-group
-	MSG	= *** Successfully found Intel MKL! ***
+	MSG	= *** Successfully found and linking with Intel MKL! ***
 else
 	LDFLAGS	+= -lblas -llapacke
 	MSG	= *** ENV MKLROOT not set, linking with netlib BLAS. ***
