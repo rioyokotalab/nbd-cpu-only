@@ -49,40 +49,57 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   }
 }
 
-void getList(Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel, double theta) {
-  Cell* Ci = &cells[i];
-  Cell* Cj = &cells[j];
-  if (ilevel < jlevel && Ci->CHILD >= 0) {
-    getList(cells, Ci->CHILD, j, ilevel + 1, jlevel, theta);
-    getList(cells, Ci->CHILD + 1, j, ilevel + 1, jlevel, theta);
-  }
-  else if (jlevel < ilevel && Cj->CHILD >= 0) {
-    getList(cells, i, Cj->CHILD, ilevel, jlevel + 1, theta);
-    getList(cells, i, Cj->CHILD + 1, ilevel, jlevel + 1, theta);
-  }
-  else if (ilevel == jlevel) {
+void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel, double theta) {
+  const Cell* Ci = &cells[i];
+  const Cell* Cj = &cells[j];
+  if (ilevel == jlevel) {
     int admis;
     admis_check(&admis, theta, Ci->C, Cj->C, Ci->R, Cj->R);
-    if (admis)
-      Ci->listFar.emplace_back(j);
-    else {
-      Ci->listNear.emplace_back(j);
-
-      if (Ci->CHILD >= 0) {
-        getList(cells, Ci->CHILD, j, ilevel + 1, jlevel, theta);
-        getList(cells, Ci->CHILD + 1, j, ilevel + 1, jlevel, theta);
-      }
-      else if (Cj->CHILD >= 0) {
-        getList(cells, i, Cj->CHILD, ilevel, jlevel + 1, theta);
-        getList(cells, i, Cj->CHILD + 1, ilevel, jlevel + 1, theta);
-      }
+    int write_far = NoF == 'F' || NoF == 'f';
+    int write_near = NoF == 'N' || NoF == 'n';
+    if (admis ? write_far : write_near) {
+      int64_t n = *len;
+      rels[n] = i + j * ncells;
+      *len = n + 1;
     }
+  }
+  if (ilevel <= jlevel && Ci->CHILD >= 0) {
+    getList(NoF, len, rels, ncells, cells, Ci->CHILD, j, ilevel + 1, jlevel, theta);
+    getList(NoF, len, rels, ncells, cells, Ci->CHILD + 1, j, ilevel + 1, jlevel, theta);
+  }
+  else if (jlevel <= ilevel && Cj->CHILD >= 0) {
+    getList(NoF, len, rels, ncells, cells, i, Cj->CHILD, ilevel, jlevel + 1, theta);
+    getList(NoF, len, rels, ncells, cells, i, Cj->CHILD + 1, ilevel, jlevel + 1, theta);
   }
 }
 
+void traverse(Cell* cells, int64_t levels, double theta) {
+  int64_t nleaves = (int64_t)1 << levels;
+  int64_t ncells = nleaves + nleaves - 1;
 
-void traverse(Cell* cells, int64_t levels, int64_t theta) {
-  getList(&cells[0], 0, 0, 0, 0, theta);
+  std::vector<int64_t> rels(ncells * ncells);
+  int64_t len = 0;
+  getList('N', &len, &rels[0], ncells, &cells[0], 0, 0, 0, 0, theta);
+  std::sort(&rels[0], &rels[len]);
+
+  for (int64_t i = 0; i < len; i++) {
+    int64_t r = rels[i];
+    int64_t x = r / ncells;
+    int64_t y = r - x * ncells;
+    cells[y].listNear.emplace_back(x);
+  }
+
+  len = 0;
+  getList('F', &len, &rels[0], ncells, &cells[0], 0, 0, 0, 0, theta);
+  std::sort(&rels[0], &rels[len]);
+
+  for (int64_t i = 0; i < len; i++) {
+    int64_t r = rels[i];
+    int64_t x = r / ncells;
+    int64_t y = r - x * ncells;
+    cells[y].listFar.emplace_back(x);
+  }
+
   int64_t mpi_rank, mpi_levels;
   commRank(&mpi_rank, &mpi_levels);
 

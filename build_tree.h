@@ -29,9 +29,7 @@ struct CSC {
 
 void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
 
-void getList(Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel, double theta);
-
-void traverse(Cell* cells, int64_t levels, int64_t theta);
+void traverse(Cell* cells, int64_t levels, double theta);
 
 void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels);
 
