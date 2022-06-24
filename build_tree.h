@@ -23,8 +23,8 @@ struct Cell {
 struct CSC {
   int64_t M;
   int64_t N;
-  std::vector<int64_t> COL_INDEX;
-  std::vector<int64_t> ROW_INDEX;
+  int64_t* COL_INDEX;
+  int64_t* ROW_INDEX;
 };
 
 void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
@@ -37,7 +37,7 @@ void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels);
 
 void evaluate(char NoF, Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level);
 
-void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j);
+void lookupIJ(int64_t* ij, const CSC* rels, int64_t i, int64_t j);
 
 void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level);
 

@@ -2,6 +2,8 @@
 #include "umv.h"
 #include "dist.h"
 
+#include "stdlib.h"
+
 void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, const Matrix* V, int64_t level) {
   int64_t ibegin = 0, iend = 0;
   selfLocalRange(&ibegin, &iend, level);
@@ -42,7 +44,7 @@ void factorAcc(Matrix* A_cc, const CSC& rels, int64_t level) {
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i);
+    lookupIJ(&ii, &rels, i + lbegin, i);
     Matrix& A_ii = A_cc[ii];
     chol_decomp(&A_ii);
 
@@ -62,7 +64,7 @@ void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels, int64_t level)
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i);
+    lookupIJ(&ii, &rels, i + lbegin, i);
     const Matrix& A_ii = A_cc[ii];
     for (int64_t yi = rels.COL_INDEX[i]; yi < rels.COL_INDEX[i + 1]; yi++)
       trsm_lowerA(&A_oc[yi], &A_ii);
@@ -77,7 +79,7 @@ void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels, int64_t level) {
 #pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i);
+    lookupIJ(&ii, &rels, i + lbegin, i);
     const Matrix& A_ii = A_oc[ii];
     Matrix& S_i = S[ii];
     mmult('N', 'T', &A_ii, &A_ii, &S_i, -1., 1.);
@@ -237,10 +239,10 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rel
       int64_t ci0 = i << 1;
       int64_t ci1 = (i << 1) + 1;
       int64_t i00, i01, i10, i11;
-      lookupIJ(i00, rels_low_near, ci0, cj0);
-      lookupIJ(i01, rels_low_near, ci0, cj1);
-      lookupIJ(i10, rels_low_near, ci1, cj0);
-      lookupIJ(i11, rels_low_near, ci1, cj1);
+      lookupIJ(&i00, &rels_low_near, ci0, cj0);
+      lookupIJ(&i01, &rels_low_near, ci0, cj1);
+      lookupIJ(&i10, &rels_low_near, ci1, cj0);
+      lookupIJ(&i11, &rels_low_near, ci1, cj1);
 
       if (i00 >= 0) {
         const Matrix& m00 = Mlow[i00];
@@ -266,10 +268,10 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rel
         cpyMatToMat(m11.M, m11.N, &m11, &Mup[ij], 0, 0, ybegin, xbegin);
       }
 
-      lookupIJ(i00, rels_low_far, ci0, cj0);
-      lookupIJ(i01, rels_low_far, ci0, cj1);
-      lookupIJ(i10, rels_low_far, ci1, cj0);
-      lookupIJ(i11, rels_low_far, ci1, cj1);
+      lookupIJ(&i00, &rels_low_far, ci0, cj0);
+      lookupIJ(&i01, &rels_low_far, ci0, cj1);
+      lookupIJ(&i10, &rels_low_far, ci1, cj0);
+      lookupIJ(&i11, &rels_low_far, ci1, cj1);
 
       if (i00 >= 0) {
         const Matrix& m00 = Slow[i00];
@@ -340,6 +342,13 @@ void deallocSpDense(SpDense* sp) {
   sp->Levels = 0;
   sp->Basis.clear();
   sp->D.clear();
+
+  for (int64_t i = 0; i < level; i++) {
+    free(sp->RelsFar[i].ROW_INDEX);
+    free(sp->RelsFar[i].COL_INDEX);
+    free(sp->RelsNear[i].ROW_INDEX);
+    free(sp->RelsNear[i].COL_INDEX);
+  }
   sp->RelsNear.clear();
   sp->RelsFar.clear();
 }

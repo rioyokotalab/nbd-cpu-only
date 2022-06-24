@@ -3,7 +3,8 @@
 #include "basis.h"
 #include "dist.h"
 
-#include <cmath>
+#include "stdlib.h"
+#include "math.h"
 #include <algorithm>
 
 void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
@@ -132,38 +133,40 @@ void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
 
     csc.M = (int64_t)1 << i;
     csc.N = nodes;
-    csc.COL_INDEX.resize(nodes + 1);
-    std::fill(csc.COL_INDEX.begin(), csc.COL_INDEX.end(), 0);
-    csc.ROW_INDEX.clear();
+    csc.COL_INDEX = (int64_t*)malloc(sizeof(int64_t) * nodes + 1);
+    std::fill(&csc.COL_INDEX[0], &csc.COL_INDEX[nodes + 1], 0);
+    int64_t ent_max = nodes * csc.M;
+    csc.ROW_INDEX = (int64_t*)malloc(sizeof(int64_t) * ent_max);
 
     int64_t len = (int64_t)1 << i;
     const Cell* leaves = &cells[len - 1];
 
+    int64_t count = 0;
     for (int64_t j = 0; j < nodes; j++) {
       const Cell* c = &leaves[j + lbegin];
+      int64_t ent = 0;
+      csc.COL_INDEX[j] = count;
       if (NoF == 'N' || NoF == 'n') {
-        int64_t ent = c->listNear.size();
-        csc.COL_INDEX[j] = ent;
+        ent = c->listNear.size();
         for (int64_t k = 0; k < ent; k++) {
           int64_t zi = c->listNear[k] - leaves;
-          csc.ROW_INDEX.emplace_back(zi);
+          csc.ROW_INDEX[count + k] = zi;
         }
       }
       else if (NoF == 'F' || NoF == 'f') {
-        int64_t ent = c->listFar.size();
-        csc.COL_INDEX[j] = ent;
+        ent = c->listFar.size();
         for (int64_t k = 0; k < ent; k++) {
           int64_t zi = c->listFar[k] - leaves;
-          csc.ROW_INDEX.emplace_back(zi);
+          csc.ROW_INDEX[count + k] = zi;
         }
       }
+      count = count + ent;
     }
 
-    int64_t count = 0;
-    for (int64_t j = 0; j <= nodes; j++) {
-      int64_t ent = csc.COL_INDEX[j];
-      csc.COL_INDEX[j] = count;
-      count = count + ent;
+    csc.COL_INDEX[nodes] = count;
+    if (count < ent_max) {
+      int64_t* rows = (int64_t*)realloc(csc.ROW_INDEX, sizeof(int64_t) * count);
+      csc.ROW_INDEX = rows;
     }
   }
 }
@@ -206,12 +209,14 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
   }
 }
 
-void lookupIJ(int64_t& ij, const CSC& rels, int64_t i, int64_t j) {
-  if (j < 0 || j >= rels.N)
-  { ij = -1; return; }
-  int64_t k = std::distance(rels.ROW_INDEX.data(), 
-    std::find(rels.ROW_INDEX.data() + rels.COL_INDEX[j], rels.ROW_INDEX.data() + rels.COL_INDEX[j + 1], i));
-  ij = (k < rels.COL_INDEX[j + 1]) ? k : -1;
+void lookupIJ(int64_t* ij, const CSC* rels, int64_t i, int64_t j) {
+  if (j < 0 || j >= rels->N)
+  { *ij = -1; return; }
+  const int64_t* row = &rels->ROW_INDEX[0];
+  int64_t jbegin = rels->COL_INDEX[j];
+  int64_t jend = rels->COL_INDEX[j + 1];
+  int64_t k = std::distance(row, std::find(&row[jbegin], &row[jend], i));
+  *ij = (k < jend) ? k : -1;
 }
 
 

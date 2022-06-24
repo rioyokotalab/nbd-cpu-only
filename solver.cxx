@@ -32,7 +32,7 @@ void svAccFw(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
   Vector* xlocal = &Xc[ibegin];
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i);
+    lookupIJ(&ii, &rels, i + lbegin, i);
     const Matrix& A_ii = A_cc[ii];
     mat_solve('F', &xlocal[i], &A_ii);
 
@@ -69,7 +69,7 @@ void svAccBk(Vector* Xc, const Matrix* A_cc, const CSC& rels, int64_t level) {
     }
 
     int64_t ii;
-    lookupIJ(ii, rels, i + lbegin, i);
+    lookupIJ(&ii, &rels, i + lbegin, i);
     const Matrix& A_ii = A_cc[ii];
     mat_solve('B', &xlocal[i], &A_ii);
   }
