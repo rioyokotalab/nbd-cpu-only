@@ -64,9 +64,9 @@ void getList(Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel,
     int admis;
     admis_check(&admis, theta, Ci->C, Cj->C, Ci->R, Cj->R);
     if (admis)
-      Ci->listFar.emplace_back(Cj);
+      Ci->listFar.emplace_back(j);
     else {
-      Ci->listNear.emplace_back(Cj);
+      Ci->listNear.emplace_back(j);
 
       if (Ci->CHILD >= 0) {
         getList(cells, Ci->CHILD, j, ilevel + 1, jlevel, theta);
@@ -93,23 +93,21 @@ void traverse(Cell* cells, int64_t levels, int64_t theta) {
     int64_t my_rank = mpi_rank >> lvl_diff;
     int64_t gbegin = my_rank * nodes;
 
-    int64_t len = (int64_t)1 << i;
-    Cell* leaves = &cells[len - 1];
+    int64_t offc = (int64_t)(1 << i) - 1;
+    Cell* leaves = &cells[offc];
     std::vector<int64_t> ngbs;
 
     for (int64_t n = 0; n < nodes; n++) {
       const Cell* c = &leaves[n + gbegin];
       int64_t nlen = c->listNear.size();
       for (int64_t j = 0; j < nlen; j++) {
-        const Cell* cj = (c->listNear)[j];
-        int64_t ngb = cj - leaves;
+        int64_t ngb = c->listNear[j] - offc;
         ngb /= nodes;
         ngbs.emplace_back(ngb);
       }
       int64_t flen = c->listFar.size();
       for (int64_t j = 0; j < flen; j++) {
-        const Cell* cj = (c->listFar)[j];
-        int64_t ngb = cj - leaves;
+        int64_t ngb = c->listFar[j] - offc;
         ngb /= nodes;
         ngbs.emplace_back(ngb);
       }
@@ -129,49 +127,48 @@ void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
     selfLocalRange(&ibegin, &iend, i);
     iGlobal(&lbegin, ibegin, i);
     int64_t nodes = iend - ibegin;
-    CSC& csc = rels[i];
+    CSC* csc = &rels[i];
 
-    csc.M = (int64_t)1 << i;
-    csc.N = nodes;
-    csc.COL_INDEX = (int64_t*)malloc(sizeof(int64_t) * nodes + 1);
-    std::fill(&csc.COL_INDEX[0], &csc.COL_INDEX[nodes + 1], 0);
-    int64_t ent_max = nodes * csc.M;
-    csc.ROW_INDEX = (int64_t*)malloc(sizeof(int64_t) * ent_max);
+    csc->M = (int64_t)1 << i;
+    csc->N = nodes;
+    int64_t ent_max = nodes * csc->M;
+    int64_t* cols = (int64_t*)malloc(sizeof(int64_t) * (nodes + 1 + ent_max));
+    int64_t* rows = &cols[nodes + 1];
 
-    int64_t len = (int64_t)1 << i;
-    const Cell* leaves = &cells[len - 1];
+    int64_t offc = (int64_t)(1 << i) - 1;
+    const Cell* leaves = &cells[offc];
 
     int64_t count = 0;
     for (int64_t j = 0; j < nodes; j++) {
       const Cell* c = &leaves[j + lbegin];
       int64_t ent = 0;
-      csc.COL_INDEX[j] = count;
+      cols[j] = count;
       if (NoF == 'N' || NoF == 'n') {
         ent = c->listNear.size();
         for (int64_t k = 0; k < ent; k++) {
-          int64_t zi = c->listNear[k] - leaves;
-          csc.ROW_INDEX[count + k] = zi;
+          int64_t zi = c->listNear[k] - offc;
+          rows[count + k] = zi;
         }
       }
       else if (NoF == 'F' || NoF == 'f') {
         ent = c->listFar.size();
         for (int64_t k = 0; k < ent; k++) {
-          int64_t zi = c->listFar[k] - leaves;
-          csc.ROW_INDEX[count + k] = zi;
+          int64_t zi = c->listFar[k] - offc;
+          rows[count + k] = zi;
         }
       }
       count = count + ent;
     }
 
-    csc.COL_INDEX[nodes] = count;
-    if (count < ent_max) {
-      int64_t* rows = (int64_t*)realloc(csc.ROW_INDEX, sizeof(int64_t) * count);
-      csc.ROW_INDEX = rows;
-    }
+    if (count < ent_max)
+      cols = (int64_t*)realloc(cols, sizeof(int64_t) * (nodes + 1 + count));
+    cols[nodes] = count;
+    csc->COL_INDEX = cols;
+    csc->ROW_INDEX = &cols[nodes + 1];
   }
 }
 
-void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC& csc, int64_t level) {
+void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC* csc, int64_t level) {
   int64_t len = (int64_t)1 << level;
   const Cell* leaves = &cell[len - 1];
 
@@ -184,14 +181,16 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
     int64_t gi = i + ibegin;
     iGlobal(&gi, i + ibegin, level);
     const Cell* ci = &leaves[gi];
-    int64_t off = csc.COL_INDEX[i];
+    int64_t off = csc->COL_INDEX[i];
 
     if (NoF == 'N' || NoF == 'n') {
       int64_t len = ci->listNear.size();
       for (int64_t j = 0; j < len; j++) {
-        int64_t i_begin = ci->listNear[j]->BODY[0];
+        int64_t jj = ci->listNear[j];
+        const Cell* cj = &cell[jj];
+        int64_t i_begin = cj->BODY[0];
         int64_t j_begin = ci->BODY[0];
-        int64_t m = ci->listNear[j]->BODY[1] - i_begin;
+        int64_t m = cj->BODY[1] - i_begin;
         int64_t n = ci->BODY[1] - j_begin;
         matrixCreate(&d[off + j], m, n);
         gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], d[off + j].A, NULL, NULL);
@@ -200,10 +199,12 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
     else if (NoF == 'F' || NoF == 'f') {
       int64_t len = ci->listFar.size();
       for (int64_t j = 0; j < len; j++) {
-        int64_t m = ci->listFar[j]->Multipole.size();
+        int64_t jj = ci->listFar[j];
+        const Cell* cj = &cell[jj];
+        int64_t m = cj->Multipole.size();
         int64_t n = ci->Multipole.size();
         matrixCreate(&d[off + j], m, n);
-        gen_matrix(ef, m, n, bodies, bodies, d[off + j].A, ci->listFar[j]->Multipole.data(), ci->Multipole.data());
+        gen_matrix(ef, m, n, bodies, bodies, d[off + j].A, cj->Multipole.data(), ci->Multipole.data());
       }
     }
   }
@@ -212,7 +213,7 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
 void lookupIJ(int64_t* ij, const CSC* rels, int64_t i, int64_t j) {
   if (j < 0 || j >= rels->N)
   { *ij = -1; return; }
-  const int64_t* row = &rels->ROW_INDEX[0];
+  const int64_t* row = rels->ROW_INDEX;
   int64_t jbegin = rels->COL_INDEX[j];
   int64_t jend = rels->COL_INDEX[j + 1];
   int64_t k = std::distance(row, std::find(&row[jbegin], &row[jend], i));

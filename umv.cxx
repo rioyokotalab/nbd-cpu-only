@@ -343,10 +343,8 @@ void deallocSpDense(SpDense* sp) {
   sp->Basis.clear();
   sp->D.clear();
 
-  for (int64_t i = 0; i < level; i++) {
-    free(sp->RelsFar[i].ROW_INDEX);
+  for (int64_t i = 0; i <= level; i++) {
     free(sp->RelsFar[i].COL_INDEX);
-    free(sp->RelsNear[i].ROW_INDEX);
     free(sp->RelsNear[i].COL_INDEX);
   }
   sp->RelsNear.clear();

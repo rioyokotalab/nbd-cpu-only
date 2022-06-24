@@ -102,7 +102,8 @@ void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix* Base, int64_
   }
 }
 
-void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* cell, int64_t nbodies) {
+void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* cells, int64_t ic, int64_t nbodies) {
+  const Cell* cell = &cells[ic];
   int64_t len = cell->listNear.size();
   std::vector<int64_t> offsets(len);
   std::vector<int64_t> lens(len);
@@ -110,7 +111,8 @@ void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], const Cell* c
   int64_t sum_len = 0;
   int64_t cpos = -1;
   for (int64_t i = 0; i < len; i++) {
-    const Cell* c = cell->listNear[i];
+    int64_t ii = cell->listNear[i];
+    const Cell* c = &cells[ii];
     offsets[i] = c->BODY[0];
     lens[i] = c->BODY[1] - c->BODY[0];
     sum_len = sum_len + lens[i];
@@ -196,7 +198,7 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, int64_t levels, co
       
       if (ni > 0) {
         int64_t n[2] = { sp_pts, sp_pts };
-        remoteBodies(remote.data(), close.data(), n, ci, nbodies);
+        remoteBodies(remote.data(), close.data(), n, cells, ci - cells, nbodies);
 
         int64_t rank = mrank;
         evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n[0], n[1], cellm.data(), remote.data(), close.data(), bodies);
