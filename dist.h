@@ -8,7 +8,6 @@
 extern "C" {
 #endif
 
-struct Vector;
 struct Matrix;
 
 void initComm(int* argc, char** argv[]);
@@ -29,8 +28,6 @@ void iGlobal(int64_t* iglobal, int64_t ilocal, int64_t level);
 
 void contentLength(int64_t* len, int64_t level);
 
-void DistributeVectorsList(Vector lis[], int64_t level);
-
 void DistributeMatricesList(Matrix lis[], int64_t level);
 
 void DistributeDims(int64_t dims[], int64_t level);
@@ -48,8 +45,6 @@ void recvFwSubstituted(Matrix A[], int64_t level);
 void recvBkSubstituted(Matrix A[], int64_t level);
 
 void distributeSubstituted(Matrix A[], int64_t level);
-
-void butterflySumX(Vector X[], int64_t lenX, int64_t level);
 
 void startTimer(double* wtime, double* cmtime);
 

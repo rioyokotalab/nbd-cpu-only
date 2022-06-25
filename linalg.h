@@ -14,32 +14,17 @@ struct Matrix {
   int64_t N;
 };
 
-struct Vector {
-  double* X;
-  int64_t N;
-};
-
 void cRandom(int64_t lenR, double min, double max, unsigned int seed);
 
 void matrixCreate(struct Matrix* mat, int64_t m, int64_t n);
 
 void matrixDestroy(struct Matrix* mat);
 
-void vectorCreate(struct Vector* vec, int64_t n);
-
-void vectorDestroy(struct Vector* vec);
-
 void cpyFromMatrix(const struct Matrix* A, double* v);
-
-void cpyFromVector(const struct Vector* A, double* v);
 
 void maxpby(struct Matrix* A, const double* v, double alpha, double beta);
 
-void vaxpby(struct Vector* A, const double* v, double alpha, double beta);
-
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
-
-void cpyVecToVec(int64_t n, const struct Vector* v1, struct Vector* v2, int64_t x1, int64_t x2);
 
 void qr_with_complements(struct Matrix* Qo, struct Matrix* Qc, struct Matrix* R);
 
@@ -48,8 +33,6 @@ void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* 
 void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int64_t* rnk_out);
 
 void zeroMatrix(struct Matrix* A);
-
-void zeroVector(struct Vector* A);
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 
@@ -61,15 +44,11 @@ void utav(char tb, const struct Matrix* U, const struct Matrix* A, const struct 
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 
-void mvec(char ta, const struct Matrix* A, const struct Vector* X, struct Vector* B, double alpha, double beta);
-
 void normalizeA(struct Matrix* A, const struct Matrix* B);
 
 void mnrm2(const struct Matrix* A, double* nrm);
 
 void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA);
-
-void vector_mem(int64_t* bytes, const struct Vector* X, int64_t lenX);
   
 #ifdef __cplusplus
 }

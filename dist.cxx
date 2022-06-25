@@ -146,84 +146,6 @@ void contentLength(int64_t* len, int64_t level) {
   }
 }
 
-void DistributeVectorsList(Vector lis[], int64_t level) {
-  int64_t my_ind = COMMS[level].SELF_I;
-  int64_t my_rank = COMMS[level].MY_RANK;
-  int64_t nboxes = COMMS[level].N_BOXES;
-  int64_t *ngbs = COMMS[level].NGB_COMM.data();
-  int64_t ngbs_len = COMMS[level].NGB_COMM.size();
-  std::vector<MPI_Request> requests(ngbs_len);
-
-  std::vector<int64_t> LENS(ngbs_len);
-  std::vector<double*> DATA(ngbs_len);
-
-  for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t tot_len = 0;
-    for (int64_t n = 0; n < nboxes; n++) {
-      int64_t rm_i = i * nboxes + n;
-      const Vector& B_i = lis[rm_i];
-      int64_t len = B_i.N;
-      tot_len = tot_len + len;
-    }
-    LENS[i] = tot_len;
-    DATA[i] = (double*)malloc(sizeof(double) * tot_len);
-  }
-
-  int64_t offset = 0;
-  double* my_data = DATA[my_ind];
-  int64_t my_len = LENS[my_ind];
-  for (int64_t n = 0; n < nboxes; n++) {
-    int64_t my_i = my_ind * nboxes + n;
-    const Vector& B_i = lis[my_i];
-    int64_t len = B_i.N;
-    cpyFromVector(&B_i, my_data + offset);
-    offset = offset + len;
-  }
-
-  int tag = 0;
-  double stime = MPI_Wtime();
-  for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
-    if (rm_rank != my_rank)
-      MPI_Isend(my_data, (int)my_len, MPI_DOUBLE, (int)rm_rank, tag, MPI_COMM_WORLD, &requests[i]);
-  }
-
-  for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
-    if (rm_rank != my_rank) {
-      double* data = DATA[i];
-      int64_t len = LENS[i];
-      MPI_Recv(data, (int)len, MPI_DOUBLE, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-  }
-
-  for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
-    if (rm_rank != my_rank)
-      MPI_Wait(&requests[i], MPI_STATUS_IGNORE);
-  }
-  double etime = MPI_Wtime() - stime;
-  tot_time = tot_time + etime;
-
-  for (int64_t i = 0; i < ngbs_len; i++) {
-    int64_t rm_rank = ngbs[i];
-    if (rm_rank != my_rank) {
-      offset = 0;
-      const double* rm_v = DATA[i];
-      for (int64_t n = 0; n < nboxes; n++) {
-        int64_t rm_i = i * nboxes + n;
-        Vector& B_i = lis[rm_i];
-        int64_t len = B_i.N;
-        vaxpby(&B_i, &rm_v[offset], 1., 0.);
-        offset = offset + len;
-      }
-    }
-  }
-
-  for (int64_t i = 0; i < ngbs_len; i++)
-    free(DATA[i]);
-}
-
 void DistributeMatricesList(Matrix lis[], int64_t level) {
   int64_t my_ind = COMMS[level].SELF_I;
   int64_t my_rank = COMMS[level].MY_RANK;
@@ -690,42 +612,6 @@ void distributeSubstituted(Matrix A[], int64_t level) {
       free(RM_DATA[i]);
     }
   }
-}
-
-void butterflySumX(Vector X[], int64_t lenX, int64_t level) {
-  int64_t rm_rank = COMMS[level].TWIN_RANK;
-  MPI_Request request;
-  int64_t LEN = 0;
-  double* SRC_DATA, *RM_DATA;
-
-  for (int64_t i = 0; i < lenX; i++)
-    LEN = LEN + X[i].N;
-
-  SRC_DATA = (double*)malloc(sizeof(double) * LEN);
-  RM_DATA = (double*)malloc(sizeof(double) * LEN);
-
-  int64_t offset = 0;
-  for (int64_t i = 0; i < lenX; i++) {
-    cpyFromVector(&X[i], SRC_DATA + offset);
-    offset = offset + X[i].N;
-  }
-
-  int tag = 10;
-  double stime = MPI_Wtime();
-  MPI_Isend(SRC_DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, tag, MPI_COMM_WORLD, &request);
-  MPI_Recv(RM_DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Wait(&request, MPI_STATUS_IGNORE);
-  double etime = MPI_Wtime() - stime;
-  tot_time = tot_time + etime;
-
-  offset = 0;
-  for (int64_t i = 0; i < lenX; i++) {
-    vaxpby(&X[i], RM_DATA + offset, 1., 1.);
-    offset = offset + X[i].N;
-  }
-
-  free(SRC_DATA);
-  free(RM_DATA);
 }
 
 void startTimer(double* wtime, double* cmtime) {
