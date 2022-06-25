@@ -59,13 +59,13 @@ void trsm_lowerA(struct Matrix* A, const struct Matrix* L);
 
 void utav(char tb, const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C);
 
-void mat_solve(char type, struct Vector* X, const struct Matrix* A);
+void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 
 void mvec(char ta, const struct Matrix* A, const struct Vector* X, struct Vector* B, double alpha, double beta);
 
 void normalizeA(struct Matrix* A, const struct Matrix* B);
 
-void vnrm2(const struct Vector* A, double* nrm);
+void mnrm2(const struct Matrix* A, double* nrm);
 
 void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA);
 

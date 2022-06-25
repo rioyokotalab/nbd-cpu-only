@@ -238,7 +238,7 @@ void lookupIJ(int64_t* ij, const CSC* rels, int64_t i, int64_t j) {
 }
 
 
-void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level) {
+void loadX(Matrix* X, const Cell* cell, const Body* bodies, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
   contentLength(&xlen, level);
   int64_t len = (int64_t)1 << level;
@@ -250,16 +250,16 @@ void loadX(Vector* X, const Cell* cell, const Body* bodies, int64_t level) {
     iGlobal(&gi, i, level);
     const Cell* ci = &leaves[gi];
 
-    Vector& Xi = X[i];
+    Matrix& Xi = X[i];
     int64_t nbegin = ci->BODY[0];
     int64_t ni = ci->BODY[1] - nbegin;
-    vectorCreate(&Xi, ni);
+    matrixCreate(&Xi, ni, 1);
     for (int64_t n = 0; n < ni; n++)
-      Xi.X[n] = bodies[n + nbegin].B;
+      Xi.A[n] = bodies[n + nbegin].B;
   }
 }
 
-void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t level) {
+void h2MatVecReference(Matrix* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t level) {
   int64_t nbodies = cell->BODY[1];
   int64_t xlen = (int64_t)1 << level;
   contentLength(&xlen, level);
@@ -272,37 +272,37 @@ void h2MatVecReference(Vector* B, KerFunc_t ef, const Cell* cell, const Body* bo
     iGlobal(&gi, i, level);
     const Cell* ci = &leaves[gi];
 
-    Vector& Bi = B[i];
+    Matrix& Bi = B[i];
     int64_t ibegin = ci->BODY[0];
     int64_t m = ci->BODY[1] - ibegin;
-    vectorCreate(&Bi, m);
+    matrixCreate(&Bi, m, 1);
 
     int64_t block = 500;
     int64_t last = nbodies % block;
-    Vector X;
+    Matrix X;
     Matrix Aij;
-    vectorCreate(&X, block);
+    matrixCreate(&X, block, 1);
     matrixCreate(&Aij, m, block);
-    zeroVector(&X);
+    zeroMatrix(&X);
     zeroMatrix(&Aij);
 
     if (last > 0) {
       for (int64_t k = 0; k < last; k++)
-        X.X[k] = bodies[k].B;
+        X.A[k] = bodies[k].B;
       gen_matrix(ef, m, last, &bodies[ibegin], bodies, Aij.A, NULL, NULL);
-      mvec('N', &Aij, &X, &Bi, 1., 0.);
+      mmult('N', 'N', &Aij, &X, &Bi, 1., 0.);
     }
     else
-      zeroVector(&Bi);
+      zeroMatrix(&Bi);
 
     for (int64_t j = last; j < nbodies; j += block) {
       for (int64_t k = 0; k < block; k++)
-        X.X[k] = bodies[k + j].B;
+        X.A[k] = bodies[k + j].B;
       gen_matrix(ef, m, block, &bodies[ibegin], &bodies[j], Aij.A, NULL, NULL);
-      mvec('N', &Aij, &X, &Bi, 1., 1.);
+      mmult('N', 'N', &Aij, &X, &Bi, 1., 1.);
     }
 
     matrixDestroy(&Aij);
-    vectorDestroy(&X);
+    matrixDestroy(&X);
   }
 }

@@ -436,7 +436,7 @@ void butterflySumA(Matrix A[], int64_t lenA, int64_t level) {
   free(RM_DATA);
 }
 
-void sendFwSubstituted(const Vector X[], int64_t level) {
+void sendFwSubstituted(const Matrix A[], int64_t level) {
   int64_t my_rank = COMMS[level].MY_RANK;
   int64_t nboxes = COMMS[level].N_BOXES;
   int64_t *ngbs = COMMS[level].NGB_COMM.data();
@@ -455,15 +455,15 @@ void sendFwSubstituted(const Vector X[], int64_t level) {
       int64_t ibegin = i * nboxes;
       int64_t iend = ibegin + nboxes;
       for (int64_t n = ibegin; n < iend; n++)
-        len_i = len_i + X[n].N;
+        len_i = len_i + A[n].M * A[n].N;
       
       LENS[i] = len_i;
       DATA[i] = (double*)malloc(sizeof(double) * len_i);
 
       len_i = 0;
       for (int64_t n = ibegin; n < iend; n++) {
-        cpyFromVector(&X[n], DATA[i] + len_i);
-        len_i = len_i + X[n].N;
+        cpyFromMatrix(&A[n], DATA[i] + len_i);
+        len_i = len_i + A[n].M * A[n].N;
       }
       MPI_Isend(DATA[i], (int)LENS[i], MPI_DOUBLE, (int)rm_rank, tag, MPI_COMM_WORLD, &requests[i]);
     }
@@ -484,7 +484,7 @@ void sendFwSubstituted(const Vector X[], int64_t level) {
   }
 }
 
-void sendBkSubstituted(const Vector X[], int64_t level) {
+void sendBkSubstituted(const Matrix A[], int64_t level) {
   int64_t my_ind = COMMS[level].SELF_I;
   int64_t my_rank = COMMS[level].MY_RANK;
   int64_t nboxes = COMMS[level].N_BOXES;
@@ -495,13 +495,13 @@ void sendBkSubstituted(const Vector X[], int64_t level) {
   int64_t lbegin = my_ind * nboxes;
   int64_t lend = lbegin + nboxes;
   for (int64_t i = lbegin; i < lend; i++)
-    LEN = LEN + X[i].N;
+    LEN = LEN + A[i].M * A[i].N;
   double* DATA = (double*)malloc(sizeof(double) * LEN);
 
   LEN = 0;
   for (int64_t i = lbegin; i < lend; i++) {
-    cpyFromVector(&X[i], DATA + LEN);
-    LEN = LEN + X[i].N;
+    cpyFromMatrix(&A[i], DATA + LEN);
+    LEN = LEN + A[i].M * A[i].N;
   }
   
   int tag = 8;
@@ -517,7 +517,7 @@ void sendBkSubstituted(const Vector X[], int64_t level) {
   free(DATA);
 }
 
-void recvFwSubstituted(Vector X[], int64_t level) {
+void recvFwSubstituted(Matrix A[], int64_t level) {
   int64_t my_ind = COMMS[level].SELF_I;
   int64_t my_rank = COMMS[level].MY_RANK;
   int64_t nboxes = COMMS[level].N_BOXES;
@@ -528,7 +528,7 @@ void recvFwSubstituted(Vector X[], int64_t level) {
   int64_t lbegin = my_ind * nboxes;
   int64_t lend = lbegin + nboxes;
   for (int64_t i = lbegin; i < lend; i++)
-    LEN = LEN + X[i].N;
+    LEN = LEN + A[i].M * A[i].N;
   double* DATA = (double*)malloc(sizeof(double) * LEN);
   
   int tag = 7;
@@ -539,8 +539,8 @@ void recvFwSubstituted(Vector X[], int64_t level) {
       MPI_Recv(DATA, (int)LEN, MPI_DOUBLE, (int)rm_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       int64_t offset = 0;
       for (int64_t i = lbegin; i < lend; i++) {
-        vaxpby(&X[i], DATA + offset, 1., 1.);
-        offset = offset + X[i].N;
+        maxpby(&A[i], DATA + offset, 1., 1.);
+        offset = offset + A[i].M * A[i].N;
       }
     }
   }
@@ -550,7 +550,7 @@ void recvFwSubstituted(Vector X[], int64_t level) {
   free(DATA);
 }
 
-void recvBkSubstituted(Vector X[], int64_t level) {
+void recvBkSubstituted(Matrix A[], int64_t level) {
   int64_t my_rank = COMMS[level].MY_RANK;
   int64_t nboxes = COMMS[level].N_BOXES;
   int64_t *ngbs = COMMS[level].NGB_COMM.data();
@@ -567,7 +567,7 @@ void recvBkSubstituted(Vector X[], int64_t level) {
       int64_t ibegin = i * nboxes;
       int64_t iend = ibegin + nboxes;
       for (int64_t n = ibegin; n < iend; n++)
-        len_i = len_i + X[n].N;
+        len_i = len_i + A[n].M * A[n].N;
       
       LENS[i] = len_i;
       DATA[i] = (double*)malloc(sizeof(double) * len_i);
@@ -597,15 +597,15 @@ void recvBkSubstituted(Vector X[], int64_t level) {
       int64_t ibegin = i * nboxes;
       int64_t iend = ibegin + nboxes;
       for (int64_t n = ibegin; n < iend; n++) {
-        vaxpby(&X[n], DATA[i] + len_i, 1., 0.);
-        len_i = len_i + X[n].N;
+        maxpby(&A[n], DATA[i] + len_i, 1., 0.);
+        len_i = len_i + A[n].M * A[n].N;
       }
       free(DATA[i]);
     }
   }
 }
 
-void distributeSubstituted(Vector X[], int64_t level) {
+void distributeSubstituted(Matrix A[], int64_t level) {
   int64_t my_ind = COMMS[level].SELF_I;
   int64_t my_rank = COMMS[level].MY_RANK;
   int64_t nboxes = COMMS[level].N_BOXES;
@@ -621,7 +621,7 @@ void distributeSubstituted(Vector X[], int64_t level) {
   int64_t lbegin = my_ind * nboxes;
   int64_t lend = lbegin + nboxes;
   for (int64_t i = lbegin; i < lend; i++)
-    LEN = LEN + X[i].N;
+    LEN = LEN + A[i].M * A[i].N;
 
   for (int64_t i = 0; i < ngbs_len; i++) {
     int64_t rm_rank = ngbs[i];
@@ -630,7 +630,7 @@ void distributeSubstituted(Vector X[], int64_t level) {
       int64_t ibegin = i * nboxes;
       int64_t iend = ibegin + nboxes;
       for (int64_t n = ibegin; n < iend; n++)
-        len_i = len_i + X[n].N;
+        len_i = len_i + A[n].M * A[n].N;
       
       LENS[i] = len_i;
       SRC_DATA[i] = (double*)malloc(sizeof(double) * len_i);
@@ -638,8 +638,8 @@ void distributeSubstituted(Vector X[], int64_t level) {
 
       len_i = 0;
       for (int64_t n = ibegin; n < iend; n++) {
-        cpyFromVector(&X[n], SRC_DATA[i] + len_i);
-        len_i = len_i + X[n].N;
+        cpyFromMatrix(&A[n], SRC_DATA[i] + len_i);
+        len_i = len_i + A[n].M * A[n].N;
       }
     }
   }
@@ -677,8 +677,8 @@ void distributeSubstituted(Vector X[], int64_t level) {
       int64_t offset = 0;
       const double* data = RM_DATA[i];
       for (int64_t n = lbegin; n < lend; n++) {
-        vaxpby(&X[n], data + offset, 1., 1.);
-        offset = offset + X[n].N;
+        maxpby(&A[n], data + offset, 1., 1.);
+        offset = offset + A[n].M * A[n].N;
       }
     }
   }

@@ -39,15 +39,15 @@ void DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64_t le
 
 void butterflySumA(Matrix A[], int64_t lenA, int64_t level);
 
-void sendFwSubstituted(const Vector X[], int64_t level);
+void sendFwSubstituted(const Matrix A[], int64_t level);
 
-void sendBkSubstituted(const Vector X[], int64_t level);
+void sendBkSubstituted(const Matrix A[], int64_t level);
 
-void recvFwSubstituted(Vector X[], int64_t level);
+void recvFwSubstituted(Matrix A[], int64_t level);
 
-void recvBkSubstituted(Vector X[], int64_t level);
+void recvBkSubstituted(Matrix A[], int64_t level);
 
-void distributeSubstituted(Vector X[], int64_t level);
+void distributeSubstituted(Matrix A[], int64_t level);
 
 void butterflySumX(Vector X[], int64_t lenX, int64_t level);
 

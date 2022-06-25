@@ -257,12 +257,12 @@ void utav(char tb, const struct Matrix* U, const struct Matrix* A, const struct 
   }
 }
 
-void mat_solve(char type, struct Vector* X, const struct Matrix* A) {
+void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {
   if (A->M > 0 && X->N > 0) {
     if (type == 'F' || type == 'f' || type == 'A' || type == 'a')
-      cblas_dtrsv(CblasColMajor, CblasLower, CblasNoTrans, CblasNonUnit, X->N, A->A, A->M, X->X, 1);
+      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, X->M, X->N, 1., A->A, A->M, X->A, X->M);
     if (type == 'B' || type == 'b' || type == 'A' || type == 'a')
-      cblas_dtrsv(CblasColMajor, CblasLower, CblasTrans, CblasNonUnit, X->N, A->A, A->M, X->X, 1);
+      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasTrans, CblasNonUnit, X->M, X->N, 1., A->A, A->M, X->A, X->M);
   }
 }
 
@@ -283,8 +283,8 @@ void normalizeA(struct Matrix* A, const struct Matrix* B) {
   }
 }
 
-void vnrm2(const struct Vector* A, double* nrm) {
-  *nrm = cblas_dnrm2(A->N, A->X, 1);
+void mnrm2(const struct Matrix* A, double* nrm) {
+  *nrm = cblas_dnrm2(A->M * A->N, A->A, 1);
 }
 
 void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA) {

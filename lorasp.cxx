@@ -58,11 +58,11 @@ int main(int argc, char* argv[]) {
 
   int64_t xlen = (int64_t)1 << levels;
   contentLength(&xlen, levels);
-  std::vector<Vector> X(xlen), Xref(xlen);
+  std::vector<Matrix> X(xlen), Xref(xlen);
   loadX(X.data(), cell.data(), body.data(), levels);
   loadX(Xref.data(), cell.data(), body.data(), levels);
 
-  std::vector<Vector> B(xlen);
+  std::vector<Matrix> B(xlen);
   h2MatVecReference(B.data(), ef, &cell[0], body.data(), levels);
 
   std::vector<RightHandSides> rhs(levels + 1);
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
   solveSpDense(&rhs[0], sp, B.data());
   stopTimer(&solve_time, &solve_comm_time);
 
-  DistributeVectorsList(rhs[levels].X.data(), levels);
+  DistributeMatricesList(rhs[levels].X.data(), levels);
 
   double err;
   solveRelErr(&err, rhs[levels].X.data(), Xref.data(), levels);
@@ -100,9 +100,9 @@ int main(int argc, char* argv[]) {
   deallocSpDense(&sp);
   deallocRightHandSides(&rhs[0], levels);
   for (int64_t i = 0; i < xlen; i++) {
-    vectorDestroy(&X[i]);
-    vectorDestroy(&Xref[i]);
-    vectorDestroy(&B[i]);
+    matrixDestroy(&X[i]);
+    matrixDestroy(&Xref[i]);
+    matrixDestroy(&B[i]);
   }
   
   closeComm();
