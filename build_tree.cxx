@@ -106,23 +106,7 @@ void traverse(char NoF, CSC* rels, int64_t ncells, const Cell* cells, double the
     rel_arr[i] = len;
 }
 
-void traverse_dist(Cell* cells, int64_t levels, double theta) {
-  int64_t nleaves = (int64_t)1 << levels;
-  int64_t ncells = nleaves + nleaves - 1;
-
-  CSC cellFar;
-  CSC cellNear;
-  traverse('N', &cellNear, ncells, cells, theta);
-  traverse('F', &cellFar, ncells, cells, theta);
-
-  for (int64_t i = 0; i < cellFar.N; i++)
-    for (int64_t ji = cellFar.COL_INDEX[i]; ji < cellFar.COL_INDEX[i + 1]; ji++)
-      cells[i].listFar.emplace_back(cellFar.ROW_INDEX[ji]);
-
-  for (int64_t i = 0; i < cellNear.N; i++)
-    for (int64_t ji = cellNear.COL_INDEX[i]; ji < cellNear.COL_INDEX[i + 1]; ji++)
-      cells[i].listNear.emplace_back(cellNear.ROW_INDEX[ji]);
-
+void traverse_dist(const CSC* cellFar, const CSC* cellNear, int64_t levels) {
   int64_t mpi_rank, mpi_levels;
   commRank(&mpi_rank, &mpi_levels);
 
@@ -138,17 +122,17 @@ void traverse_dist(Cell* cells, int64_t levels, double theta) {
 
     for (int64_t n = 0; n < nodes; n++) {
       int64_t nc = offc + n + gbegin;
-      int64_t nbegin = cellNear.COL_INDEX[nc];
-      int64_t nlen = cellNear.COL_INDEX[nc + 1] - nbegin;
+      int64_t nbegin = cellNear->COL_INDEX[nc];
+      int64_t nlen = cellNear->COL_INDEX[nc + 1] - nbegin;
       for (int64_t j = 0; j < nlen; j++) {
-        int64_t ngb = cellNear.ROW_INDEX[nbegin + j] - offc;
+        int64_t ngb = cellNear->ROW_INDEX[nbegin + j] - offc;
         ngb /= nodes;
         ngbs.emplace_back(ngb);
       }
-      int64_t fbegin = cellFar.COL_INDEX[nc];
-      int64_t flen = cellFar.COL_INDEX[nc + 1] - fbegin;
+      int64_t fbegin = cellFar->COL_INDEX[nc];
+      int64_t flen = cellFar->COL_INDEX[nc + 1] - fbegin;
       for (int64_t j = 0; j < flen; j++) {
-        int64_t ngb = cellFar.ROW_INDEX[fbegin + j] - offc;
+        int64_t ngb = cellFar->ROW_INDEX[fbegin + j] - offc;
         ngb /= nodes;
         ngbs.emplace_back(ngb);
       }
@@ -159,13 +143,10 @@ void traverse_dist(Cell* cells, int64_t levels, double theta) {
     int64_t size = std::distance(ngbs.begin(), iter);
     configureComm(i, &ngbs[0], size);
   }
-
-  free(cellFar.COL_INDEX);
-  free(cellNear.COL_INDEX);
 }
 
 
-void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
+void relations(CSC rels[], const CSC* cellRel, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t ibegin = 0, iend = 0, lbegin = 0;
     selfLocalRange(&ibegin, &iend, i);
@@ -180,26 +161,15 @@ void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
     int64_t* rows = &cols[nodes + 1];
 
     int64_t offc = (int64_t)(1 << i) - 1;
-    const Cell* leaves = &cells[offc];
-
     int64_t count = 0;
     for (int64_t j = 0; j < nodes; j++) {
-      const Cell* c = &leaves[j + lbegin];
-      int64_t ent = 0;
+      int64_t lc = offc + lbegin + j;
       cols[j] = count;
-      if (NoF == 'N' || NoF == 'n') {
-        ent = c->listNear.size();
-        for (int64_t k = 0; k < ent; k++) {
-          int64_t zi = c->listNear[k] - offc;
-          rows[count + k] = zi;
-        }
-      }
-      else if (NoF == 'F' || NoF == 'f') {
-        ent = c->listFar.size();
-        for (int64_t k = 0; k < ent; k++) {
-          int64_t zi = c->listFar[k] - offc;
-          rows[count + k] = zi;
-        }
+      int64_t cbegin = cellRel->COL_INDEX[lc];
+      int64_t ent = cellRel->COL_INDEX[lc + 1] - cbegin;
+      for (int64_t k = 0; k < ent; k++) {
+        int64_t zi = cellRel->ROW_INDEX[cbegin + k] - offc;
+        rows[count + k] = zi;
       }
       count = count + ent;
     }
@@ -212,25 +182,24 @@ void relations(char NoF, CSC rels[], const Cell* cells, int64_t levels) {
   }
 }
 
-void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC* csc, int64_t level) {
-  int64_t len = (int64_t)1 << level;
-  const Cell* leaves = &cell[len - 1];
-
-  int64_t ibegin = 0, iend = 0;
+void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const CSC* cellRel, const Body* bodies, const CSC* csc, int64_t level) {
+  int64_t ibegin = 0, iend = 0, lbegin = 0;;
   selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&lbegin, ibegin, level);
   int64_t nodes = iend - ibegin;
+  int64_t offc = (int64_t)(1 << level) - 1;
 
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
-    int64_t gi = i + ibegin;
-    iGlobal(&gi, i + ibegin, level);
-    const Cell* ci = &leaves[gi];
+    int64_t lc = offc + lbegin + i;
+    const Cell* ci = &cell[lc];
+    int64_t cbegin = cellRel->COL_INDEX[lc];
+    int64_t len = cellRel->COL_INDEX[lc + 1] - cbegin;
     int64_t off = csc->COL_INDEX[i];
 
     if (NoF == 'N' || NoF == 'n') {
-      int64_t len = ci->listNear.size();
       for (int64_t j = 0; j < len; j++) {
-        int64_t jj = ci->listNear[j];
+        int64_t jj = cellRel->ROW_INDEX[cbegin + j];
         const Cell* cj = &cell[jj];
         int64_t i_begin = cj->BODY[0];
         int64_t j_begin = ci->BODY[0];
@@ -241,9 +210,8 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
       }
     }
     else if (NoF == 'F' || NoF == 'f') {
-      int64_t len = ci->listFar.size();
       for (int64_t j = 0; j < len; j++) {
-        int64_t jj = ci->listFar[j];
+        int64_t jj = cellRel->ROW_INDEX[cbegin + j];
         const Cell* cj = &cell[jj];
         int64_t m = cj->Multipole.size();
         int64_t n = ci->Multipole.size();

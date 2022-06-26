@@ -40,20 +40,19 @@ int main(int argc, char* argv[]) {
   traverse('N', &cellNear, cell.size(), cell.data(), theta);
   traverse('F', &cellFar, cell.size(), cell.data(), theta);
 
-  //traverse_dist(&cellFar, &cellNear, levels);
-  traverse_dist(cell.data(), levels, theta);
+  traverse_dist(&cellFar, &cellNear, levels);
 
   SpDense sp;
-  allocSpDense(sp, cell.data(), levels);
+  allocSpDense(sp, &cellFar, &cellNear, levels);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
   evaluateBaseAll(ef, &sp.Basis[0], cell.data(), &cellNear, levels, body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
 
-  evaluate('N', sp.D[levels].A.data(), ef, &cell[0], body.data(), &sp.RelsNear[levels], levels);
+  evaluate('N', sp.D[levels].A.data(), ef, &cell[0], &cellNear, body.data(), &sp.RelsNear[levels], levels);
   for (int64_t i = 0; i <= levels; i++)
-    evaluate('F', sp.D[i].S.data(), ef, &cell[0], body.data(), &sp.RelsFar[i], i);
+    evaluate('F', sp.D[i].S.data(), ef, &cell[0], &cellFar, body.data(), &sp.RelsFar[i], i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);

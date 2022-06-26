@@ -321,15 +321,15 @@ void factorA(Node A[], const Base B[], const CSC rels_near[], const CSC rels_far
   chol_decomp(&A[0].A[0]);
 }
 
-void allocSpDense(SpDense& sp, const Cell* cells, int64_t levels) {
+void allocSpDense(SpDense& sp, const CSC* relFar, const CSC* relNear, int64_t levels) {
   sp.Levels = levels;
   sp.D.resize(levels + 1);
   sp.Basis.resize(levels + 1);
   sp.RelsNear.resize(levels + 1);
   sp.RelsFar.resize(levels + 1);
 
-  relations('N', &sp.RelsNear[0], cells, levels);
-  relations('F', &sp.RelsFar[0], cells, levels);
+  relations(&sp.RelsNear[0], relNear, levels);
+  relations(&sp.RelsFar[0], relFar, levels);
   allocNodes(sp.D.data(), sp.RelsNear.data(), sp.RelsFar.data(), levels);
   allocBasis(sp.Basis.data(), levels);
 }
