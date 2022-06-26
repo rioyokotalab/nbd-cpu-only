@@ -102,28 +102,26 @@ void traverse(char NoF, CSC* rels, int64_t ncells, const Cell* cells, double the
       rel_arr[loc] = i;
     }
   }
-  rel_arr[ncells] = len;
+  for (int64_t i = loc + 1; i <= ncells; i++)
+    rel_arr[i] = len;
 }
 
 void traverse_dist(Cell* cells, int64_t levels, double theta) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = nleaves + nleaves - 1;
 
-  CSC rel_far;
-  CSC rel_near;
-  traverse('N', &rel_near, ncells, cells, theta);
-  traverse('F', &rel_far, ncells, cells, theta);
+  CSC cellFar;
+  CSC cellNear;
+  traverse('N', &cellNear, ncells, cells, theta);
+  traverse('F', &cellFar, ncells, cells, theta);
 
-  for (int64_t i = 0; i < rel_far.N; i++)
-    for (int64_t ji = rel_far.COL_INDEX[i]; ji < rel_far.COL_INDEX[i + 1]; ji++)
-      cells[i].listFar.emplace_back(rel_far.ROW_INDEX[ji]);
+  for (int64_t i = 0; i < cellFar.N; i++)
+    for (int64_t ji = cellFar.COL_INDEX[i]; ji < cellFar.COL_INDEX[i + 1]; ji++)
+      cells[i].listFar.emplace_back(cellFar.ROW_INDEX[ji]);
 
-  for (int64_t i = 0; i < rel_near.N; i++)
-    for (int64_t ji = rel_near.COL_INDEX[i]; ji < rel_near.COL_INDEX[i + 1]; ji++)
-      cells[i].listNear.emplace_back(rel_near.ROW_INDEX[ji]);
-  
-  free(rel_far.COL_INDEX);
-  free(rel_near.COL_INDEX);
+  for (int64_t i = 0; i < cellNear.N; i++)
+    for (int64_t ji = cellNear.COL_INDEX[i]; ji < cellNear.COL_INDEX[i + 1]; ji++)
+      cells[i].listNear.emplace_back(cellNear.ROW_INDEX[ji]);
 
   int64_t mpi_rank, mpi_levels;
   commRank(&mpi_rank, &mpi_levels);
@@ -136,20 +134,21 @@ void traverse_dist(Cell* cells, int64_t levels, double theta) {
     int64_t gbegin = my_rank * nodes;
 
     int64_t offc = (int64_t)(1 << i) - 1;
-    Cell* leaves = &cells[offc];
     std::vector<int64_t> ngbs;
 
     for (int64_t n = 0; n < nodes; n++) {
-      const Cell* c = &leaves[n + gbegin];
-      int64_t nlen = c->listNear.size();
+      int64_t nc = offc + n + gbegin;
+      int64_t nbegin = cellNear.COL_INDEX[nc];
+      int64_t nlen = cellNear.COL_INDEX[nc + 1] - nbegin;
       for (int64_t j = 0; j < nlen; j++) {
-        int64_t ngb = c->listNear[j] - offc;
+        int64_t ngb = cellNear.ROW_INDEX[nbegin + j] - offc;
         ngb /= nodes;
         ngbs.emplace_back(ngb);
       }
-      int64_t flen = c->listFar.size();
+      int64_t fbegin = cellFar.COL_INDEX[nc];
+      int64_t flen = cellFar.COL_INDEX[nc + 1] - fbegin;
       for (int64_t j = 0; j < flen; j++) {
-        int64_t ngb = c->listFar[j] - offc;
+        int64_t ngb = cellFar.ROW_INDEX[fbegin + j] - offc;
         ngb /= nodes;
         ngbs.emplace_back(ngb);
       }
@@ -160,6 +159,9 @@ void traverse_dist(Cell* cells, int64_t levels, double theta) {
     int64_t size = std::distance(ngbs.begin(), iter);
     configureComm(i, &ngbs[0], size);
   }
+
+  free(cellFar.COL_INDEX);
+  free(cellNear.COL_INDEX);
 }
 
 

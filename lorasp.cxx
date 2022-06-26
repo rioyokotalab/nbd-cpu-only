@@ -35,7 +35,12 @@ int main(int argc, char* argv[]) {
   body_neutral_charge(body.data(), Nbody, 1., 0);
 
   std::vector<Cell> cell(Nleaf + Nleaf - 1);
+  CSC cellNear, cellFar;
   buildTree(cell.data(), body.data(), Nbody, levels);
+  traverse('N', &cellNear, cell.size(), cell.data(), theta);
+  traverse('F', &cellFar, cell.size(), cell.data(), theta);
+
+  //traverse_dist(&cellFar, &cellNear, levels);
   traverse_dist(cell.data(), levels, theta);
 
   SpDense sp;
@@ -43,7 +48,7 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], cell.data(), levels, body.data(), Nbody, epi, rank_max, sp_pts);
+  evaluateBaseAll(ef, &sp.Basis[0], cell.data(), &cellNear, levels, body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
 
   evaluate('N', sp.D[levels].A.data(), ef, &cell[0], body.data(), &sp.RelsNear[levels], levels);
@@ -104,6 +109,8 @@ int main(int argc, char* argv[]) {
     matrixDestroy(&Xref[i]);
     matrixDestroy(&B[i]);
   }
+  free(cellFar.COL_INDEX);
+  free(cellNear.COL_INDEX);
   
   closeComm();
   return 0;
