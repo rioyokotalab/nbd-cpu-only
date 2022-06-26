@@ -73,32 +73,57 @@ void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const Cell 
   }
 }
 
-void traverse(Cell* cells, int64_t levels, double theta) {
+int comp_int_64(const void *a, const void *b) {
+  return *(int64_t*)a - *(int64_t*)b;
+}
+
+void traverse(char NoF, CSC* rels, int64_t ncells, const Cell* cells, double theta) {
+  rels->M = ncells;
+  rels->N = ncells;
+  int64_t* rel_arr = (int64_t*)malloc(sizeof(int64_t) * (ncells * ncells + ncells + 1));
+  int64_t len = 0;
+  getList(NoF, &len, &rel_arr[ncells + 1], ncells, cells, 0, 0, 0, 0, theta);
+
+  if (len < ncells * ncells)
+    rel_arr = (int64_t*)realloc(rel_arr, sizeof(int64_t) * (len + ncells + 1));
+  int64_t* rel_rows = &rel_arr[ncells + 1];
+  qsort(rel_rows, len, sizeof(int64_t), comp_int_64);
+  rels->COL_INDEX = rel_arr;
+  rels->ROW_INDEX = rel_rows;
+
+  int64_t loc = -1;
+  for (int64_t i = 0; i < len; i++) {
+    int64_t r = rel_rows[i];
+    int64_t x = r / ncells;
+    int64_t y = r - x * ncells;
+    rel_rows[i] = y;
+    while (x > loc) {
+      loc = loc + 1;
+      rel_arr[loc] = i;
+    }
+  }
+  rel_arr[ncells] = len;
+}
+
+void traverse_dist(Cell* cells, int64_t levels, double theta) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = nleaves + nleaves - 1;
 
-  std::vector<int64_t> rels(ncells * ncells);
-  int64_t len = 0;
-  getList('N', &len, &rels[0], ncells, &cells[0], 0, 0, 0, 0, theta);
-  std::sort(&rels[0], &rels[len]);
+  CSC rel_far;
+  CSC rel_near;
+  traverse('N', &rel_near, ncells, cells, theta);
+  traverse('F', &rel_far, ncells, cells, theta);
 
-  for (int64_t i = 0; i < len; i++) {
-    int64_t r = rels[i];
-    int64_t x = r / ncells;
-    int64_t y = r - x * ncells;
-    cells[y].listNear.emplace_back(x);
-  }
+  for (int64_t i = 0; i < rel_far.N; i++)
+    for (int64_t ji = rel_far.COL_INDEX[i]; ji < rel_far.COL_INDEX[i + 1]; ji++)
+      cells[i].listFar.emplace_back(rel_far.ROW_INDEX[ji]);
 
-  len = 0;
-  getList('F', &len, &rels[0], ncells, &cells[0], 0, 0, 0, 0, theta);
-  std::sort(&rels[0], &rels[len]);
-
-  for (int64_t i = 0; i < len; i++) {
-    int64_t r = rels[i];
-    int64_t x = r / ncells;
-    int64_t y = r - x * ncells;
-    cells[y].listFar.emplace_back(x);
-  }
+  for (int64_t i = 0; i < rel_near.N; i++)
+    for (int64_t ji = rel_near.COL_INDEX[i]; ji < rel_near.COL_INDEX[i + 1]; ji++)
+      cells[i].listNear.emplace_back(rel_near.ROW_INDEX[ji]);
+  
+  free(rel_far.COL_INDEX);
+  free(rel_near.COL_INDEX);
 
   int64_t mpi_rank, mpi_levels;
   commRank(&mpi_rank, &mpi_levels);

@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
 
   std::vector<Cell> cell(Nleaf + Nleaf - 1);
   buildTree(cell.data(), body.data(), Nbody, levels);
-  traverse(cell.data(), levels, theta);
+  traverse_dist(cell.data(), levels, theta);
 
   SpDense sp;
   allocSpDense(sp, cell.data(), levels);
