@@ -2,6 +2,7 @@
 #pragma once
 
 #include "build_tree.h"
+#include <vector>
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,6 +12,7 @@ struct Base {
   int64_t Ulen;
   std::vector<int64_t> DIMS;
   std::vector<int64_t> DIML;
+  std::vector<int64_t> Multipoles;
   std::vector<Matrix> Uc;
   std::vector<Matrix> Uo;
   std::vector<Matrix> R;

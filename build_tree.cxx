@@ -6,6 +6,7 @@
 #include "stdlib.h"
 #include "math.h"
 #include <algorithm>
+#include <vector>
 
 void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   int64_t nleaves = (int64_t)1 << levels;
@@ -212,10 +213,10 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
       for (int64_t j = 0; j < len; j++) {
         int64_t jj = csc->ROW_INDEX[j + off] + offc;
         const Cell* cj = &cell[jj];
-        int64_t m = cj->Multipole.size();
-        int64_t n = ci->Multipole.size();
+        int64_t m = cj->lenMultipole;
+        int64_t n = ci->lenMultipole;
         matrixCreate(&d[off + j], m, n);
-        gen_matrix(ef, m, n, bodies, bodies, d[off + j].A, cj->Multipole.data(), ci->Multipole.data());
+        gen_matrix(ef, m, n, bodies, bodies, d[off + j].A, cj->Multipole, ci->Multipole);
       }
     }
   }

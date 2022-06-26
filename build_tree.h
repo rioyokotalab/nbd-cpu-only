@@ -3,7 +3,6 @@
 
 #include "linalg.h"
 #include "kernel.h"
-#include <vector>
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,7 +14,8 @@ struct Cell {
   double R[DIM_MAX];
   double C[DIM_MAX];
   
-  std::vector<int64_t> Multipole;
+  int64_t lenMultipole;
+  int64_t* Multipole;
 };
 
 struct CSC {

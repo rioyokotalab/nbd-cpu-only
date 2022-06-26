@@ -2,6 +2,8 @@
 #include "basis.h"
 #include "dist.h"
 
+#include "stdlib.h"
+
 void allocBasis(Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = (int64_t)1 << i;
@@ -9,6 +11,7 @@ void allocBasis(Base* basis, int64_t levels) {
     basis[i].Ulen = nodes;
     basis[i].DIMS.resize(nodes);
     basis[i].DIML.resize(nodes);
+    basis[i].Multipoles.clear();
     basis[i].Uo.resize(nodes);
     basis[i].Uc.resize(nodes);
     basis[i].R.resize(nodes);
@@ -27,6 +30,7 @@ void deallocBasis(Base* basis, int64_t levels) {
     basis[i].Ulen = 0;
     basis[i].DIMS.clear();
     basis[i].DIML.clear();
+    basis[i].Multipoles.clear();
     basis[i].Uo.clear();
     basis[i].Uc.clear();
     basis[i].R.clear();
@@ -158,13 +162,13 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
       int64_t box_i = i + ibegin;
       int64_t cic = ci->CHILD;
       int64_t ni = 0;
-      std::vector<int64_t> cellm;
+      int64_t* cellm;
 
       if (cic >= 0) {
-        int64_t len0 = cells[cic].Multipole.size();
-        int64_t len1 = cells[cic + 1].Multipole.size();
+        int64_t len0 = cells[cic].lenMultipole;
+        int64_t len1 = cells[cic + 1].lenMultipole;
         ni = len0 + len1;
-        cellm.resize(ni);
+        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
 
         std::copy(&cells[cic].Multipole[0], &cells[cic].Multipole[len0], &cellm[0]);
         std::copy(&cells[cic + 1].Multipole[0], &cells[cic + 1].Multipole[len1], &cellm[len0]);
@@ -172,7 +176,7 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
       else {
         int64_t nbegin = ci->BODY[0];
         ni = ci->BODY[1] - nbegin;
-        cellm.resize(ni);
+        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
         for (int64_t i = 0; i < ni; i++)
           cellm[i] = nbegin + i;
       }
@@ -205,18 +209,18 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
         remoteBodies(remote.data(), close.data(), n, cpos, llen, &offsets[0], &lens[0], nmax);
 
         int64_t rank = mrank;
-        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n[0], n[1], cellm.data(), remote.data(), close.data(), bodies);
+        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n[0], n[1], cellm, remote.data(), close.data(), bodies);
 
         matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
         matrixCreate(&(base_i->R)[box_i], rank, rank);
 
-        int64_t len_m = ci->Multipole.size();
-        if (len_m != rank)
-          ci->Multipole.resize(rank);
-        std::copy(&cellm[0], &cellm[rank], &ci->Multipole[0]);
+        if (rank < ni)
+          cellm = (int64_t*)realloc(cellm, sizeof(int64_t) * rank);
+        ci->Multipole = cellm;
+        ci->lenMultipole = rank;
       }
 
-      int64_t mi = ci->Multipole.size();
+      int64_t mi = ci->lenMultipole;
       base_i->DIMS[box_i] = ni;
       base_i->DIML[box_i] = mi;
     }
@@ -240,13 +244,16 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
       }
     }
 
-    std::vector<int64_t> mps_comm(count);
+    base_i->Multipoles.resize(count);
+    int64_t* mps_comm = &(base_i->Multipoles)[0];
     for (int64_t i = 0; i < nodes; i++) {
-      const Cell* ci = &leaves[i + gbegin];
+      Cell* ci = &leaves[i + gbegin];
       int64_t offset_i = offsets[i + ibegin];
-      std::copy(ci->Multipole.begin(), ci->Multipole.end(), &mps_comm[offset_i]);
+      int64_t n = base_i->DIML[i];
+      std::copy(ci->Multipole, &(ci->Multipole)[n], &mps_comm[offset_i]);
+      free(ci->Multipole);
     }
-    DistributeMultipoles(mps_comm.data(), &(base_i->DIML)[0], l);
+    DistributeMultipoles(mps_comm, &(base_i->DIML)[0], l);
 
     for (int64_t i = 0; i < xlen; i++) {
       int64_t gi = i;
@@ -255,11 +262,8 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
 
       int64_t mi = base_i->DIML[i];
       int64_t offset_i = offsets[i];
-      int64_t end_i = offset_i + mi;
-      int64_t len_m = ci->Multipole.size();
-      if (len_m != mi)
-        ci->Multipole.resize(mi);
-      std::copy(&mps_comm[offset_i], &mps_comm[end_i], ci->Multipole.begin());
+      ci->Multipole = &mps_comm[offset_i];
+      ci->lenMultipole = mi;
     }
   }
 
