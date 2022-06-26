@@ -33,7 +33,7 @@ void traverse_dist(const CSC* cellFar, const CSC* cellNear, int64_t levels);
 
 void relations(CSC rels[], const CSC* cellRel, int64_t levels);
 
-void evaluate(char NoF, Matrix* s, KerFunc_t ef, const Cell* cell, const CSC* cellRel, const Body* bodies, const CSC* csc, int64_t level);
+void evaluate(char NoF, Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC* csc, int64_t level);
 
 void lookupIJ(int64_t* ij, const CSC* rels, int64_t i, int64_t j);
 

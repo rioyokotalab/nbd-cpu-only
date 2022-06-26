@@ -182,7 +182,7 @@ void relations(CSC rels[], const CSC* cellRel, int64_t levels) {
   }
 }
 
-void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const CSC* cellRel, const Body* bodies, const CSC* csc, int64_t level) {
+void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC* csc, int64_t level) {
   int64_t ibegin = 0, iend = 0, lbegin = 0;;
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
@@ -193,13 +193,12 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const CSC* ce
   for (int64_t i = 0; i < nodes; i++) {
     int64_t lc = offc + lbegin + i;
     const Cell* ci = &cell[lc];
-    int64_t cbegin = cellRel->COL_INDEX[lc];
-    int64_t len = cellRel->COL_INDEX[lc + 1] - cbegin;
     int64_t off = csc->COL_INDEX[i];
+    int64_t len = csc->COL_INDEX[i + 1] - off;
 
     if (NoF == 'N' || NoF == 'n') {
       for (int64_t j = 0; j < len; j++) {
-        int64_t jj = cellRel->ROW_INDEX[cbegin + j];
+        int64_t jj = csc->ROW_INDEX[j + off] + offc;
         const Cell* cj = &cell[jj];
         int64_t i_begin = cj->BODY[0];
         int64_t j_begin = ci->BODY[0];
@@ -211,7 +210,7 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const CSC* ce
     }
     else if (NoF == 'F' || NoF == 'f') {
       for (int64_t j = 0; j < len; j++) {
-        int64_t jj = cellRel->ROW_INDEX[cbegin + j];
+        int64_t jj = csc->ROW_INDEX[j + off] + offc;
         const Cell* cj = &cell[jj];
         int64_t m = cj->Multipole.size();
         int64_t n = ci->Multipole.size();
