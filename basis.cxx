@@ -249,7 +249,7 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
     for (int64_t i = 0; i < nodes; i++) {
       Cell* ci = &leaves[i + gbegin];
       int64_t offset_i = offsets[i + ibegin];
-      int64_t n = base_i->DIML[i];
+      int64_t n = base_i->DIML[i + ibegin];
       std::copy(ci->Multipole, &(ci->Multipole)[n], &mps_comm[offset_i]);
       free(ci->Multipole);
     }
