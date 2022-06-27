@@ -30,8 +30,8 @@ linalg: linalg.c linalg.h
 kernel: kernel.c kernel.h
 	$(CC) $(CCFLAGS) -c kernel.c
 
-build_tree: build_tree.cxx build_tree.h
-	$(CXX) $(CXXFLAGS) -c build_tree.cxx
+build_tree: build_tree.c build_tree.h
+	$(CC) $(CCFLAGS) -c build_tree.c
 
 basis: basis.cxx basis.h
 	$(CXX) $(CXXFLAGS) -c basis.cxx

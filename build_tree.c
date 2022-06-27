@@ -1,24 +1,21 @@
 
 #include "build_tree.h"
-#include "basis.h"
 #include "dist.h"
 
 #include "stdlib.h"
 #include "math.h"
-#include <algorithm>
-#include <vector>
 
-void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
+void buildTree(struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels) {
   int64_t nleaves = (int64_t)1 << levels;
   int64_t ncells = nleaves + nleaves - 1;
 
-  Cell* root = &cells[0];
+  struct Cell* root = &cells[0];
   root->BODY[0] = 0;
   root->BODY[1] = nbodies;
   get_bounds(bodies, nbodies, root->R, root->C);
 
   for (int64_t i = 0; i < ncells; i++) {
-    Cell* ci = &cells[i];
+    struct Cell* ci = &cells[i];
     ci->CHILD = -1;
 
     if (i < nleaves - 1) {
@@ -35,8 +32,8 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
       sort_bodies(&bodies[i_begin], nbody_i, sdim);
       int64_t loc = i_begin + nbody_i / 2;
 
-      Cell* c0 = &cells[(i << 1) + 1];
-      Cell* c1 = &cells[(i << 1) + 2];
+      struct Cell* c0 = &cells[(i << 1) + 1];
+      struct Cell* c1 = &cells[(i << 1) + 2];
       ci->CHILD = (i << 1) + 1;
 
       c0->BODY[0] = i_begin;
@@ -50,9 +47,9 @@ void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels) {
   }
 }
 
-void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel, double theta) {
-  const Cell* Ci = &cells[i];
-  const Cell* Cj = &cells[j];
+void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struct Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel, double theta) {
+  const struct Cell* Ci = &cells[i];
+  const struct Cell* Cj = &cells[j];
   if (ilevel == jlevel) {
     int admis;
     admis_check(&admis, theta, Ci->C, Cj->C, Ci->R, Cj->R);
@@ -78,7 +75,7 @@ int comp_int_64(const void *a, const void *b) {
   return *(int64_t*)a - *(int64_t*)b;
 }
 
-void traverse(char NoF, CSC* rels, int64_t ncells, const Cell* cells, double theta) {
+void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta) {
   rels->M = ncells;
   rels->N = ncells;
   int64_t* rel_arr = (int64_t*)malloc(sizeof(int64_t) * (ncells * ncells + ncells + 1));
@@ -107,7 +104,18 @@ void traverse(char NoF, CSC* rels, int64_t ncells, const Cell* cells, double the
     rel_arr[i] = len;
 }
 
-void traverse_dist(const CSC* cellFar, const CSC* cellNear, int64_t levels) {
+int64_t* unique_int_64(int64_t* arr, int64_t len) {
+  int64_t* last = &arr[len];
+  if (arr == last)
+    return last;
+  int64_t* result = arr;
+  while (++arr != last)
+    if (!(*result == *arr) && ++result != arr)
+      *result = *arr;
+  return ++result;
+}
+
+void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
   int64_t mpi_rank, mpi_levels;
   commRank(&mpi_rank, &mpi_levels);
 
@@ -119,39 +127,39 @@ void traverse_dist(const CSC* cellFar, const CSC* cellNear, int64_t levels) {
     int64_t gbegin = my_rank * nodes;
 
     int64_t offc = (int64_t)(1 << i) - 1;
-    std::vector<int64_t> ngbs;
-
     int64_t nc = offc + gbegin;
     int64_t nbegin = cellNear->COL_INDEX[nc];
     int64_t nlen = cellNear->COL_INDEX[nc + nodes] - nbegin;
+    int64_t fbegin = cellFar->COL_INDEX[nc];
+    int64_t flen = cellFar->COL_INDEX[nc + nodes] - fbegin;
+    int64_t* ngbs = (int64_t*)malloc(sizeof(int64_t) * (nlen + flen));
+
     for (int64_t j = 0; j < nlen; j++) {
       int64_t ngb = cellNear->ROW_INDEX[nbegin + j] - offc;
       ngb /= nodes;
-      ngbs.emplace_back(ngb);
+      ngbs[j] = ngb;
     }
-    int64_t fbegin = cellFar->COL_INDEX[nc];
-    int64_t flen = cellFar->COL_INDEX[nc + nodes] - fbegin;
     for (int64_t j = 0; j < flen; j++) {
       int64_t ngb = cellFar->ROW_INDEX[fbegin + j] - offc;
       ngb /= nodes;
-      ngbs.emplace_back(ngb);
+      ngbs[j + nlen] = ngb;
     }
 
-    std::sort(ngbs.begin(), ngbs.end());
-    std::vector<int64_t>::iterator iter = std::unique(ngbs.begin(), ngbs.end());
-    int64_t size = std::distance(ngbs.begin(), iter);
+    qsort(ngbs, nlen + flen, sizeof(int64_t), comp_int_64);
+    const int64_t* iter = unique_int_64(&ngbs[0], nlen + flen);
+    int64_t size = iter - ngbs;
     configureComm(i, &ngbs[0], size);
   }
 }
 
 
-void relations(CSC rels[], const CSC* cellRel, int64_t levels) {
+void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t ibegin = 0, iend = 0, lbegin = 0;
     selfLocalRange(&ibegin, &iend, i);
     iGlobal(&lbegin, ibegin, i);
     int64_t nodes = iend - ibegin;
-    CSC* csc = &rels[i];
+    struct CSC* csc = &rels[i];
 
     csc->M = (int64_t)1 << i;
     csc->N = nodes;
@@ -181,7 +189,7 @@ void relations(CSC rels[], const CSC* cellRel, int64_t levels) {
   }
 }
 
-void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC* csc, int64_t level) {
+void evaluate(char NoF, struct Matrix* d, KerFunc_t ef, const struct Cell* cell, const struct Body* bodies, const struct CSC* csc, int64_t level) {
   int64_t ibegin = 0, iend = 0, lbegin = 0;;
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
@@ -191,14 +199,14 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
     int64_t lc = offc + lbegin + i;
-    const Cell* ci = &cell[lc];
+    const struct Cell* ci = &cell[lc];
     int64_t off = csc->COL_INDEX[i];
     int64_t len = csc->COL_INDEX[i + 1] - off;
 
     if (NoF == 'N' || NoF == 'n') {
       for (int64_t j = 0; j < len; j++) {
         int64_t jj = csc->ROW_INDEX[j + off] + offc;
-        const Cell* cj = &cell[jj];
+        const struct Cell* cj = &cell[jj];
         int64_t i_begin = cj->BODY[0];
         int64_t j_begin = ci->BODY[0];
         int64_t m = cj->BODY[1] - i_begin;
@@ -210,7 +218,7 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
     else if (NoF == 'F' || NoF == 'f') {
       for (int64_t j = 0; j < len; j++) {
         int64_t jj = csc->ROW_INDEX[j + off] + offc;
-        const Cell* cj = &cell[jj];
+        const struct Cell* cj = &cell[jj];
         int64_t m = cj->lenMultipole;
         int64_t n = ci->lenMultipole;
         matrixCreate(&d[off + j], m, n);
@@ -220,7 +228,7 @@ void evaluate(char NoF, Matrix* d, KerFunc_t ef, const Cell* cell, const Body* b
   }
 }
 
-void lookupIJ(int64_t* ij, const CSC* rels, int64_t i, int64_t j) {
+void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
   if (j < 0 || j >= rels->N)
   { *ij = -1; return; }
   const int64_t* row = rels->ROW_INDEX;
@@ -234,49 +242,49 @@ void lookupIJ(int64_t* ij, const CSC* rels, int64_t i, int64_t j) {
 }
 
 
-void loadX(Matrix* X, const Cell* cell, const Body* bodies, int64_t level) {
+void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
   contentLength(&xlen, level);
   int64_t len = (int64_t)1 << level;
-  const Cell* leaves = &cell[len - 1];
+  const struct Cell* leaves = &cell[len - 1];
 
 #pragma omp parallel for
   for (int64_t i = 0; i < xlen; i++) {
     int64_t gi = i;
     iGlobal(&gi, i, level);
-    const Cell* ci = &leaves[gi];
+    const struct Cell* ci = &leaves[gi];
 
-    Matrix& Xi = X[i];
+    struct Matrix* Xi = &X[i];
     int64_t nbegin = ci->BODY[0];
     int64_t ni = ci->BODY[1] - nbegin;
-    matrixCreate(&Xi, ni, 1);
+    matrixCreate(Xi, ni, 1);
     for (int64_t n = 0; n < ni; n++)
-      Xi.A[n] = bodies[n + nbegin].B;
+      Xi->A[n] = bodies[n + nbegin].B;
   }
 }
 
-void h2MatVecReference(Matrix* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t level) {
+void h2MatVecReference(struct Matrix* B, KerFunc_t ef, const struct Cell* cell, const struct Body* bodies, int64_t level) {
   int64_t nbodies = cell->BODY[1];
   int64_t xlen = (int64_t)1 << level;
   contentLength(&xlen, level);
   int64_t len = (int64_t)1 << level;
-  const Cell* leaves = &cell[len - 1];
+  const struct Cell* leaves = &cell[len - 1];
 
 #pragma omp parallel for
   for (int64_t i = 0; i < xlen; i++) {
     int64_t gi = i;
     iGlobal(&gi, i, level);
-    const Cell* ci = &leaves[gi];
+    const struct Cell* ci = &leaves[gi];
 
-    Matrix& Bi = B[i];
+    struct Matrix* Bi = &B[i];
     int64_t ibegin = ci->BODY[0];
     int64_t m = ci->BODY[1] - ibegin;
-    matrixCreate(&Bi, m, 1);
+    matrixCreate(Bi, m, 1);
 
     int64_t block = 500;
     int64_t last = nbodies % block;
-    Matrix X;
-    Matrix Aij;
+    struct Matrix X;
+    struct Matrix Aij;
     matrixCreate(&X, block, 1);
     matrixCreate(&Aij, m, block);
     zeroMatrix(&X);
@@ -286,16 +294,16 @@ void h2MatVecReference(Matrix* B, KerFunc_t ef, const Cell* cell, const Body* bo
       for (int64_t k = 0; k < last; k++)
         X.A[k] = bodies[k].B;
       gen_matrix(ef, m, last, &bodies[ibegin], bodies, Aij.A, NULL, NULL);
-      mmult('N', 'N', &Aij, &X, &Bi, 1., 0.);
+      mmult('N', 'N', &Aij, &X, Bi, 1., 0.);
     }
     else
-      zeroMatrix(&Bi);
+      zeroMatrix(Bi);
 
     for (int64_t j = last; j < nbodies; j += block) {
       for (int64_t k = 0; k < block; k++)
         X.A[k] = bodies[k + j].B;
       gen_matrix(ef, m, block, &bodies[ibegin], &bodies[j], Aij.A, NULL, NULL);
-      mmult('N', 'N', &Aij, &X, &Bi, 1., 1.);
+      mmult('N', 'N', &Aij, &X, Bi, 1., 1.);
     }
 
     matrixDestroy(&Aij);

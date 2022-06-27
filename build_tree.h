@@ -25,21 +25,21 @@ struct CSC {
   int64_t* ROW_INDEX;
 };
 
-void buildTree(Cell* cells, Body* bodies, int64_t nbodies, int64_t levels);
+void buildTree(struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
 
-void traverse(char NoF, CSC* rels, int64_t ncells, const Cell* cells, double theta);
+void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
 
-void traverse_dist(const CSC* cellFar, const CSC* cellNear, int64_t levels);
+void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 
-void relations(CSC rels[], const CSC* cellRel, int64_t levels);
+void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels);
 
-void evaluate(char NoF, Matrix* s, KerFunc_t ef, const Cell* cell, const Body* bodies, const CSC* csc, int64_t level);
+void evaluate(char NoF, struct Matrix* s, KerFunc_t ef, const struct Cell* cell, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
-void lookupIJ(int64_t* ij, const CSC* rels, int64_t i, int64_t j);
+void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
 
-void loadX(Matrix* X, const Cell* cell, const Body* bodies, int64_t level);
+void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level);
 
-void h2MatVecReference(Matrix* B, KerFunc_t ef, const Cell* cell, const Body* bodies, int64_t level);
+void h2MatVecReference(struct Matrix* B, KerFunc_t ef, const struct Cell* cell, const struct Body* bodies, int64_t level);
 
 #ifdef __cplusplus
 }
