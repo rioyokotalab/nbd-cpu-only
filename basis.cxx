@@ -12,6 +12,7 @@ void allocBasis(Base* basis, int64_t levels) {
     basis[i].DIMS.resize(nodes);
     basis[i].DIML.resize(nodes);
     basis[i].Multipoles.clear();
+
     basis[i].Uo.resize(nodes);
     basis[i].Uc.resize(nodes);
     basis[i].R.resize(nodes);
@@ -31,6 +32,7 @@ void deallocBasis(Base* basis, int64_t levels) {
     basis[i].DIMS.clear();
     basis[i].DIML.clear();
     basis[i].Multipoles.clear();
+
     basis[i].Uo.clear();
     basis[i].Uc.clear();
     basis[i].R.clear();
@@ -51,12 +53,13 @@ void basis_mem(int64_t* bytes, const Base* basis, int64_t levels) {
   *bytes = count;
 }
 
-void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix* Base, int64_t m, int64_t n1, int64_t n2, 
-  int64_t cellm[], const int64_t remote[], const int64_t close[], const Body* bodies) {
+void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix* Base, int64_t m, int64_t n1, int64_t n2, int64_t cellm[], const int64_t remote[], const Body* bodies) {
+  const int64_t* close = &remote[n1];
   Matrix work_a, work_b, work_c, work_s;
   int64_t len_s = n1 + (n2 > 0 ? m : 0);
-  if (len_s > 0)
+  if (len_s > 0) {
     matrixCreate(&work_s, m, len_s);
+  }
 
   if (n1 > 0) {
     matrixCreate(&work_a, m, n1);
@@ -106,16 +109,33 @@ void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix* Base, int64_
   }
 }
 
-void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], int64_t cpos, int64_t llen, const int64_t offsets[], const int64_t lens[], const int64_t avail[]) {
-  int64_t rm_len = avail[0];
+void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t ngbs[], const Cell* cells, int64_t ci) {
   int64_t rmsize = size[0];
+  int64_t clsize = size[1];
+  int64_t nbodies = size[2];
+  std::vector<int64_t> offsets(nlen);
+  std::vector<int64_t> lens(nlen);
+
+  int64_t sum_len = 0;
+  int64_t cpos = -1;
+  for (int64_t j = 0; j < nlen; j++) {
+    int64_t jc = ngbs[j];
+    const Cell* c = &cells[jc];
+    offsets[j] = c->BODY[0];
+    lens[j] = c->BODY[1] - c->BODY[0];
+    sum_len = sum_len + lens[j];
+    if (jc == ci)
+      cpos = j;
+  }
+
+  int64_t rm_len = nbodies - sum_len;
   rmsize = rmsize > rm_len ? rm_len : rmsize;
 
   int64_t box_i = 0;
   int64_t s_lens = 0;
   for (int64_t i = 0; i < rmsize; i++) {
     int64_t loc = (int64_t)((double)(rm_len * i) / rmsize);
-    while (box_i < llen && loc + s_lens >= offsets[box_i]) {
+    while (box_i < nlen && loc + s_lens >= offsets[box_i]) {
       s_lens = s_lens + lens[box_i];
       box_i = box_i + 1;
     }
@@ -123,8 +143,8 @@ void remoteBodies(int64_t* remote, int64_t* close, int64_t size[], int64_t cpos,
   }
   size[0] = rmsize;
 
-  int64_t cl_len = avail[1];
-  int64_t clsize = size[1];
+  int64_t* close = &remote[rmsize];
+  int64_t cl_len = sum_len - lens[cpos];
   clsize = clsize > cl_len ? cl_len : clsize;
 
   box_i = (int64_t)(cpos == 0);
@@ -156,7 +176,7 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
     int64_t len = (int64_t)1 << l;
     Cell* leaves = &cells[len - 1];
 
-  #pragma omp parallel for
+#pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
       Cell* ci = &leaves[i + gbegin];
       int64_t box_i = i + ibegin;
@@ -182,34 +202,16 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
       }
       
       if (ni > 0) {
+        int64_t n[3] = { sp_pts, sp_pts, nbodies };
+        std::vector<int64_t> remote(sp_pts + sp_pts);
+
         int64_t ii = ci - cells;
         int64_t lbegin = cellsNear->COL_INDEX[ii];
         int64_t llen = cellsNear->COL_INDEX[ii + 1] - lbegin;
-
-        std::vector<int64_t> offsets(llen);
-        std::vector<int64_t> lens(llen);
-
-        int64_t sum_len = 0;
-        int64_t cpos = -1;
-        for (int64_t j = 0; j < llen; j++) {
-          int64_t jc = cellsNear->ROW_INDEX[lbegin + j];
-          const Cell* c = &cells[jc];
-          offsets[j] = c->BODY[0];
-          lens[j] = c->BODY[1] - c->BODY[0];
-          sum_len = sum_len + lens[j];
-          if (jc == ii)
-            cpos = j;
-        }
-
-        std::vector<int64_t> remote(sp_pts);
-        std::vector<int64_t> close(sp_pts);
-        int64_t n[2] = { sp_pts, sp_pts };
-        int64_t nmax[2] = { nbodies - sum_len, sum_len - lens[cpos] };
-
-        remoteBodies(remote.data(), close.data(), n, cpos, llen, &offsets[0], &lens[0], nmax);
+        remoteBodies(remote.data(), n, llen, &cellsNear->ROW_INDEX[lbegin], cells, ii);
 
         int64_t rank = mrank;
-        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n[0], n[1], cellm, remote.data(), close.data(), bodies);
+        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n[0], n[1], cellm, remote.data(), bodies);
 
         matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
         matrixCreate(&(base_i->R)[box_i], rank, rank);
