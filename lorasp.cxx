@@ -22,6 +22,10 @@ int main(int argc, char* argv[]) {
 
   int64_t levels = (int64_t)std::log2(Nbody / leaf_size);
   int64_t Nleaf = (int64_t)1 << levels;
+
+  int64_t mpi_rank;
+  int64_t mpi_levels;
+  commRank(&mpi_rank, &mpi_levels);
   
   KerFunc_t ef = laplace3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
@@ -34,9 +38,10 @@ int main(int argc, char* argv[]) {
   //uniform_unit_cube(body.data(), Nbody, 3, 1234);
   body_neutral_charge(body.data(), Nbody, 1., 0);
 
-  std::vector<Cell> cell(Nleaf + Nleaf - 1);
+  int64_t ncells = Nleaf + Nleaf - 1;
+  std::vector<Cell> cell(ncells);
   CSC cellNear, cellFar;
-  buildTree(cell.data(), body.data(), Nbody, levels);
+  buildTree(&ncells, cell.data(), body.data(), Nbody, levels, 1 << mpi_levels);
   traverse('N', &cellNear, cell.size(), cell.data(), theta);
   traverse('F', &cellFar, cell.size(), cell.data(), theta);
 
@@ -80,10 +85,8 @@ int main(int argc, char* argv[]) {
 
   double err;
   solveRelErr(&err, rhs[levels].X.data(), Xref.data(), levels);
-  int64_t mpi_rank;
-  int64_t mpi_levels;
+
   int64_t dim = 3;
-  commRank(&mpi_rank, &mpi_levels);
 
   int64_t mem_basis, mem_A, mem_X;
   basis_mem(&mem_basis, &sp.Basis[0], levels);

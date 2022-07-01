@@ -2,6 +2,7 @@
 #include "basis.h"
 #include "dist.h"
 
+#include "stdio.h"
 #include "stdlib.h"
 
 void allocBasis(Base* basis, int64_t levels) {
@@ -51,114 +52,6 @@ void basis_mem(int64_t* bytes, const Base* basis, int64_t levels) {
     count = count + bytes_o + bytes_c + bytes_r;
   }
   *bytes = count;
-}
-
-void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, Matrix* Base, int64_t m, int64_t n1, int64_t n2, int64_t cellm[], const int64_t remote[], const Body* bodies) {
-  const int64_t* close = &remote[n1];
-  Matrix work_a, work_b, work_c, work_s;
-  int64_t len_s = n1 + (n2 > 0 ? m : 0);
-  if (len_s > 0) {
-    matrixCreate(&work_s, m, len_s);
-  }
-
-  if (n1 > 0) {
-    matrixCreate(&work_a, m, n1);
-    gen_matrix(ef, m, n1, bodies, bodies, work_a.A, cellm, remote);
-    cpyMatToMat(m, n1, &work_a, &work_s, 0, 0, 0, 0);
-  }
-
-  if (n2 > 0) {
-    matrixCreate(&work_b, m, n2);
-    matrixCreate(&work_c, m, m);
-    gen_matrix(ef, m, n2, bodies, bodies, work_b.A, cellm, close);
-    mmult('N', 'T', &work_b, &work_b, &work_c, 1., 0.);
-    if (n1 > 0)
-      normalizeA(&work_c, &work_a);
-    cpyMatToMat(m, m, &work_c, &work_s, 0, 0, 0, n1);
-    matrixDestroy(&work_b);
-    matrixDestroy(&work_c);
-  }
-
-  if (n1 > 0)
-    matrixDestroy(&work_a);
-
-  if (len_s > 0) {
-    int64_t mrank = *rank;
-    int64_t n = mrank > 0 ? std::min(mrank, m) : m;
-    Matrix work_u;
-    std::vector<int64_t> pa(n);
-    matrixCreate(&work_u, m, n);
-
-    int64_t iters = n;
-    lraID(epi, &work_s, &work_u, pa.data(), &iters);
-
-    matrixCreate(Base, m, iters);
-    cpyMatToMat(m, iters, &work_u, Base, 0, 0, 0, 0);
-    matrixDestroy(&work_s);
-    matrixDestroy(&work_u);
-
-    for (int64_t i = 0; i < iters; i++) {
-      int64_t piv_i = pa[i] - 1;
-      if (piv_i != i) {
-        int64_t row_piv = cellm[piv_i];
-        cellm[piv_i] = cellm[i];
-        cellm[i] = row_piv;
-      }
-    }
-    *rank = iters;
-  }
-}
-
-void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t ngbs[], const Cell* cells, int64_t ci) {
-  int64_t rmsize = size[0];
-  int64_t clsize = size[1];
-  int64_t nbodies = size[2];
-  std::vector<int64_t> offsets(nlen);
-  std::vector<int64_t> lens(nlen);
-
-  int64_t sum_len = 0;
-  int64_t cpos = -1;
-  for (int64_t j = 0; j < nlen; j++) {
-    int64_t jc = ngbs[j];
-    const Cell* c = &cells[jc];
-    offsets[j] = c->BODY[0];
-    lens[j] = c->BODY[1] - c->BODY[0];
-    sum_len = sum_len + lens[j];
-    if (jc == ci)
-      cpos = j;
-  }
-
-  int64_t rm_len = nbodies - sum_len;
-  rmsize = rmsize > rm_len ? rm_len : rmsize;
-
-  int64_t box_i = 0;
-  int64_t s_lens = 0;
-  for (int64_t i = 0; i < rmsize; i++) {
-    int64_t loc = (int64_t)((double)(rm_len * i) / rmsize);
-    while (box_i < nlen && loc + s_lens >= offsets[box_i]) {
-      s_lens = s_lens + lens[box_i];
-      box_i = box_i + 1;
-    }
-    remote[i] = loc + s_lens;
-  }
-  size[0] = rmsize;
-
-  int64_t* close = &remote[rmsize];
-  int64_t cl_len = sum_len - lens[cpos];
-  clsize = clsize > cl_len ? cl_len : clsize;
-
-  box_i = (int64_t)(cpos == 0);
-  s_lens = 0;
-  for (int64_t i = 0; i < clsize; i++) {
-    int64_t loc = (int64_t)((double)(cl_len * i) / clsize);
-    while (loc - s_lens >= lens[box_i]) {
-      s_lens = s_lens + lens[box_i];
-      box_i = box_i + 1;
-      box_i = box_i + (int)(box_i == cpos);
-    }
-    close[i] = loc + offsets[box_i] - s_lens;
-  }
-  size[1] = clsize;
 }
 
 void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNear, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
@@ -211,7 +104,7 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
         remoteBodies(remote.data(), n, llen, &cellsNear->ROW_INDEX[lbegin], cells, ii);
 
         int64_t rank = mrank;
-        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n[0], n[1], cellm, remote.data(), bodies);
+        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n, cellm, remote.data(), bodies);
 
         matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
         matrixCreate(&(base_i->R)[box_i], rank, rank);

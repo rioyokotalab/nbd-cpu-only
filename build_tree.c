@@ -5,20 +5,22 @@
 #include "stdlib.h"
 #include "math.h"
 
-void buildTree(struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels) {
-  int64_t nleaves = (int64_t)1 << levels;
-  int64_t ncells = nleaves + nleaves - 1;
-
+void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels, int64_t mpi_size) {
   struct Cell* root = &cells[0];
   root->BODY[0] = 0;
   root->BODY[1] = nbodies;
+  root->LEVEL = 0;
+  root->Procs[0] = 0;
+  root->Procs[1] = mpi_size;
   get_bounds(bodies, nbodies, root->R, root->C);
 
-  for (int64_t i = 0; i < ncells; i++) {
+  int64_t len = 1;
+  int64_t i = 0;
+  while (i < len) {
     struct Cell* ci = &cells[i];
     ci->CHILD = -1;
 
-    if (i < nleaves - 1) {
+    if (ci->LEVEL < levels) {
       int64_t sdim = 0;
       double maxR = ci->R[0];
       if (ci->R[1] > maxR)
@@ -32,19 +34,38 @@ void buildTree(struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t
       sort_bodies(&bodies[i_begin], nbody_i, sdim);
       int64_t loc = i_begin + nbody_i / 2;
 
-      struct Cell* c0 = &cells[(i << 1) + 1];
-      struct Cell* c1 = &cells[(i << 1) + 2];
-      ci->CHILD = (i << 1) + 1;
+      struct Cell* c0 = &cells[len];
+      struct Cell* c1 = &cells[len + 1];
+      ci->CHILD = len;
+      len = len + 2;
 
       c0->BODY[0] = i_begin;
       c0->BODY[1] = loc;
       c1->BODY[0] = loc;
       c1->BODY[1] = i_end;
+      
+      c0->LEVEL = ci->LEVEL + 1;
+      c1->LEVEL = ci->LEVEL + 1;
+      c0->Procs[0] = ci->Procs[0];
+      c1->Procs[1] = ci->Procs[1];
+
+      int64_t divp = (ci->Procs[1] - ci->Procs[0]) / 2;
+      if (divp >= 1) {
+        int64_t p = divp + ci->Procs[0];
+        c0->Procs[1] = p;
+        c1->Procs[0] = p;
+      }
+      else {
+        c0->Procs[1] = ci->Procs[1];
+        c1->Procs[0] = ci->Procs[0];
+      }
 
       get_bounds(&bodies[i_begin], loc - i_begin, c0->R, c0->C);
       get_bounds(&bodies[loc], i_end - loc, c1->R, c1->C);
     }
+    i++;
   }
+  *ncells = len;
 }
 
 void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struct Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel, double theta) {
@@ -102,6 +123,10 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
   }
   for (int64_t i = loc + 1; i <= ncells; i++)
     rel_arr[i] = len;
+}
+
+void get_level(int64_t i[], int64_t ncells, const struct Cell* cells, int64_t level) {
+
 }
 
 int64_t* unique_int_64(int64_t* arr, int64_t len) {
@@ -239,6 +264,126 @@ void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
     row_iter = row_iter + 1;
   int64_t k = row_iter - row;
   *ij = (k < jend) ? k : -1;
+}
+
+void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t ngbs[], const struct Cell* cells, int64_t ci) {
+  int64_t rmsize = size[0];
+  int64_t clsize = size[1];
+  int64_t nbodies = size[2];
+
+  int64_t sum_len = 0;
+  int64_t c_len = 0;
+  int64_t cpos = -1;
+  for (int64_t j = 0; j < nlen; j++) {
+    int64_t jc = ngbs[j];
+    const struct Cell* c = &cells[jc];
+    int64_t len = c->BODY[1] - c->BODY[0];
+    sum_len = sum_len + len;
+    if (jc == ci) {
+      c_len = len;
+      cpos = j;
+    }
+  }
+
+  int64_t rm_len = nbodies - sum_len;
+  rmsize = rmsize > rm_len ? rm_len : rmsize;
+
+  int64_t box_i = 0;
+  int64_t s_lens = 0;
+  int64_t ic = ngbs[box_i];
+  int64_t offset_i = cells[ic].BODY[0];
+  int64_t len_i = cells[ic].BODY[1] - offset_i;
+
+  for (int64_t i = 0; i < rmsize; i++) {
+    int64_t loc = (int64_t)((double)(rm_len * i) / rmsize);
+    while (box_i < nlen && loc + s_lens >= offset_i) {
+      s_lens = s_lens + len_i;
+      box_i = box_i + 1;
+      ic = box_i < nlen ? ngbs[box_i] : ic;
+      offset_i = cells[ic].BODY[0];
+      len_i = cells[ic].BODY[1] - offset_i;
+    }
+    remote[i] = loc + s_lens;
+  }
+
+  int64_t* close = &remote[rmsize];
+  int64_t cl_len = sum_len - c_len;
+  clsize = clsize > cl_len ? cl_len : clsize;
+
+  box_i = (int64_t)(cpos == 0);
+  s_lens = 0;
+  ic = box_i < nlen ? ngbs[box_i] : ic;
+  offset_i = cells[ic].BODY[0];
+  len_i = cells[ic].BODY[1] - offset_i;
+
+  for (int64_t i = 0; i < clsize; i++) {
+    int64_t loc = (int64_t)((double)(cl_len * i) / clsize);
+    while (loc - s_lens >= len_i) {
+      s_lens = s_lens + len_i;
+      box_i = box_i + 1;
+      box_i = box_i + (int64_t)(box_i == cpos);
+      ic = ngbs[box_i];
+      offset_i = cells[ic].BODY[0];
+      len_i = cells[ic].BODY[1] - offset_i;
+    }
+    close[i] = loc + offset_i - s_lens;
+  }
+
+  size[0] = rmsize;
+  size[1] = clsize;
+}
+
+void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, struct Matrix* Base, int64_t m, int64_t n[], int64_t cellm[], const int64_t remote[], const struct Body* bodies) {
+  int64_t n1 = n[0];
+  int64_t n2 = n[1];
+  int64_t len_s = n1 + (n2 > 0 ? m : 0);
+  if (len_s > 0) {
+    const int64_t* close = &remote[n1];
+    struct Matrix S, S_lr;
+    matrixCreate(&S, m, len_s);
+
+    if (n1 > 0) {
+      S_lr = (struct Matrix){ S.A, m, n1 };
+      gen_matrix(ef, m, n1, bodies, bodies, S_lr.A, cellm, remote);
+    }
+
+    if (n2 > 0) {
+      struct Matrix S_dn = (struct Matrix){ &S.A[m * n1], m, m };
+      struct Matrix S_dn_work;
+      matrixCreate(&S_dn_work, m, n2);
+      gen_matrix(ef, m, n2, bodies, bodies, S_dn_work.A, cellm, close);
+      mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
+      if (n1 > 0)
+        normalizeA(&S_dn, &S_lr);
+      matrixDestroy(&S_dn_work);
+    }
+
+    int64_t mrank = *rank;
+    mrank = mrank > m ? m : mrank;
+    int64_t un = mrank > 0 ? mrank : m;
+    struct Matrix work_u;
+    int64_t* pa = (int64_t*)malloc(sizeof(int64_t) * un);
+    matrixCreate(&work_u, m, un);
+
+    int64_t iters = un;
+    lraID(epi, &S, &work_u, pa, &iters);
+
+    matrixCreate(Base, m, iters);
+    cpyMatToMat(m, iters, &work_u, Base, 0, 0, 0, 0);
+    matrixDestroy(&S);
+    matrixDestroy(&work_u);
+
+    for (int64_t i = 0; i < iters; i++) {
+      int64_t piv_i = pa[i] - 1;
+      if (piv_i != i) {
+        int64_t row_piv = cellm[piv_i];
+        cellm[piv_i] = cellm[i];
+        cellm[i] = row_piv;
+      }
+    }
+    *rank = iters;
+    free(pa);
+  }
 }
 
 

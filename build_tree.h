@@ -13,6 +13,9 @@ struct Cell {
   int64_t BODY[2];
   double R[DIM_MAX];
   double C[DIM_MAX];
+
+  int64_t LEVEL;
+  int64_t Procs[2];
   
   int64_t lenMultipole;
   int64_t* Multipole;
@@ -25,9 +28,11 @@ struct CSC {
   int64_t* ROW_INDEX;
 };
 
-void buildTree(struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
+void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels, int64_t mpi_size);
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
+
+void get_level(int64_t i[], int64_t ncells, const struct Cell* cells, int64_t level);
 
 void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 
@@ -36,6 +41,10 @@ void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels);
 void evaluate(char NoF, struct Matrix* s, KerFunc_t ef, const struct Cell* cell, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
+
+void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t ngbs[], const struct Cell* cells, int64_t ci);
+
+void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, struct Matrix* Base, int64_t m, int64_t n[], int64_t cellm[], const int64_t remote[], const struct Body* bodies);
 
 void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level);
 
