@@ -32,7 +32,7 @@ void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
 
-void get_level(int64_t i[], int64_t ncells, const struct Cell* cells, int64_t level);
+void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level);
 
 void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 

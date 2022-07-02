@@ -2,6 +2,7 @@
 #include "build_tree.h"
 #include "dist.h"
 
+#include "stdio.h"
 #include "stdlib.h"
 #include "math.h"
 
@@ -125,8 +126,28 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
     rel_arr[i] = len;
 }
 
-void get_level(int64_t i[], int64_t ncells, const struct Cell* cells, int64_t level) {
+void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level) {
+  int64_t low = *begin;
+  int64_t high = *end;
+  while (low < high) {
+    int64_t mid = low + (high - low) / 2;
+    if (cells[mid].LEVEL < level)
+      low = mid + 1;
+    else
+      high = mid;
+  }
+  *begin = high;
 
+  low = high;
+  high = *end;
+  while (low < high) {
+    int64_t mid = low + (high - low) / 2;
+    if (cells[mid].LEVEL <= level)
+      low = mid + 1;
+    else
+      high = mid;
+  }
+  *end = low;
 }
 
 int64_t* unique_int_64(int64_t* arr, int64_t len) {
@@ -174,6 +195,7 @@ void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_
     const int64_t* iter = unique_int_64(&ngbs[0], nlen + flen);
     int64_t size = iter - ngbs;
     configureComm(i, &ngbs[0], size);
+    free(ngbs);
   }
 }
 
