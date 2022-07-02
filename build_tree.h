@@ -28,11 +28,22 @@ struct CSC {
   int64_t* ROW_INDEX;
 };
 
+struct CellComm {
+  int64_t Proc; // Local Proc num. Used by searching.
+  struct CSC Comms; // P by P sparse. Entry (i, j) proc i comm with j.
+  int64_t* ProcMerge; // len P. Proc i merge all procs within [PM[i], PMEnd[i]).
+  int64_t* ProcMergeEnd; // len P. Proc i merge all procs within [PM[i], PMEnd[i]).
+  int64_t* ProcBoxes; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
+  int64_t* ProcBoxesEnd; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
+};
+
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels, int64_t mpi_size);
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
 
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level);
+
+void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels, int64_t mpi_size);
 
 void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 

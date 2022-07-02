@@ -5,6 +5,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "math.h"
+#include "string.h"
 
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels, int64_t mpi_size) {
   struct Cell* root = &cells[0];
@@ -117,10 +118,8 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
     int64_t x = r / ncells;
     int64_t y = r - x * ncells;
     rel_rows[i] = y;
-    while (x > loc) {
-      loc = loc + 1;
-      rel_arr[loc] = i;
-    }
+    while (x > loc)
+      rel_arr[++loc] = i;
   }
   for (int64_t i = loc + 1; i <= ncells; i++)
     rel_arr[i] = len;
@@ -159,6 +158,88 @@ int64_t* unique_int_64(int64_t* arr, int64_t len) {
     if (!(*result == *arr) && ++result != arr)
       *result = *arr;
   return ++result;
+}
+
+void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels, int64_t mpi_size) {
+  for (int64_t i = 0; i <= levels; i++) {
+    struct CellComm* comm_i = &comms[i];
+    int64_t ibegin = 0, iend = ncells;
+    get_level(&ibegin, &iend, cells, i);
+
+    int64_t nbegin = cellNear->COL_INDEX[ibegin];
+    int64_t nlen = cellNear->COL_INDEX[iend] - nbegin;
+    int64_t fbegin = cellFar->COL_INDEX[ibegin];
+    int64_t flen = cellFar->COL_INDEX[iend] - fbegin;
+    int64_t len_arr = flen + nlen + mpi_size * 5 + 1;
+
+    int64_t* rel_arr = (int64_t*)malloc(sizeof(int64_t) * len_arr);
+    int64_t* rel_rows = &rel_arr[mpi_size + 1];
+
+    for (int64_t j = 0; j < nlen; j++) {
+      int64_t j_c = nbegin + j;
+      int64_t ngb_c = cellNear->ROW_INDEX[j_c];
+      int64_t src = cells[j_c].Procs[0];
+      int64_t tgt = cells[ngb_c].Procs[0];
+      rel_rows[j] = tgt + src * mpi_size;
+    }
+
+    for (int64_t j = 0; j < flen; j++) {
+      int64_t j_c = fbegin + j;
+      int64_t ngb_c = cellFar->ROW_INDEX[j_c];
+      int64_t src = cells[j_c].Procs[0];
+      int64_t tgt = cells[ngb_c].Procs[0];
+      rel_rows[j] = tgt + src * mpi_size;;
+    }
+
+    struct CSC* csc_i = &comm_i->Comms;
+    csc_i->M = mpi_size;
+    csc_i->N = mpi_size;
+    qsort(rel_rows, nlen + flen, sizeof(int64_t), comp_int_64);
+    const int64_t* iter = unique_int_64(rel_rows, nlen + flen);
+    int64_t len = iter - rel_rows;
+    if (len < flen + nlen) {
+      len_arr = len + mpi_size * 5 + 1;
+      rel_arr = (int64_t*)realloc(rel_arr, sizeof(int64_t) * len_arr);
+      rel_rows = &rel_arr[mpi_size + 1];
+    }
+    csc_i->COL_INDEX = rel_arr;
+    csc_i->ROW_INDEX = rel_rows;
+
+    int64_t loc = -1;
+    for (int64_t j = 0; j < len; j++) {
+      int64_t r = rel_rows[j];
+      int64_t x = r / mpi_size;
+      int64_t y = r - x * mpi_size;
+      rel_rows[j] = y;
+      while (x > loc)
+        rel_arr[++loc] = j;
+    }
+    for (int64_t j = loc + 1; j <= mpi_size; j++)
+      rel_arr[j] = len;
+
+    comm_i->ProcMerge = &rel_arr[len + mpi_size + 1];
+    comm_i->ProcMergeEnd = &rel_arr[len + mpi_size * 2 + 1];
+    comm_i->ProcBoxes = &rel_arr[len + mpi_size * 3 + 1];
+    comm_i->ProcBoxesEnd = &rel_arr[len + mpi_size * 4 + 1];
+    memset(&rel_arr[len + mpi_size + 1], 0xFF, sizeof(int64_t) * mpi_size * 4);
+
+    int64_t len_i = iend - ibegin;
+    for (int64_t j = 0; j < len_i; j++) {
+      const struct Cell* c = &cells[j + ibegin];
+      int64_t pj = c->Procs[0];
+      int64_t pj_len = c->Procs[1] - pj;
+      for (int64_t k = 0; k < pj_len; k++) {
+        int64_t pk = pj + k;
+        if (pj_len > 1) {
+          comm_i->ProcMerge[pk] = pj;
+          comm_i->ProcMergeEnd[pk] = pj + pj_len;
+        }
+        if (comm_i->ProcBoxes[pk] == -1)
+          comm_i->ProcBoxes[pk] = j;
+        comm_i->ProcBoxesEnd[pk] = j + 1;
+      }
+    }
+  }
 }
 
 void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
@@ -237,7 +318,7 @@ void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels) {
 }
 
 void evaluate(char NoF, struct Matrix* d, KerFunc_t ef, const struct Cell* cell, const struct Body* bodies, const struct CSC* csc, int64_t level) {
-  int64_t ibegin = 0, iend = 0, lbegin = 0;;
+  int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
   int64_t nodes = iend - ibegin;
