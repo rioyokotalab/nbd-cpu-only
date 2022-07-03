@@ -46,6 +46,8 @@ int main(int argc, char* argv[]) {
   traverse('F', &cellFar, cell.size(), cell.data(), theta);
 
   traverse_dist(&cellFar, &cellNear, levels);
+  std::vector<CellComm> cell_comm(levels + 1);
+  buildComm(cell_comm.data(), ncells, cell.data(), &cellFar, &cellNear, levels, 1 << mpi_levels);
 
   SpDense sp;
   allocSpDense(sp, &cellFar, &cellNear, levels);

@@ -83,6 +83,8 @@ void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struc
       rels[n] = i + j * ncells;
       *len = n + 1;
     }
+    if (admis)
+      return;
   }
   if (ilevel <= jlevel && Ci->CHILD >= 0) {
     getList(NoF, len, rels, ncells, cells, Ci->CHILD, j, ilevel + 1, jlevel, theta);
@@ -165,6 +167,7 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     struct CellComm* comm_i = &comms[i];
     int64_t ibegin = 0, iend = ncells;
     get_level(&ibegin, &iend, cells, i);
+    int64_t len_i = iend - ibegin;
 
     int64_t nbegin = cellNear->COL_INDEX[ibegin];
     int64_t nlen = cellNear->COL_INDEX[iend] - nbegin;
@@ -175,20 +178,28 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t* rel_arr = (int64_t*)malloc(sizeof(int64_t) * len_arr);
     int64_t* rel_rows = &rel_arr[mpi_size + 1];
 
-    for (int64_t j = 0; j < nlen; j++) {
-      int64_t j_c = nbegin + j;
-      int64_t ngb_c = cellNear->ROW_INDEX[j_c];
+    for (int64_t j = 0; j < len_i; j++) {
+      int64_t j_c = ibegin + j;
       int64_t src = cells[j_c].Procs[0];
-      int64_t tgt = cells[ngb_c].Procs[0];
-      rel_rows[j] = tgt + src * mpi_size;
+      int64_t kj_hi = cellFar->COL_INDEX[j_c + 1];
+      for (int64_t kj = cellFar->COL_INDEX[j_c]; kj < kj_hi; kj++) {
+        int64_t k = cellFar->ROW_INDEX[kj];
+        int64_t tgt = cells[k].Procs[0];
+        int64_t row_i = kj - fbegin;
+        rel_rows[row_i] = tgt + src * mpi_size;
+      }
     }
 
-    for (int64_t j = 0; j < flen; j++) {
-      int64_t j_c = fbegin + j;
-      int64_t ngb_c = cellFar->ROW_INDEX[j_c];
+    for (int64_t j = 0; j < len_i; j++) {
+      int64_t j_c = ibegin + j;
       int64_t src = cells[j_c].Procs[0];
-      int64_t tgt = cells[ngb_c].Procs[0];
-      rel_rows[j] = tgt + src * mpi_size;;
+      int64_t kj_hi = cellNear->COL_INDEX[j_c + 1];
+      for (int64_t kj = cellNear->COL_INDEX[j_c]; kj < kj_hi; kj++) {
+        int64_t k = cellNear->ROW_INDEX[kj];
+        int64_t tgt = cells[k].Procs[0];
+        int64_t row_i = kj - nbegin + flen;
+        rel_rows[row_i] = tgt + src * mpi_size;
+      }
     }
 
     struct CSC* csc_i = &comm_i->Comms;
@@ -223,7 +234,6 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     comm_i->ProcBoxesEnd = &rel_arr[len + mpi_size * 4 + 1];
     memset(&rel_arr[len + mpi_size + 1], 0xFF, sizeof(int64_t) * mpi_size * 4);
 
-    int64_t len_i = iend - ibegin;
     for (int64_t j = 0; j < len_i; j++) {
       const struct Cell* c = &cells[j + ibegin];
       int64_t pj = c->Procs[0];
