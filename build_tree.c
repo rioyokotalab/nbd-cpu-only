@@ -162,9 +162,10 @@ int64_t* unique_int_64(int64_t* arr, int64_t len) {
   return ++result;
 }
 
-void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels, int64_t mpi_size) {
+void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels, int64_t mpi_rank, int64_t mpi_size) {
   for (int64_t i = 0; i <= levels; i++) {
     struct CellComm* comm_i = &comms[i];
+    comm_i->Proc = mpi_rank;
     int64_t ibegin = 0, iend = ncells;
     get_level(&ibegin, &iend, cells, i);
     int64_t len_i = iend - ibegin;
@@ -377,6 +378,48 @@ void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
     row_iter = row_iter + 1;
   int64_t k = row_iter - row;
   *ij = (k < jend) ? k : -1;
+}
+
+void i_local(int64_t* ilocal, int64_t iglobal, const struct CellComm* comm) {
+  int64_t p = comm->Proc;
+  int64_t nbegin = comm->Comms.COL_INDEX[p];
+  int64_t nlen = comm->Comms.COL_INDEX[p + 1] - nbegin;
+  const int64_t* ngbs = &(comm->Comms.ROW_INDEX)[nbegin];
+  int64_t slen = 0;
+  int found = 0;
+  for (int64_t i = 0; i < nlen; i++) {
+    int64_t ni = ngbs[i];
+    int64_t b = comm->ProcBoxes[ni];
+    int64_t be = comm->ProcBoxesEnd[ni];
+    if (be <= iglobal)
+      slen = slen + be - b;
+    else if (b <= iglobal) {
+      found = 1;
+      slen = slen + iglobal - b;
+    }
+  }
+  *ilocal = found ? slen : -1;
+}
+
+void i_global(int64_t* iglobal, int64_t ilocal, const struct CellComm* comm) {
+  int64_t p = comm->Proc;
+  int64_t nbegin = comm->Comms.COL_INDEX[p];
+  int64_t nlen = comm->Comms.COL_INDEX[p + 1] - nbegin;
+  const int64_t* ngbs = &(comm->Comms.ROW_INDEX)[nbegin];
+  int64_t slen = 0;
+  int found = 0;
+  for (int64_t i = 0; i < nlen; i++) {
+    int64_t ni = ngbs[i];
+    int64_t b = comm->ProcBoxes[ni];
+    int64_t len = comm->ProcBoxesEnd[ni] - b;
+    if (len <= ilocal)
+      ilocal = ilocal - len;
+    else if (!found && 0 <= ilocal) {
+      found = 1;
+      slen = b + ilocal;
+    }
+  }
+  *iglobal = found ? slen : -1;
 }
 
 void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t ngbs[], const struct Cell* cells, int64_t ci) {

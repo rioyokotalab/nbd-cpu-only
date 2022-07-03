@@ -43,7 +43,7 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
 
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level);
 
-void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels, int64_t mpi_size);
+void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels, int64_t mpi_rank, int64_t mpi_size);
 
 void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 
@@ -52,6 +52,10 @@ void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels);
 void evaluate(char NoF, struct Matrix* s, KerFunc_t ef, const struct Cell* cell, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
+
+void i_local(int64_t* ilocal, int64_t iglobal, const struct CellComm* comm);
+
+void i_global(int64_t* iglobal, int64_t ilocal, const struct CellComm* comm);
 
 void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t ngbs[], const struct Cell* cells, int64_t ci);
 
