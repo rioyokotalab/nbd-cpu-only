@@ -50,16 +50,20 @@ int main(int argc, char* argv[]) {
   buildComm(cell_comm.data(), ncells, cell.data(), &cellFar, &cellNear, levels, mpi_rank, 1 << mpi_levels);
 
   SpDense sp;
-  allocSpDense(sp, &cellFar, &cellNear, levels);
+  allocSpDense(sp, levels);
+  relations(&sp.RelsNear[0], ncells, cell.data(), &cellNear, mpi_rank, levels);
+  relations(&sp.RelsFar[0], ncells, cell.data(), &cellFar, mpi_rank, levels);
+  allocNodes(sp.D.data(), sp.RelsNear.data(), sp.RelsFar.data(), levels);
+  allocBasis(sp.Basis.data(), levels);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
   evaluateBaseAll(ef, &sp.Basis[0], cell.data(), &cellNear, levels, body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
 
-  evaluate('N', sp.D[levels].A.data(), ef, &cell[0], body.data(), &sp.RelsNear[levels], levels);
+  evaluate('N', sp.D[levels].A.data(), ef, ncells, &cell[0], body.data(), &sp.RelsNear[levels], mpi_rank, levels);
   for (int64_t i = 0; i <= levels; i++)
-    evaluate('F', sp.D[i].S.data(), ef, &cell[0], body.data(), &sp.RelsFar[i], i);
+    evaluate('F', sp.D[i].S.data(), ef, ncells, &cell[0], body.data(), &sp.RelsFar[i], mpi_rank, i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
@@ -115,6 +119,8 @@ int main(int argc, char* argv[]) {
   }
   free(cellFar.COL_INDEX);
   free(cellNear.COL_INDEX);
+  for (int64_t i = 0; i <= levels; i++)
+    free(cell_comm[i].Comms.COL_INDEX);
   
   closeComm();
   return 0;

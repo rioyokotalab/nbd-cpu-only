@@ -52,7 +52,7 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rel
 
 void factorA(Node A[], const Base B[], const CSC rels[], int64_t levels);
 
-void allocSpDense(SpDense& sp, const CSC* relFar, const CSC* relNear, int64_t levels);
+void allocSpDense(SpDense& sp, int64_t levels);
 
 void deallocSpDense(SpDense* sp);
 
