@@ -2,6 +2,9 @@
 #pragma once
 
 #include "basis.h"
+#include "linalg.h"
+#include "kernel.h"
+#include <vector>
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,5 +1,7 @@
 
 #include "build_tree.h"
+#include "linalg.h"
+#include "kernel.h"
 #include "dist.h"
 
 #include "stdio.h"
@@ -324,7 +326,7 @@ void i_local(int64_t* ilocal, int64_t iglobal, const struct CellComm* comm) {
   const int64_t* ngbs_iter = &ngbs[nbegin];
   int64_t slen = 0;
   while (ngbs_iter != &ngbs[nend] && 
-  comm->ProcBoxes[*ngbs_iter] <= iglobal) {
+  comm->ProcBoxesEnd[*ngbs_iter] <= iglobal) {
     slen = slen + comm->ProcBoxesEnd[*ngbs_iter] - comm->ProcBoxes[*ngbs_iter];
     ngbs_iter = ngbs_iter + 1;
   }
@@ -442,7 +444,7 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
   }
 }
 
-void evaluate(char NoF, struct Matrix* d, KerFunc_t ef, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t mpi_rank, int64_t level) {
+void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t mpi_rank, int64_t level) {
   int64_t jbegin = 0, jend = ncells;
   get_level(&jbegin, &jend, cells, level, -1);
   int64_t ibegin = jbegin, iend = jend;
@@ -546,7 +548,7 @@ void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t n
   size[1] = clsize;
 }
 
-void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, struct Matrix* Base, int64_t m, int64_t n[], int64_t cellm[], const int64_t remote[], const struct Body* bodies) {
+void evaluateBasis(void(*ef)(double*), double epi, int64_t* rank, struct Matrix* Base, int64_t m, int64_t n[], int64_t cellm[], const int64_t remote[], const struct Body* bodies) {
   int64_t n1 = n[0];
   int64_t n2 = n[1];
   int64_t len_s = n1 + (n2 > 0 ? m : 0);
@@ -597,6 +599,8 @@ void evaluateBasis(KerFunc_t ef, double epi, int64_t* rank, struct Matrix* Base,
     *rank = iters;
     free(pa);
   }
+  else
+    matrixCreate(Base, 0, 0);
 }
 
 
@@ -621,7 +625,7 @@ void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies,
   }
 }
 
-void h2MatVecReference(struct Matrix* B, KerFunc_t ef, const struct Cell* cell, const struct Body* bodies, int64_t level) {
+void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* cell, const struct Body* bodies, int64_t level) {
   int64_t nbodies = cell->BODY[1];
   int64_t xlen = (int64_t)1 << level;
   contentLength(&xlen, level);

@@ -5,10 +5,9 @@
 #include "math.h"
 
 void basisXoc(char fwbk, RightHandSides& vx, const Base& basis, int64_t level) {
-  int64_t len = basis.DIMS.size();
-  int64_t lbegin = 0;
-  int64_t lend = len;
+  int64_t len = 0, lbegin = 0, lend = 0;
   selfLocalRange(&lbegin, &lend, level);
+  contentLength(&len, level);
 
   if (fwbk == 'F' || fwbk == 'f')
     for (int64_t i = lbegin; i < lend; i++) {

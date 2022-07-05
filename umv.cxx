@@ -200,10 +200,10 @@ void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rel
   allocSubMatrices(n, rels_near, &basis.DIMS[0], &basis.DIML[0], level);
   allocA(n.S_oo.data(), rels_far, &basis.DIML[0], level);
 
-  splitA(n.A_cc.data(), rels_near, n.A.data(), basis.Uc.data(), basis.Uc.data(), level);
-  splitA(n.A_oc.data(), rels_near, n.A.data(), basis.Uo.data(), basis.Uc.data(), level);
-  splitA(n.A_oo.data(), rels_near, n.A.data(), basis.Uo.data(), basis.Uo.data(), level);
-  splitS(n.S_oo.data(), rels_far, n.S.data(), basis.R.data(), basis.R.data(), level);
+  splitA(n.A_cc.data(), rels_near, n.A.data(), basis.Uc, basis.Uc, level);
+  splitA(n.A_oc.data(), rels_near, n.A.data(), basis.Uo, basis.Uc, level);
+  splitA(n.A_oo.data(), rels_near, n.A.data(), basis.Uo, basis.Uo, level);
+  splitS(n.S_oo.data(), rels_far, n.S.data(), basis.R, basis.R, level);
 
   factorAcc(n.A_cc.data(), rels_near, level);
   factorAoc(n.A_oc.data(), n.A_cc.data(), rels_near, level);
@@ -308,7 +308,7 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rel
 
 void factorA(Node A[], const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels) {
   for (int64_t i = levels - 1; i >= 0; i--)
-    allocA(A[i].A.data(), rels_near[i], B[i].DIMS.data(), i);
+    allocA(A[i].A.data(), rels_near[i], B[i].DIMS, i);
 
   for (int64_t i = levels; i > 0; i--) {
     Node& Ai = A[i];

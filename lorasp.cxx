@@ -1,5 +1,6 @@
 
-
+#include "kernel.h"
+#include "linalg.h"
 #include "solver.h"
 #include "dist.h"
 
@@ -27,7 +28,7 @@ int main(int argc, char* argv[]) {
   int64_t mpi_levels;
   commRank(&mpi_rank, &mpi_levels);
   
-  KerFunc_t ef = laplace3d;
+  auto ef = laplace3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
 
   cRandom((int64_t)1.e6, -1, 1, 100);
@@ -54,7 +55,7 @@ int main(int argc, char* argv[]) {
   relations(&sp.RelsNear[0], ncells, cell.data(), &cellNear, mpi_rank, levels);
   relations(&sp.RelsFar[0], ncells, cell.data(), &cellFar, mpi_rank, levels);
   allocNodes(sp.D.data(), sp.RelsNear.data(), sp.RelsFar.data(), levels);
-  allocBasis(sp.Basis.data(), levels);
+  allocBasis(sp.Basis.data(), levels, ncells, cell.data(), cell_comm.data());
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);

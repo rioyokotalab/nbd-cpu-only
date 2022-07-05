@@ -30,7 +30,7 @@ void set_kernel_constants(double singularity, double alpha) {
   _alpha = alpha;
 }
 
-void gen_matrix(KerFunc_t ef, int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
+void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
   for (int64_t i = 0; i < m * n; i++) {
     int64_t x = i / m;
     int64_t bx = sel_j == NULL ? x : sel_j[x];
@@ -211,8 +211,8 @@ void body_neutral_charge(struct Body* bodies, int64_t nbodies, double cmax, unsi
 }
 
 void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C[]) {
-  double Xmin[DIM_MAX];
-  double Xmax[DIM_MAX];
+  double Xmin[3];
+  double Xmax[3];
   Xmin[0] = Xmax[0] = bodies[0].X[0];
   Xmin[1] = Xmax[1] = bodies[0].X[1];
   Xmin[2] = Xmax[2] = bodies[0].X[2];
@@ -242,7 +242,7 @@ void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C
 }
 
 void admis_check(int* admis, double theta, const double C1[], const double C2[], const double R1[], const double R2[]) {
-  double dCi[DIM_MAX];
+  double dCi[3];
   dCi[0] = C1[0] - C2[0];
   dCi[1] = C1[1] - C2[1];
   dCi[2] = C1[2] - C2[2];
@@ -251,12 +251,12 @@ void admis_check(int* admis, double theta, const double C1[], const double C2[],
   dCi[1] = dCi[1] * dCi[1];
   dCi[2] = dCi[2] * dCi[2];
 
-  double dRi[DIM_MAX];
+  double dRi[3];
   dRi[0] = R1[0] * R1[0];
   dRi[1] = R1[1] * R1[1];
   dRi[2] = R1[2] * R1[2];
 
-  double dRj[DIM_MAX];
+  double dRj[3];
   dRj[0] = R2[0] * R2[0];
   dRj[1] = R2[1] * R2[1];
   dRj[2] = R2[2] * R2[2];

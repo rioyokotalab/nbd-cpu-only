@@ -56,7 +56,8 @@ void matrixCreate(struct Matrix* mat, int64_t m, int64_t n) {
 }
 
 void matrixDestroy(struct Matrix* mat) {
-  free(mat->A);
+  if (mat->A)
+    free(mat->A);
   mat->A = NULL;
   mat->M = 0;
   mat->N = 0;

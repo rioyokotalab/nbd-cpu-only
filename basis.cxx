@@ -1,22 +1,42 @@
 
 #include "basis.h"
+#include "linalg.h"
+#include "kernel.h"
 #include "dist.h"
 
 #include "stdio.h"
 #include "stdlib.h"
+#include <vector>
 
-void allocBasis(Base* basis, int64_t levels) {
+void allocBasis(Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm) {
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = (int64_t)1 << i;
-    contentLength(&nodes, i);
-    basis[i].Ulen = nodes;
-    basis[i].DIMS.resize(nodes);
-    basis[i].DIML.resize(nodes);
-    basis[i].Multipoles.clear();
+    int64_t nodes = 0;
+    content_length(&nodes, &comm[i]);
 
-    basis[i].Uo.resize(nodes);
-    basis[i].Uc.resize(nodes);
-    basis[i].R.resize(nodes);
+    basis[i].Ulen = nodes;
+    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * (nodes * 3));
+    basis[i].Lchild = arr_i;
+    basis[i].DIMS = &arr_i[nodes];
+    basis[i].DIML = &arr_i[nodes * 2];
+    basis[i].Multipoles = NULL;
+
+    int64_t ibegin = 0, iend = ncells;
+    get_level(&ibegin, &iend, cells, i, -1);
+    for (int64_t j = 0; j < nodes; j++) {
+      int64_t gj = j;
+      i_global(&gj, j, &comm[i]);
+      const struct Cell* c = &cells[ibegin + gj];
+      int64_t coc = c->CHILD;
+      if (coc >= 0)
+        i_local(&arr_i[j], coc - iend, &comm[i + 1]);
+      else
+        arr_i[j] = -1;
+    }
+
+    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nodes * 3));
+    basis[i].Uo = arr_m;
+    basis[i].Uc = &arr_m[nodes];
+    basis[i].R = &arr_m[nodes * 2];
   }
 }
 
@@ -30,13 +50,10 @@ void deallocBasis(Base* basis, int64_t levels) {
     }
 
     basis[i].Ulen = 0;
-    basis[i].DIMS.clear();
-    basis[i].DIML.clear();
-    basis[i].Multipoles.clear();
-
-    basis[i].Uo.clear();
-    basis[i].Uc.clear();
-    basis[i].R.clear();
+    free(basis[i].Lchild);
+    if (basis[i].Multipoles)
+      free(basis[i].Multipoles);
+    free(basis[i].Uo);
   }
 }
 
@@ -54,12 +71,11 @@ void basis_mem(int64_t* bytes, const Base* basis, int64_t levels) {
   *bytes = count;
 }
 
-void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNear, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+void evaluateBaseAll(void(*ef)(double*), Base basis[], Cell* cells, const CSC* cellsNear, int64_t levels, const Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
   for (int64_t l = levels; l >= 0; l--) {
     Base* base_i = basis + l;
     int64_t xlen = (int64_t)1 << l;
-    int64_t ibegin = 0;
-    int64_t iend = xlen;
+    int64_t ibegin = 0, iend = xlen;
     int64_t gbegin = ibegin;
     selfLocalRange(&ibegin, &iend, l);
     iGlobal(&gbegin, ibegin, l);
@@ -139,26 +155,28 @@ void evaluateBaseAll(KerFunc_t ef, Base basis[], Cell* cells, const CSC* cellsNe
       }
     }
 
-    base_i->Multipoles.resize(count);
-    int64_t* mps_comm = &(base_i->Multipoles)[0];
-    for (int64_t i = 0; i < nodes; i++) {
-      Cell* ci = &leaves[i + gbegin];
-      int64_t offset_i = offsets[i + ibegin];
-      int64_t n = base_i->DIML[i + ibegin];
-      std::copy(ci->Multipole, &(ci->Multipole)[n], &mps_comm[offset_i]);
-      free(ci->Multipole);
-    }
-    DistributeMultipoles(mps_comm, &(base_i->DIML)[0], l);
+    if (count > 0) {
+      base_i->Multipoles = (int64_t*)malloc(sizeof(int64_t) * count);
+      int64_t* mps_comm = &(base_i->Multipoles)[0];
+      for (int64_t i = 0; i < nodes; i++) {
+        Cell* ci = &leaves[i + gbegin];
+        int64_t offset_i = offsets[i + ibegin];
+        int64_t n = base_i->DIML[i + ibegin];
+        std::copy(ci->Multipole, &(ci->Multipole)[n], &mps_comm[offset_i]);
+        free(ci->Multipole);
+      }
+      DistributeMultipoles(mps_comm, &(base_i->DIML)[0], l);
 
-    for (int64_t i = 0; i < xlen; i++) {
-      int64_t gi = i;
-      iGlobal(&gi, i, l);
-      Cell* ci = &leaves[gi];
+      for (int64_t i = 0; i < xlen; i++) {
+        int64_t gi = i;
+        iGlobal(&gi, i, l);
+        Cell* ci = &leaves[gi];
 
-      int64_t mi = base_i->DIML[i];
-      int64_t offset_i = offsets[i];
-      ci->Multipole = &mps_comm[offset_i];
-      ci->lenMultipole = mi;
+        int64_t mi = base_i->DIML[i];
+        int64_t offset_i = offsets[i];
+        ci->Multipole = &mps_comm[offset_i];
+        ci->lenMultipole = mi;
+      }
     }
   }
 
