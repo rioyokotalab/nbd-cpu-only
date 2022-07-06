@@ -411,7 +411,6 @@ void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, co
   get_level(&ibegin, &iend, cells, level, mpi_rank);
   int64_t nodes = iend - ibegin;
 
-#pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
     int64_t lc = ibegin + i;
     const struct Cell* ci = &cells[lc];
@@ -641,32 +640,32 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
     i_global(&gbegin, ibegin, base_i->Comm);
     int64_t nodes = iend - ibegin;
     struct Cell* leaves = &cells[jbegin];
+    int64_t** cellm = (int64_t**)malloc(sizeof(int64_t*) * nodes);
 
-#pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
       struct Cell* ci = &leaves[i + gbegin];
       int64_t box_i = i + ibegin;
       int64_t lc = base_i->Lchild[box_i];
       int64_t ni = 0;
-      int64_t* cellm;
 
       if (lc >= 0) {
         int64_t len0 = basis[l + 1].DIML[lc];
         int64_t len1 = basis[l + 1].DIML[lc + 1];
         ni = len0 + len1;
-        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
+        cellm[i] = (int64_t*)malloc(sizeof(int64_t) * ni);
 
         int64_t offset = basis[l + 1].Offsets[lc];
-        memcpy(cellm, &basis[l + 1].Multipoles[offset], sizeof(int64_t) * ni);
+        memcpy(cellm[i], &basis[l + 1].Multipoles[offset], sizeof(int64_t) * ni);
       }
       else {
         int64_t nbegin = ci->BODY[0];
         ni = ci->BODY[1] - nbegin;
-        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
-        for (int64_t i = 0; i < ni; i++)
-          cellm[i] = nbegin + i;
+        cellm[i] = (int64_t*)malloc(sizeof(int64_t) * ni);
+        for (int64_t j = 0; j < ni; j++)
+          cellm[i][j] = nbegin + j;
       }
       
+      int64_t rank = mrank;
       if (ni > 0) {
         int64_t n[3] = { sp_pts, sp_pts, nbodies };
         int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * sp_pts * 2);
@@ -676,24 +675,17 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
         int64_t llen = cellsNear->COL_INDEX[ii + 1] - lbegin;
         remoteBodies(remote, n, llen, &cellsNear->ROW_INDEX[lbegin], cells, ii);
 
-        int64_t rank = mrank;
-        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n, cellm, remote, bodies);
-
+        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n, cellm[i], remote, bodies);
+        free(remote);
         matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
         matrixCreate(&(base_i->R)[box_i], rank, rank);
 
         if (lc >= 0)
           updateSubU(&(base_i->Uo)[box_i], &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
         qr_with_complements(&(base_i->Uo)[box_i], &(base_i->Uc)[box_i], &(base_i->R)[box_i]);
-
-        if (rank < ni)
-          cellm = (int64_t*)realloc(cellm, sizeof(int64_t) * rank);
-        ci->Multipole = cellm;
-        ci->lenMultipole = rank;
-        free(remote);
       }
 
-      int64_t mi = ci->lenMultipole;
+      int64_t mi = ni == 0 ? 0 : rank;
       base_i->DIMS[box_i] = ni;
       base_i->DIML[box_i] = mi;
     }
@@ -721,29 +713,29 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
     DistributeMatricesList(base_i->Uo, l);
     DistributeMatricesList(base_i->R, l);
 
-    if (count > 0) {
+    if (count > 0)
       base_i->Multipoles = (int64_t*)malloc(sizeof(int64_t) * count);
-      int64_t* mps_comm = base_i->Multipoles;
-      for (int64_t i = 0; i < nodes; i++) {
-        struct Cell* ci = &leaves[i + gbegin];
-        int64_t offset_i = offsets[i + ibegin];
-        int64_t n = base_i->DIML[i + ibegin];
-        memcpy(&mps_comm[offset_i], ci->Multipole, sizeof(int64_t) * n);
-        free(ci->Multipole);
-      }
-      DistributeMultipoles(mps_comm, base_i->DIML, l);
-
-      for (int64_t i = 0; i < xlen; i++) {
-        int64_t gi = i;
-        i_global(&gi, i, base_i->Comm);
-        struct Cell* ci = &leaves[gi];
-
-        int64_t mi = base_i->DIML[i];
-        int64_t offset_i = offsets[i];
-        ci->Multipole = &mps_comm[offset_i];
-        ci->lenMultipole = mi;
-      }
+    int64_t* mps_comm = base_i->Multipoles;
+    for (int64_t i = 0; i < nodes; i++) {
+      int64_t offset_i = offsets[i + ibegin];
+      int64_t n = base_i->DIML[i + ibegin];
+      if (n > 0)
+        memcpy(&mps_comm[offset_i], cellm[i], sizeof(int64_t) * n);
+      free(cellm[i]);
     }
+    DistributeMultipoles(mps_comm, base_i->DIML, l);
+
+    for (int64_t i = 0; i < xlen; i++) {
+      int64_t gi = i;
+      i_global(&gi, i, base_i->Comm);
+      struct Cell* ci = &leaves[gi];
+
+      int64_t mi = base_i->DIML[i];
+      int64_t offset_i = offsets[i];
+      ci->Multipole = &mps_comm[offset_i];
+      ci->lenMultipole = mi;
+    }
+    free(cellm);
   }
 }
 
@@ -754,7 +746,6 @@ void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies,
   int64_t len = (int64_t)1 << level;
   const struct Cell* leaves = &cell[len - 1];
 
-#pragma omp parallel for
   for (int64_t i = 0; i < xlen; i++) {
     int64_t gi = i;
     iGlobal(&gi, i, level);
@@ -776,7 +767,6 @@ void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* 
   int64_t len = (int64_t)1 << level;
   const struct Cell* leaves = &cell[len - 1];
 
-#pragma omp parallel for
   for (int64_t i = 0; i < xlen; i++) {
     int64_t gi = i;
     iGlobal(&gi, i, level);
