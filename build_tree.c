@@ -440,10 +440,13 @@ void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, co
   }
 }
 
-void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t ngbs[], const struct Cell* cells, int64_t ci) {
+void remoteBodies(void(*ef)(double*), struct Matrix* S, const int64_t cellm[], const int64_t size[], int64_t nlen, const int64_t ngbs[], const struct Cell* cells, int64_t ci, const struct Body* bodies) {
   int64_t rmsize = size[0];
   int64_t clsize = size[1];
-  int64_t nbodies = size[2];
+  int64_t cmsize = size[2];
+  int64_t nbodies = size[3];
+  int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * (rmsize + clsize));
+  int64_t* close = &remote[rmsize];
 
   int64_t sum_len = 0;
   int64_t c_len = 0;
@@ -480,7 +483,6 @@ void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t n
     remote[i] = loc + s_lens;
   }
 
-  int64_t* close = &remote[rmsize];
   int64_t cl_len = sum_len - c_len;
   clsize = clsize > cl_len ? cl_len : clsize;
 
@@ -503,63 +505,29 @@ void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t n
     close[i] = loc + offset_i - s_lens;
   }
 
-  size[0] = rmsize;
-  size[1] = clsize;
-}
+  int64_t len_s = rmsize + (clsize > 0 ? cmsize : 0);
+  matrixCreate(S, cmsize, len_s);
 
-void evaluateBasis(void(*ef)(double*), double epi, int64_t* rank, struct Matrix* Base, int64_t m, int64_t n[], int64_t cellm[], const int64_t remote[], const struct Body* bodies) {
-  int64_t n1 = n[0];
-  int64_t n2 = n[1];
-  int64_t len_s = n1 + (n2 > 0 ? m : 0);
   if (len_s > 0) {
-    const int64_t* close = &remote[n1];
-    struct Matrix S, S_lr;
-    matrixCreate(&S, m, len_s);
-
-    if (n1 > 0) {
-      S_lr = (struct Matrix){ S.A, m, n1 };
-      gen_matrix(ef, m, n1, bodies, bodies, S_lr.A, cellm, remote);
+    struct Matrix S_lr;
+    if (rmsize > 0) {
+      S_lr = (struct Matrix){ S->A, cmsize, rmsize };
+      gen_matrix(ef, cmsize, rmsize, bodies, bodies, S_lr.A, cellm, remote);
     }
 
-    if (n2 > 0) {
-      struct Matrix S_dn = (struct Matrix){ &S.A[m * n1], m, m };
+    if (clsize > 0) {
+      struct Matrix S_dn = (struct Matrix){ &S->A[cmsize * rmsize], cmsize, cmsize };
       struct Matrix S_dn_work;
-      matrixCreate(&S_dn_work, m, n2);
-      gen_matrix(ef, m, n2, bodies, bodies, S_dn_work.A, cellm, close);
+      matrixCreate(&S_dn_work, cmsize, clsize);
+      gen_matrix(ef, cmsize, clsize, bodies, bodies, S_dn_work.A, cellm, close);
       mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
-      if (n1 > 0)
+      if (rmsize > 0)
         normalizeA(&S_dn, &S_lr);
       matrixDestroy(&S_dn_work);
     }
-
-    int64_t mrank = *rank;
-    mrank = mrank > m ? m : mrank;
-    int64_t un = mrank > 0 ? mrank : m;
-    struct Matrix work_u;
-    int64_t* pa = (int64_t*)malloc(sizeof(int64_t) * un);
-    matrixCreate(&work_u, m, m);
-
-    int64_t iters = un;
-    lraID(epi, &S, &work_u, pa, &iters);
-
-    matrixCreate(Base, m, iters);
-    cpyMatToMat(m, iters, &work_u, Base, 0, 0, 0, 0);
-    matrixDestroy(&S);
-    matrixDestroy(&work_u);
-
-    for (int64_t i = 0; i < iters; i++) {
-      int64_t piv_i = pa[i] - 1;
-      if (piv_i != i) {
-        int64_t row_piv = cellm[piv_i];
-        cellm[piv_i] = cellm[i];
-        cellm[i] = row_piv;
-      }
-    }
-    *rank = iters;
-    free(pa);
   }
-  else
-    matrixCreate(Base, 0, 0);
+  
+  free(remote);
 }
 
 void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm) {
@@ -640,54 +608,72 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
     i_global(&gbegin, ibegin, base_i->Comm);
     int64_t nodes = iend - ibegin;
     struct Cell* leaves = &cells[jbegin];
-    int64_t** cellm = (int64_t**)malloc(sizeof(int64_t*) * nodes);
+    int64_t** cms = (int64_t**)malloc(sizeof(int64_t*) * nodes);
 
     for (int64_t i = 0; i < nodes; i++) {
       struct Cell* ci = &leaves[i + gbegin];
       int64_t box_i = i + ibegin;
       int64_t lc = base_i->Lchild[box_i];
       int64_t ni = 0;
+      int64_t* cellm;
 
       if (lc >= 0) {
         int64_t len0 = basis[l + 1].DIML[lc];
         int64_t len1 = basis[l + 1].DIML[lc + 1];
         ni = len0 + len1;
-        cellm[i] = (int64_t*)malloc(sizeof(int64_t) * ni);
+        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
 
         int64_t offset = basis[l + 1].Offsets[lc];
-        memcpy(cellm[i], &basis[l + 1].Multipoles[offset], sizeof(int64_t) * ni);
+        memcpy(cellm, &basis[l + 1].Multipoles[offset], sizeof(int64_t) * ni);
       }
       else {
         int64_t nbegin = ci->BODY[0];
         ni = ci->BODY[1] - nbegin;
-        cellm[i] = (int64_t*)malloc(sizeof(int64_t) * ni);
+        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
         for (int64_t j = 0; j < ni; j++)
-          cellm[i][j] = nbegin + j;
+          cellm[j] = nbegin + j;
       }
+      cms[i] = cellm;
       
       int64_t rank = mrank;
-      if (ni > 0) {
-        int64_t n[3] = { sp_pts, sp_pts, nbodies };
-        int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * sp_pts * 2);
+      int64_t n[4] = { sp_pts, sp_pts, ni, nbodies };
 
-        int64_t ii = ci - cells;
-        int64_t lbegin = cellsNear->COL_INDEX[ii];
-        int64_t llen = cellsNear->COL_INDEX[ii + 1] - lbegin;
-        remoteBodies(remote, n, llen, &cellsNear->ROW_INDEX[lbegin], cells, ii);
+      int64_t ii = ci - cells;
+      int64_t lbegin = cellsNear->COL_INDEX[ii];
+      int64_t llen = cellsNear->COL_INDEX[ii + 1] - lbegin;
+      struct Matrix S;
+      remoteBodies(ef, &S, cellm, n, llen, &cellsNear->ROW_INDEX[lbegin], cells, ii, bodies);
 
-        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n, cellm[i], remote, bodies);
-        free(remote);
-        matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
-        matrixCreate(&(base_i->R)[box_i], rank, rank);
+      struct Matrix work_u;
+      int64_t* pa = (int64_t*)malloc(sizeof(int64_t) * ni);
+      matrixCreate(&work_u, ni, ni);
+      if (S.N > 0)
+        lraID(epi, &S, &work_u, pa, &rank);
+      else
+        rank = 0;
 
-        if (lc >= 0)
-          updateSubU(&(base_i->Uo)[box_i], &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
-        qr_with_complements(&(base_i->Uo)[box_i], &(base_i->Uc)[box_i], &(base_i->R)[box_i]);
+      matrixCreate(&(base_i->Uo)[box_i], ni, rank);
+      matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
+      matrixCreate(&(base_i->R)[box_i], rank, rank);
+      cpyMatToMat(ni, rank, &work_u, &(base_i->Uo)[box_i], 0, 0, 0, 0);
+      if (lc >= 0)
+        updateSubU(&(base_i->Uo)[box_i], &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
+      qr_with_complements(&(base_i->Uo)[box_i], &(base_i->Uc)[box_i], &(base_i->R)[box_i]);
+
+      matrixDestroy(&S);
+      matrixDestroy(&work_u);
+
+      for (int64_t j = 0; j < rank; j++) {
+        int64_t piv_i = pa[j] - 1;
+        if (piv_i != j) {
+          int64_t row_piv = cellm[piv_i];
+          cellm[piv_i] = cellm[j];
+          cellm[j] = row_piv;
+        }
       }
-
-      int64_t mi = ni == 0 ? 0 : rank;
+      free(pa);
       base_i->DIMS[box_i] = ni;
-      base_i->DIML[box_i] = mi;
+      base_i->DIML[box_i] = rank;
     }
 
     DistributeDims(base_i->DIMS, l);
@@ -720,8 +706,8 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       int64_t offset_i = offsets[i + ibegin];
       int64_t n = base_i->DIML[i + ibegin];
       if (n > 0)
-        memcpy(&mps_comm[offset_i], cellm[i], sizeof(int64_t) * n);
-      free(cellm[i]);
+        memcpy(&mps_comm[offset_i], cms[i], sizeof(int64_t) * n);
+      free(cms[i]);
     }
     DistributeMultipoles(mps_comm, base_i->DIML, l);
 
@@ -735,7 +721,7 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       ci->Multipole = &mps_comm[offset_i];
       ci->lenMultipole = mi;
     }
-    free(cellm);
+    free(cms);
   }
 }
 

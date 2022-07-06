@@ -123,7 +123,6 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
       r += 1;
     rank = r;
   }
-  *rnk_out = rank;
 
   memcpy(A->A, U->A, sizeof(double) * A->M * rank);
   for (int64_t i = 0; i < rank; i++)
@@ -139,6 +138,7 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
   int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, ipiv);
   if (info > 0)
     rank = info - 1;
+  *rnk_out = rank;
 
   for (int64_t i = 0; i < rank; i++)
     np[i] = i + 1;
