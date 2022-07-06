@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "mpi.h"
 #include "stdint.h"
 #include "stddef.h"
 
@@ -32,12 +33,13 @@ struct CSC {
 };
 
 struct CellComm {
-  int64_t Proc; // Local Proc num. Used by searching.
   struct CSC Comms; // P by P sparse. Entry (i, j) proc i comm with j.
-  int64_t* ProcMerge; // len P. Proc i merge all procs within [PM[i], PMEnd[i]).
-  int64_t* ProcMergeEnd; // len P. Proc i merge all procs within [PM[i], PMEnd[i]).
   int64_t* ProcBoxes; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
   int64_t* ProcBoxesEnd; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
+
+  int64_t Proc[2]; // Local Proc num used by searching. Same content stored in range [P0, P1).
+  MPI_Comm* Comm_box; // len P. CB[i] is used when Proc i broadcasts.
+  MPI_Comm Comm_merge; // Local comm for merged procs.
 };
 
 struct Base {
@@ -55,13 +57,15 @@ struct Base {
   const struct CellComm* Comm;
 };
 
-void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels, int64_t mpi_size);
+void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
 
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank);
 
-void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels, int64_t mpi_rank, int64_t mpi_size);
+void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
+
+void cellComm_free(struct CellComm* comms, int64_t levels);
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
 

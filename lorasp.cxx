@@ -4,7 +4,6 @@
 #include "solver.h"
 #include "dist.h"
 
-#include <random>
 #include <cstdio>
 #include <cmath>
 #include <iostream>
@@ -40,13 +39,13 @@ int main(int argc, char* argv[]) {
   int64_t ncells = Nleaf + Nleaf - 1;
   std::vector<Cell> cell(ncells);
   CSC cellNear, cellFar;
-  buildTree(&ncells, cell.data(), body.data(), Nbody, levels, 1 << mpi_levels);
+  buildTree(&ncells, cell.data(), body.data(), Nbody, levels);
   traverse('N', &cellNear, cell.size(), cell.data(), theta);
   traverse('F', &cellFar, cell.size(), cell.data(), theta);
 
   traverse_dist(&cellFar, &cellNear, levels);
   std::vector<CellComm> cell_comm(levels + 1);
-  buildComm(cell_comm.data(), ncells, cell.data(), &cellFar, &cellNear, levels, mpi_rank, 1 << mpi_levels);
+  buildComm(cell_comm.data(), ncells, cell.data(), &cellFar, &cellNear, levels);
 
   SpDense sp;
   allocSpDense(sp, levels);
@@ -117,8 +116,7 @@ int main(int argc, char* argv[]) {
   }
   free(cellFar.COL_INDEX);
   free(cellNear.COL_INDEX);
-  for (int64_t i = 0; i <= levels; i++)
-    free(cell_comm[i].Comms.COL_INDEX);
+  cellComm_free(cell_comm.data(), levels);
   
   closeComm();
   return 0;
