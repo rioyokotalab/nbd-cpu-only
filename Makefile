@@ -33,9 +33,6 @@ kernel: kernel.c kernel.h
 build_tree: build_tree.c build_tree.h
 	$(CC) $(CCFLAGS) -c build_tree.c
 
-basis: basis.cxx basis.h
-	$(CXX) $(CXXFLAGS) -c basis.cxx
-
 umv: umv.cxx umv.h
 	$(CXX) $(CXXFLAGS) -c umv.cxx
 
@@ -45,8 +42,8 @@ solver: solver.cxx solver.h
 dist: dist.cxx dist.h
 	$(MPICXX) $(CXXFLAGS) -c dist.cxx
 
-lib: linalg kernel build_tree basis umv solver dist
-	ar rcs libnbd.a linalg.o kernel.o build_tree.o basis.o umv.o solver.o dist.o
+lib: linalg kernel build_tree umv solver dist
+	ar rcs libnbd.a linalg.o kernel.o build_tree.o umv.o solver.o dist.o
 
 lorasp: lorasp.cxx lib
 	$(CXX) $(CXXFLAGS) -c lorasp.cxx

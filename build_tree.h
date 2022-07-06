@@ -40,6 +40,21 @@ struct CellComm {
   int64_t* ProcBoxesEnd; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
 };
 
+struct Base {
+  int64_t Ulen;
+  int64_t* Lchild;
+  int64_t* DIMS;
+  int64_t* DIML;
+  int64_t* Offsets;
+  int64_t* Multipoles;
+  
+  struct Matrix* Uc;
+  struct Matrix* Uo;
+  struct Matrix* R;
+
+  const struct CellComm* Comm;
+};
+
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels, int64_t mpi_size);
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
@@ -47,8 +62,6 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank);
 
 void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels, int64_t mpi_rank, int64_t mpi_size);
-
-void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
 
@@ -66,13 +79,19 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
 
 void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t mpi_rank, int64_t level);
 
-void remoteBodies(int64_t* remote, int64_t size[], int64_t nlen, const int64_t ngbs[], const struct Cell* cells, int64_t ci);
+void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm);
 
-void evaluateBasis(void(*ef)(double*), double epi, int64_t* rank, struct Matrix* Base, int64_t m, int64_t n[], int64_t cellm[], const int64_t remote[], const struct Body* bodies);
+void deallocBasis(struct Base* basis, int64_t levels);
+
+void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels);
+
+void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* cellsNear, int64_t levels, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
 
 void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level);
 
 void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* cell, const struct Body* bodies, int64_t level);
+
+void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 
 #ifdef __cplusplus
 }

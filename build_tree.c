@@ -2,7 +2,6 @@
 #include "build_tree.h"
 #include "linalg.h"
 #include "kernel.h"
-#include "dist.h"
 
 #include "stdio.h"
 #include "stdlib.h"
@@ -265,45 +264,6 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
       comm_i->Proc = mpi_rank;
   }
 }
-
-void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
-  int64_t mpi_rank, mpi_levels;
-  commRank(&mpi_rank, &mpi_levels);
-
-  configureComm(levels, NULL, 0);
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = i > mpi_levels ? (int64_t)1 << (i - mpi_levels) : 1;
-    int64_t lvl_diff = i < mpi_levels ? mpi_levels - i : 0;
-    int64_t my_rank = mpi_rank >> lvl_diff;
-    int64_t gbegin = my_rank * nodes;
-
-    int64_t offc = (int64_t)(1 << i) - 1;
-    int64_t nc = offc + gbegin;
-    int64_t nbegin = cellNear->COL_INDEX[nc];
-    int64_t nlen = cellNear->COL_INDEX[nc + nodes] - nbegin;
-    int64_t fbegin = cellFar->COL_INDEX[nc];
-    int64_t flen = cellFar->COL_INDEX[nc + nodes] - fbegin;
-    int64_t* ngbs = (int64_t*)malloc(sizeof(int64_t) * (nlen + flen));
-
-    for (int64_t j = 0; j < nlen; j++) {
-      int64_t ngb = cellNear->ROW_INDEX[nbegin + j] - offc;
-      ngb /= nodes;
-      ngbs[j] = ngb;
-    }
-    for (int64_t j = 0; j < flen; j++) {
-      int64_t ngb = cellFar->ROW_INDEX[fbegin + j] - offc;
-      ngb /= nodes;
-      ngbs[j + nlen] = ngb;
-    }
-
-    qsort(ngbs, nlen + flen, sizeof(int64_t), comp_int_64);
-    const int64_t* iter = unique_int_64(&ngbs[0], nlen + flen);
-    int64_t size = iter - ngbs;
-    configureComm(i, &ngbs[0], size);
-    free(ngbs);
-  }
-}
-
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
   if (j < 0 || j >= rels->N)
@@ -603,6 +563,190 @@ void evaluateBasis(void(*ef)(double*), double epi, int64_t* rank, struct Matrix*
     matrixCreate(Base, 0, 0);
 }
 
+void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm) {
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes = 0;
+    content_length(&nodes, &comm[i]);
+
+    basis[i].Ulen = nodes;
+    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * (nodes * 4));
+    basis[i].Lchild = arr_i;
+    basis[i].DIMS = &arr_i[nodes];
+    basis[i].DIML = &arr_i[nodes * 2];
+    basis[i].Offsets = &arr_i[nodes * 3];
+    basis[i].Multipoles = NULL;
+
+    int64_t ibegin = 0, iend = ncells;
+    get_level(&ibegin, &iend, cells, i, -1);
+    for (int64_t j = 0; j < nodes; j++) {
+      int64_t gj = j;
+      i_global(&gj, j, &comm[i]);
+      const struct Cell* c = &cells[ibegin + gj];
+      int64_t coc = c->CHILD;
+      if (coc >= 0)
+        i_local(&arr_i[j], coc - iend, &comm[i + 1]);
+      else
+        arr_i[j] = -1;
+    }
+
+    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nodes * 3));
+    basis[i].Uo = arr_m;
+    basis[i].Uc = &arr_m[nodes];
+    basis[i].R = &arr_m[nodes * 2];
+    basis[i].Comm = &comm[i];
+  }
+}
+
+void deallocBasis(struct Base* basis, int64_t levels) {
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes = basis[i].Ulen;
+    for (int64_t n = 0; n < nodes; n++) {
+      matrixDestroy(&basis[i].Uo[n]);
+      matrixDestroy(&basis[i].Uc[n]);
+      matrixDestroy(&basis[i].R[n]);
+    }
+
+    basis[i].Ulen = 0;
+    free(basis[i].Lchild);
+    if (basis[i].Multipoles)
+      free(basis[i].Multipoles);
+    free(basis[i].Uo);
+  }
+}
+
+void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels) {
+  int64_t count = 0;
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes = basis[i].Ulen;
+    int64_t bytes_o, bytes_c, bytes_r;
+    matrix_mem(&bytes_o, &basis[i].Uo[0], nodes);
+    matrix_mem(&bytes_c, &basis[i].Uc[0], nodes);
+    matrix_mem(&bytes_r, &basis[i].R[0], nodes);
+
+    count = count + bytes_o + bytes_c + bytes_r;
+  }
+  *bytes = count;
+}
+
+#include "dist.h"
+
+void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* cellsNear, int64_t levels, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+  for (int64_t l = levels; l >= 0; l--) {
+    struct Base* base_i = basis + l;
+    int64_t xlen = base_i->Ulen;
+    int64_t jbegin = 0, jend = ncells;
+    get_level(&jbegin, &jend, cells, l, -1);
+    int64_t ibegin = 0, iend = xlen, gbegin;
+    self_local_range(&ibegin, &iend, base_i->Comm);
+    i_global(&gbegin, ibegin, base_i->Comm);
+    int64_t nodes = iend - ibegin;
+    struct Cell* leaves = &cells[jbegin];
+
+#pragma omp parallel for
+    for (int64_t i = 0; i < nodes; i++) {
+      struct Cell* ci = &leaves[i + gbegin];
+      int64_t box_i = i + ibegin;
+      int64_t lc = base_i->Lchild[box_i];
+      int64_t ni = 0;
+      int64_t* cellm;
+
+      if (lc >= 0) {
+        int64_t len0 = basis[l + 1].DIML[lc];
+        int64_t len1 = basis[l + 1].DIML[lc + 1];
+        ni = len0 + len1;
+        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
+
+        int64_t offset = basis[l + 1].Offsets[lc];
+        memcpy(cellm, &basis[l + 1].Multipoles[offset], sizeof(int64_t) * ni);
+      }
+      else {
+        int64_t nbegin = ci->BODY[0];
+        ni = ci->BODY[1] - nbegin;
+        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
+        for (int64_t i = 0; i < ni; i++)
+          cellm[i] = nbegin + i;
+      }
+      
+      if (ni > 0) {
+        int64_t n[3] = { sp_pts, sp_pts, nbodies };
+        int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * sp_pts * 2);
+
+        int64_t ii = ci - cells;
+        int64_t lbegin = cellsNear->COL_INDEX[ii];
+        int64_t llen = cellsNear->COL_INDEX[ii + 1] - lbegin;
+        remoteBodies(remote, n, llen, &cellsNear->ROW_INDEX[lbegin], cells, ii);
+
+        int64_t rank = mrank;
+        evaluateBasis(ef, epi, &rank, &(base_i->Uo)[box_i], ni, n, cellm, remote, bodies);
+
+        matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
+        matrixCreate(&(base_i->R)[box_i], rank, rank);
+
+        if (lc >= 0)
+          updateSubU(&(base_i->Uo)[box_i], &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
+        qr_with_complements(&(base_i->Uo)[box_i], &(base_i->Uc)[box_i], &(base_i->R)[box_i]);
+
+        if (rank < ni)
+          cellm = (int64_t*)realloc(cellm, sizeof(int64_t) * rank);
+        ci->Multipole = cellm;
+        ci->lenMultipole = rank;
+        free(remote);
+      }
+
+      int64_t mi = ci->lenMultipole;
+      base_i->DIMS[box_i] = ni;
+      base_i->DIML[box_i] = mi;
+    }
+
+    DistributeDims(base_i->DIMS, l);
+    DistributeDims(base_i->DIML, l);
+
+    int64_t count = 0;
+    int64_t* offsets = base_i->Offsets;
+    for (int64_t i = 0; i < xlen; i++) {
+      int64_t m = base_i->DIMS[i];
+      int64_t n = base_i->DIML[i];
+      offsets[i] = count;
+      count = count + n;
+
+      int64_t msize = m * n;
+      if (msize > 0 && (i < ibegin || i >= iend)) {
+        matrixCreate(&(base_i->Uo)[i], m, n);
+        matrixCreate(&(base_i->Uc)[i], m, m - n);
+        matrixCreate(&(base_i->R)[i], n, n);
+      }
+    }
+
+    DistributeMatricesList(base_i->Uc, l);
+    DistributeMatricesList(base_i->Uo, l);
+    DistributeMatricesList(base_i->R, l);
+
+    if (count > 0) {
+      base_i->Multipoles = (int64_t*)malloc(sizeof(int64_t) * count);
+      int64_t* mps_comm = base_i->Multipoles;
+      for (int64_t i = 0; i < nodes; i++) {
+        struct Cell* ci = &leaves[i + gbegin];
+        int64_t offset_i = offsets[i + ibegin];
+        int64_t n = base_i->DIML[i + ibegin];
+        memcpy(&mps_comm[offset_i], ci->Multipole, sizeof(int64_t) * n);
+        free(ci->Multipole);
+      }
+      DistributeMultipoles(mps_comm, base_i->DIML, l);
+
+      for (int64_t i = 0; i < xlen; i++) {
+        int64_t gi = i;
+        i_global(&gi, i, base_i->Comm);
+        struct Cell* ci = &leaves[gi];
+
+        int64_t mi = base_i->DIML[i];
+        int64_t offset_i = offsets[i];
+        ci->Multipole = &mps_comm[offset_i];
+        ci->lenMultipole = mi;
+      }
+    }
+  }
+}
+
 
 void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
@@ -670,5 +814,43 @@ void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* 
 
     matrixDestroy(&Aij);
     matrixDestroy(&X);
+  }
+}
+
+void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
+  int64_t mpi_rank, mpi_levels;
+  commRank(&mpi_rank, &mpi_levels);
+
+  configureComm(levels, NULL, 0);
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes = i > mpi_levels ? (int64_t)1 << (i - mpi_levels) : 1;
+    int64_t lvl_diff = i < mpi_levels ? mpi_levels - i : 0;
+    int64_t my_rank = mpi_rank >> lvl_diff;
+    int64_t gbegin = my_rank * nodes;
+
+    int64_t offc = (int64_t)(1 << i) - 1;
+    int64_t nc = offc + gbegin;
+    int64_t nbegin = cellNear->COL_INDEX[nc];
+    int64_t nlen = cellNear->COL_INDEX[nc + nodes] - nbegin;
+    int64_t fbegin = cellFar->COL_INDEX[nc];
+    int64_t flen = cellFar->COL_INDEX[nc + nodes] - fbegin;
+    int64_t* ngbs = (int64_t*)malloc(sizeof(int64_t) * (nlen + flen));
+
+    for (int64_t j = 0; j < nlen; j++) {
+      int64_t ngb = cellNear->ROW_INDEX[nbegin + j] - offc;
+      ngb /= nodes;
+      ngbs[j] = ngb;
+    }
+    for (int64_t j = 0; j < flen; j++) {
+      int64_t ngb = cellFar->ROW_INDEX[fbegin + j] - offc;
+      ngb /= nodes;
+      ngbs[j + nlen] = ngb;
+    }
+
+    qsort(ngbs, nlen + flen, sizeof(int64_t), comp_int_64);
+    const int64_t* iter = unique_int_64(&ngbs[0], nlen + flen);
+    int64_t size = iter - ngbs;
+    configureComm(i, &ngbs[0], size);
+    free(ngbs);
   }
 }
