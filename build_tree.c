@@ -537,7 +537,7 @@ void evaluateBasis(void(*ef)(double*), double epi, int64_t* rank, struct Matrix*
     int64_t un = mrank > 0 ? mrank : m;
     struct Matrix work_u;
     int64_t* pa = (int64_t*)malloc(sizeof(int64_t) * un);
-    matrixCreate(&work_u, m, un);
+    matrixCreate(&work_u, m, m);
 
     int64_t iters = un;
     lraID(epi, &S, &work_u, pa, &iters);

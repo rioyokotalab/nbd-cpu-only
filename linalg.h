@@ -14,8 +14,6 @@ struct Matrix {
   int64_t N;
 };
 
-void cRandom(int64_t lenR, double min, double max, unsigned int seed);
-
 void matrixCreate(struct Matrix* mat, int64_t m, int64_t n);
 
 void matrixDestroy(struct Matrix* mat);

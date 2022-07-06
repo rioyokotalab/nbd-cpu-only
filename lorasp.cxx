@@ -30,8 +30,6 @@ int main(int argc, char* argv[]) {
   
   auto ef = laplace3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
-
-  cRandom((int64_t)1.e6, -1, 1, 100);
   
   std::vector<Body> body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
@@ -70,7 +68,6 @@ int main(int argc, char* argv[]) {
   startTimer(&factor_time, &factor_comm_time);
   factorSpDense(sp);
   stopTimer(&factor_time, &factor_comm_time);
-  cRandom(0, 0, 0, 0);
 
   int64_t xlen = (int64_t)1 << levels;
   contentLength(&xlen, levels);

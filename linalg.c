@@ -18,29 +18,6 @@
 #include "lapacke.h"
 #endif
 
-double* Rvec = NULL;
-int64_t Rlen = 0;
-
-void cRandom(int64_t lenR, double min, double max, unsigned int seed) {
-  if (lenR > 0) {
-    if (seed > 0)
-      srand(seed);
-    if (Rlen > 0)
-      free(Rvec);
-    Rvec = (double*)malloc(sizeof(double) * lenR);
-    Rlen = lenR;
-
-    double range = max - min;
-    for (int64_t i = 0; i < lenR; i++)
-      Rvec[i] = ((double)rand() / RAND_MAX) * range + min;
-  }
-  else if (Rlen > 0) {
-    free(Rvec);
-    Rvec = NULL;
-    Rlen = 0;
-  }
-}
-
 void matrixCreate(struct Matrix* mat, int64_t m, int64_t n) {
   int64_t size = m * n;
   if (size > 0) {
@@ -132,20 +109,13 @@ void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* 
 }
 
 void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int64_t* rnk_out) {
-  int64_t rank = A->M < A->N ? A->M : A->N;
-  int64_t rank_in = *rnk_out;
-  if (rank_in > 0)
-    rank = rank_in < rank ? rank_in : rank;
-  
-  if (Rlen < A->N * rank) { 
-    fprintf(stderr, "Insufficent random vector: %" PRId64 " needed %" PRId64 " provided.", A->N * rank, Rlen);
-    *rnk_out = 0;
-    return;
-  }
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A->M, rank, A->N, 1., A->A, A->M, Rvec, A->N, 0., U->A, A->M);
+  int64_t rank_a = A->M < A->N ? A->M : A->N;
+  int64_t rank = rank_a;
+  if (*rnk_out > 0)
+    rank = *rnk_out < rank ? *rnk_out : rank;
 
-  double* work = (double*)malloc(sizeof(double) * (rank + rank + 1));
-  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A->M, rank, U->A, A->M, work, NULL, A->M, NULL, rank, &work[rank]);
+  double* work = (double*)malloc(sizeof(double) * (rank_a + rank_a + 1));
+  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', A->M, A->N, A->A, A->M, work, U->A, A->M, NULL, A->N, &work[rank_a]);
   if (epi > 0.) {
     int64_t r = 0;
     double sepi = work[0] * epi;
@@ -155,22 +125,35 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
   }
   *rnk_out = rank;
 
-  for (int64_t i = 0; i < rank; i++)
-    cblas_dscal(A->M, work[i], &(U->A)[i * A->M], 1);
   memcpy(A->A, U->A, sizeof(double) * A->M * rank);
+  for (int64_t i = 0; i < rank; i++)
+    cblas_dscal(A->M, work[i], &(A->A)[i * A->M], 1);
 
 #ifdef USE_MKL
   MKL_INT* ipiv = (MKL_INT*)arows;
+  MKL_INT* np = (MKL_INT*)malloc(sizeof(MKL_INT) * rank);
 #else
-  int* ipiv = (int*)malloc(sizeof(int) * rank);
+  int* ipiv = (int*)malloc(sizeof(int) * rank * 2);
+  int* np = &ipiv[rank];
 #endif
   int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, ipiv);
   if (info > 0)
     rank = info - 1;
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
 
-#ifndef USE_MKL
+  for (int64_t i = 0; i < rank; i++)
+    np[i] = i + 1;
+  LAPACKE_dgetri(LAPACK_COL_MAJOR, rank, A->A, A->M, np);
+  for (int64_t i = 0; i < rank; i++)
+    cblas_dscal(rank, work[i], &(A->A)[i], A->M);
+
+  double* work2 = (double*)malloc(sizeof(double) * (A->M * rank));
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A->M, rank, rank, 1., U->A, A->M, A->A, A->M, 0., work2, A->M);
+  memcpy(U->A, work2, sizeof(double) * A->M * rank);
+  free(work2);
+
+#ifdef USE_MKL
+  free(np);
+#else
   for (int64_t i = 0; i < rank; i++)
     arows[i] = ipiv[i];
   free(ipiv);
