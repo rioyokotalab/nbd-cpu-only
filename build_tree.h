@@ -34,6 +34,7 @@ struct CSC {
 
 struct CellComm {
   struct CSC Comms; // P by P sparse. Entry (i, j) proc i comm with j.
+  int64_t* ProcRootI; // len P. The PRI[i]'th element in comms is Entry (i, i) on row/column i.
   int64_t* ProcBoxes; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
   int64_t* ProcBoxesEnd; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
 
@@ -69,9 +70,9 @@ void cellComm_free(struct CellComm* comms, int64_t levels);
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
 
-void i_local(int64_t* ilocal, int64_t iglobal, const struct CellComm* comm);
+void i_local(int64_t* ilocal, const struct CellComm* comm);
 
-void i_global(int64_t* iglobal, int64_t ilocal, const struct CellComm* comm);
+void i_global(int64_t* iglobal, const struct CellComm* comm);
 
 void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* comm);
 

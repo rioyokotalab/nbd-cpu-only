@@ -10,9 +10,7 @@ ifneq (${MKLROOT},)
 	MKLFLAG	= -DUSE_MKL
 	CCFLAGS	+=  -I"${MKLROOT}/include"
 	CXXFLAGS	+=  -I"${MKLROOT}/include"
-	LDFLAGS	+= -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.so \
-	  ${MKLROOT}/lib/intel64/libmkl_sequential.so \
-	  ${MKLROOT}/lib/intel64/libmkl_core.so -Wl,--end-group
+	LDFLAGS	+= -L${MKLROOT}/lib/intel64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5
 	MSG	= *** Successfully found and linking with Intel MKL! ***
 else
 	LDFLAGS	+= -lblas -llapacke
@@ -44,8 +42,7 @@ lib: linalg kernel build_tree umv solver dist
 	ar rcs libnbd.a linalg.o kernel.o build_tree.o umv.o solver.o dist.o
 
 lorasp: lorasp.cxx lib
-	$(CXX) $(CXXFLAGS) -c lorasp.cxx
-	$(CXX) $(CXXFLAGS) -o lorasp lorasp.o -L. -lnbd $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o lorasp lorasp.cxx -L. -lnbd $(LDFLAGS)
 
 clean:
 	rm -f *.o *.a a.out lorasp
