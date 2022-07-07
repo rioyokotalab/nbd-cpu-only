@@ -241,31 +241,6 @@ void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C
   R[2] = (d2 == 0. && Xmin[2] == 0.) ? 0. : (1.e-8 + d2 / 2.);
 }
 
-void admis_check(int* admis, double theta, const double C1[], const double C2[], const double R1[], const double R2[]) {
-  double dCi[3];
-  dCi[0] = C1[0] - C2[0];
-  dCi[1] = C1[1] - C2[1];
-  dCi[2] = C1[2] - C2[2];
-
-  dCi[0] = dCi[0] * dCi[0];
-  dCi[1] = dCi[1] * dCi[1];
-  dCi[2] = dCi[2] * dCi[2];
-
-  double dRi[3];
-  dRi[0] = R1[0] * R1[0];
-  dRi[1] = R1[1] * R1[1];
-  dRi[2] = R1[2] * R1[2];
-
-  double dRj[3];
-  dRj[0] = R2[0] * R2[0];
-  dRj[1] = R2[1] * R2[1];
-  dRj[2] = R2[2] * R2[2];
-
-  double dC = dCi[0] + dCi[1] + dCi[2];
-  double dR = (dRi[0] + dRi[1] + dRi[2] + dRj[0] + dRj[1] + dRj[2]) * theta;
-  *admis = (int)(dC > dR);
-}
-
 int comp_bodies_s0(const void *a, const void *b) {
   struct Body* body_a = (struct Body*)a;
   struct Body* body_b = (struct Body*)b;

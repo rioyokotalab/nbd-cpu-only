@@ -54,8 +54,6 @@ struct Base {
   struct Matrix* Uc;
   struct Matrix* Uo;
   struct Matrix* R;
-
-  const struct CellComm* Comm;
 };
 
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
@@ -76,8 +74,6 @@ void i_global(int64_t* iglobal, const struct CellComm* comm);
 
 void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* comm);
 
-void self_global_range(int64_t* ibegin, int64_t* iend, const struct CellComm* comm);
-
 void content_length(int64_t* len, const struct CellComm* comm);
 
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t mpi_rank, int64_t levels);
@@ -90,13 +86,7 @@ void deallocBasis(struct Base* basis, int64_t levels);
 
 void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels);
 
-void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* cellsNear, int64_t levels, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
-
-void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level);
-
-void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* cell, const struct Body* bodies, int64_t level);
-
-void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
+void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* cellsNear, int64_t levels, const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
 
 #ifdef __cplusplus
 }

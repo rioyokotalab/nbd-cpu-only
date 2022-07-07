@@ -31,8 +31,6 @@ void magnify_reloc(struct Body* bodies, int64_t nbodies, const double Ccur[], co
 
 void body_neutral_charge(struct Body* bodies, int64_t nbodies, double cmax, unsigned int seed);
 
-void admis_check(int* admis, double theta, const double C1[], const double C2[], const double R1[], const double R2[]);
-
 void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C[]);
 
 void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);

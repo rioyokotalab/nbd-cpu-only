@@ -7,6 +7,112 @@
 #include <cstdio>
 #include <cmath>
 #include <iostream>
+#include <algorithm>
+
+void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level) {
+  int64_t xlen = (int64_t)1 << level;
+  contentLength(&xlen, level);
+  int64_t len = (int64_t)1 << level;
+  const struct Cell* leaves = &cell[len - 1];
+
+  for (int64_t i = 0; i < xlen; i++) {
+    int64_t gi = i;
+    iGlobal(&gi, i, level);
+    const struct Cell* ci = &leaves[gi];
+
+    struct Matrix* Xi = &X[i];
+    int64_t nbegin = ci->BODY[0];
+    int64_t ni = ci->BODY[1] - nbegin;
+    matrixCreate(Xi, ni, 1);
+    for (int64_t n = 0; n < ni; n++)
+      Xi->A[n] = bodies[n + nbegin].B;
+  }
+}
+
+void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* cell, const struct Body* bodies, int64_t level) {
+  int64_t nbodies = cell->BODY[1];
+  int64_t xlen = (int64_t)1 << level;
+  contentLength(&xlen, level);
+  int64_t len = (int64_t)1 << level;
+  const struct Cell* leaves = &cell[len - 1];
+
+  for (int64_t i = 0; i < xlen; i++) {
+    int64_t gi = i;
+    iGlobal(&gi, i, level);
+    const struct Cell* ci = &leaves[gi];
+
+    struct Matrix* Bi = &B[i];
+    int64_t ibegin = ci->BODY[0];
+    int64_t m = ci->BODY[1] - ibegin;
+    matrixCreate(Bi, m, 1);
+
+    int64_t block = 500;
+    int64_t last = nbodies % block;
+    struct Matrix X;
+    struct Matrix Aij;
+    matrixCreate(&X, block, 1);
+    matrixCreate(&Aij, m, block);
+    zeroMatrix(&X);
+    zeroMatrix(&Aij);
+
+    if (last > 0) {
+      for (int64_t k = 0; k < last; k++)
+        X.A[k] = bodies[k].B;
+      gen_matrix(ef, m, last, &bodies[ibegin], bodies, Aij.A, NULL, NULL);
+      mmult('N', 'N', &Aij, &X, Bi, 1., 0.);
+    }
+    else
+      zeroMatrix(Bi);
+
+    for (int64_t j = last; j < nbodies; j += block) {
+      for (int64_t k = 0; k < block; k++)
+        X.A[k] = bodies[k + j].B;
+      gen_matrix(ef, m, block, &bodies[ibegin], &bodies[j], Aij.A, NULL, NULL);
+      mmult('N', 'N', &Aij, &X, Bi, 1., 1.);
+    }
+
+    matrixDestroy(&Aij);
+    matrixDestroy(&X);
+  }
+}
+
+void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
+  int64_t mpi_rank, mpi_levels;
+  commRank(&mpi_rank, &mpi_levels);
+
+  configureComm(levels, NULL, 0);
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes = i > mpi_levels ? (int64_t)1 << (i - mpi_levels) : 1;
+    int64_t lvl_diff = i < mpi_levels ? mpi_levels - i : 0;
+    int64_t my_rank = mpi_rank >> lvl_diff;
+    int64_t gbegin = my_rank * nodes;
+
+    int64_t offc = (int64_t)(1 << i) - 1;
+    int64_t nc = offc + gbegin;
+    int64_t nbegin = cellNear->COL_INDEX[nc];
+    int64_t nlen = cellNear->COL_INDEX[nc + nodes] - nbegin;
+    int64_t fbegin = cellFar->COL_INDEX[nc];
+    int64_t flen = cellFar->COL_INDEX[nc + nodes] - fbegin;
+    int64_t* ngbs = (int64_t*)malloc(sizeof(int64_t) * (nlen + flen));
+
+    for (int64_t j = 0; j < nlen; j++) {
+      int64_t ngb = cellNear->ROW_INDEX[nbegin + j] - offc;
+      ngb /= nodes;
+      ngbs[j] = ngb;
+    }
+    for (int64_t j = 0; j < flen; j++) {
+      int64_t ngb = cellFar->ROW_INDEX[fbegin + j] - offc;
+      ngb /= nodes;
+      ngbs[j + nlen] = ngb;
+    }
+
+    std::sort(ngbs, &ngbs[nlen + flen]);
+    const int64_t* iter = std::unique(ngbs, &ngbs[nlen + flen]);
+    int64_t size = iter - ngbs;
+    configureComm(i, &ngbs[0], size);
+    free(ngbs);
+  }
+}
 
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
@@ -56,7 +162,7 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], ncells, cell.data(), &cellNear, levels, body.data(), Nbody, epi, rank_max, sp_pts);
+  evaluateBaseAll(ef, &sp.Basis[0], ncells, cell.data(), &cellNear, levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
 
   evaluate('N', sp.D[levels].A.data(), ef, ncells, &cell[0], body.data(), &sp.RelsNear[levels], mpi_rank, levels);
