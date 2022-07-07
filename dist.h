@@ -30,10 +30,6 @@ void contentLength(int64_t* len, int64_t level);
 
 void DistributeMatricesList(struct Matrix lis[], int64_t level);
 
-void DistributeDims(int64_t dims[], int64_t level);
-
-void DistributeMultipoles(int64_t multipoles[], const int64_t dims[], int64_t level);
-
 void butterflySumA(struct Matrix A[], int64_t lenA, int64_t level);
 
 void sendFwSubstituted(const struct Matrix A[], int64_t level);

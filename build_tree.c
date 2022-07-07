@@ -747,6 +747,7 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
     int64_t nodes = iend - ibegin;
     struct Cell* leaves = &cells[jbegin];
     int64_t** cms = (int64_t**)malloc(sizeof(int64_t*) * nodes);
+    double** mms = (double**)malloc(sizeof(double*) * (xlen + 1));
 
     for (int64_t i = 0; i < nodes; i++) {
       struct Cell* ci = &leaves[i + gbegin];
@@ -773,7 +774,6 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       }
       cms[i] = cellm;
       
-      int64_t rank = mrank;
       int64_t n[4] = { sp_pts, sp_pts, ni, nbodies };
 
       int64_t ii = ci - cells;
@@ -782,22 +782,21 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       struct Matrix S;
       remoteBodies(ef, &S, cellm, n, llen, &cellsNear->ROW_INDEX[lbegin], cells, ii, bodies);
 
-      struct Matrix work_u;
+      int64_t len_s = S.N < ni ? S.N : ni;
+      int64_t rank = mrank > 0 ? (mrank < len_s ? mrank : len_s) : len_s;
+      double* mat = (double*)malloc(sizeof(double) * (ni * ni + rank * rank));
       int64_t* pa = (int64_t*)malloc(sizeof(int64_t) * ni);
-      matrixCreate(&work_u, ni, ni);
-      if (S.N > 0)
-        lraID(epi, &S, &work_u, pa, &rank);
-      else
-        rank = 0;
+      struct Matrix U = { mat, ni, ni };
+      if (rank > 0)
+        lraID(epi, &S, &U, pa, &rank);
 
-      matrixCreate(&(base_i->Uo)[box_i], ni, rank);
-      matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
-      matrixCreate(&(base_i->R)[box_i], rank, rank);
+      struct Matrix Uo = { mat, ni, rank };
+      struct Matrix Uc = { &mat[ni * rank], ni, ni - rank };
+      struct Matrix R = { &mat[ni * ni], rank, rank };
       if (rank > 0) {
-        cpyMatToMat(ni, rank, &work_u, &(base_i->Uo)[box_i], 0, 0, 0, 0);
         if (lc >= 0)
-          updateSubU(&(base_i->Uo)[box_i], &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
-        qr_with_complements(&(base_i->Uo)[box_i], &(base_i->Uc)[box_i], &(base_i->R)[box_i]);
+          updateSubU(&Uo, &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
+        qr_with_complements(&Uo, &Uc, &R);
 
         for (int64_t j = 0; j < rank; j++) {
           int64_t piv = pa[j] - 1;
@@ -807,7 +806,7 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       }
 
       matrixDestroy(&S);
-      matrixDestroy(&work_u);
+      mms[i + ibegin] = mat;
       free(pa);
       base_i->DIMS[box_i] = ni;
       base_i->DIML[box_i] = rank;
@@ -842,7 +841,6 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
     free(cms);
     dist_int_64(mps_comm, base_i->Offsets, &comm[l]);
 
-    double** mms = (double**)malloc(sizeof(double*) * (xlen + 1));
     double* mat_comm = NULL;
     if (count_m > 0)
       mat_comm = (double*)malloc(sizeof(int64_t) * count_m);
@@ -851,12 +849,8 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       int64_t m = base_i->DIMS[i];
       int64_t n = base_i->DIML[i];
       if (ibegin <= i && i < iend) {
-        memcpy(mat_iter, base_i->Uo[i].A, sizeof(double) * m * n);
-        memcpy(&mat_iter[m * n], base_i->Uc[i].A, sizeof(double) * m * (m - n));
-        memcpy(&mat_iter[m * m], base_i->R[i].A, sizeof(double) * n * n);
-        matrixDestroy(&base_i->Uo[i]);
-        matrixDestroy(&base_i->Uc[i]);
-        matrixDestroy(&base_i->R[i]);
+        memcpy(mat_iter, mms[i], sizeof(double) * (m * m + n * n));
+        free(mms[i]);
       }
       base_i->Uo[i] = (struct Matrix) { mat_iter, m, n };
       base_i->Uc[i] = (struct Matrix) { &mat_iter[m * n], m, m - n };
