@@ -10,7 +10,7 @@ extern "C" {
 
 struct Matrix;
 
-void initComm(int* argc, char** argv[]);
+void initComm();
 
 void closeComm();
 

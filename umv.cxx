@@ -9,7 +9,6 @@ void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, co
   selfLocalRange(&ibegin, &iend, level);
   const Matrix* vlocal = &V[ibegin];
 
-#pragma omp parallel for
   for (int64_t x = 0; x < rels.N; x++) {
     for (int64_t yx = rels.COL_INDEX[x]; yx < rels.COL_INDEX[x + 1]; yx++) {
       int64_t y = rels.ROW_INDEX[yx];
@@ -25,7 +24,6 @@ void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, co
   selfLocalRange(&ibegin, &iend, level);
   const Matrix* vlocal = &V[ibegin];
 
-#pragma omp parallel for
   for (int64_t x = 0; x < rels.N; x++) {
     for (int64_t yx = rels.COL_INDEX[x]; yx < rels.COL_INDEX[x + 1]; yx++) {
       int64_t y = rels.ROW_INDEX[yx];
@@ -41,7 +39,6 @@ void factorAcc(Matrix* A_cc, const CSC& rels, int64_t level) {
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
 
-#pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
     lookupIJ(&ii, &rels, i + lbegin, i);
@@ -61,7 +58,6 @@ void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels, int64_t level)
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
 
-#pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
     lookupIJ(&ii, &rels, i + lbegin, i);
@@ -76,7 +72,6 @@ void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels, int64_t level) {
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
 
-#pragma omp parallel for
   for (int64_t i = 0; i < rels.N; i++) {
     int64_t ii;
     lookupIJ(&ii, &rels, i + lbegin, i);
@@ -228,7 +223,6 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rel
   iGlobal(&nbegin, nloc, nlevel);
   iGlobal(&pbegin, ploc, plevel);
 
-#pragma omp parallel for
   for (int64_t j = 0; j < rels_up.N; j++) {
     int64_t cj = (j + nbegin) << 1;
     int64_t cj0 = cj - pbegin;

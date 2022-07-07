@@ -9,8 +9,8 @@
 #include <iostream>
 
 int main(int argc, char* argv[]) {
-
-  initComm(&argc, &argv);
+  MPI_Init(&argc, &argv);
+  initComm();
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
   double theta = argc > 2 ? atof(argv[2]) : 1;
@@ -119,5 +119,6 @@ int main(int argc, char* argv[]) {
   cellComm_free(cell_comm.data(), levels);
   
   closeComm();
+  MPI_Finalize();
   return 0;
 }

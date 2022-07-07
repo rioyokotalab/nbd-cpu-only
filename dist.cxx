@@ -28,8 +28,7 @@ std::vector<Communicator> COMMS;
 double prog_time = 0.;
 double tot_time = 0.;
 
-void initComm(int* argc, char** argv[]) {
-  MPI_Init(argc, argv);
+void initComm() {
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -55,7 +54,6 @@ void closeComm() {
     COMMS[i].NGB_COMM.clear();
   }
   COMMS.clear();
-  MPI_Finalize();
 }
 
 void commRank(int64_t* mpi_rank, int64_t* mpi_level) {

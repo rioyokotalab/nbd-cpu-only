@@ -1,11 +1,9 @@
 
-CC	= gcc
-CXX	= g++
-MPICC	= mpicc
-MPICXX	= mpicxx
+CC	= mpiicc
+CXX	= mpiicpc
 
-CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -fopenmp -I.
-CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -fopenmp -I.
+CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -I.
+CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -I.
 LDFLAGS	= -lpthread -lm -ldl
 
 ifneq (${MKLROOT},)
@@ -40,14 +38,14 @@ solver: solver.cxx solver.h
 	$(CXX) $(CXXFLAGS) -c solver.cxx
 
 dist: dist.cxx dist.h
-	$(MPICXX) $(CXXFLAGS) -c dist.cxx
+	$(CXX) $(CXXFLAGS) -c dist.cxx
 
 lib: linalg kernel build_tree umv solver dist
 	ar rcs libnbd.a linalg.o kernel.o build_tree.o umv.o solver.o dist.o
 
 lorasp: lorasp.cxx lib
 	$(CXX) $(CXXFLAGS) -c lorasp.cxx
-	$(MPICXX) $(CXXFLAGS) -o lorasp lorasp.o -L. -lnbd $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o lorasp lorasp.o -L. -lnbd $(LDFLAGS)
 
 clean:
 	rm -f *.o *.a a.out lorasp

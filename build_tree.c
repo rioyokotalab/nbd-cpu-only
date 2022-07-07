@@ -284,13 +284,17 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
 
     int64_t p = comm_i->Proc[0];
     int64_t lenp = comm_i->Proc[1] - p;
-    for (int64_t i = 0; i < lenp; i++)
-      ranks[i] = i + p;
+    if (lenp > 1) {
+      for (int64_t i = 0; i < lenp; i++)
+        ranks[i] = i + p;
 
-    MPI_Group group_merge;
-    MPI_Group_incl(world_group, lenp, ranks, &group_merge);
-    MPI_Comm_create_group(MPI_COMM_WORLD, group_merge, mpi_size, &comm_i->Comm_merge);
-    MPI_Group_free(&group_merge);
+      MPI_Group group_merge;
+      MPI_Group_incl(world_group, lenp, ranks, &group_merge);
+      MPI_Comm_create_group(MPI_COMM_WORLD, group_merge, mpi_size, &comm_i->Comm_merge);
+      MPI_Group_free(&group_merge);
+    }
+    else
+      comm_i->Comm_merge = MPI_COMM_NULL;
   }
 
   MPI_Group_free(&world_group);
@@ -303,7 +307,8 @@ void cellComm_free(struct CellComm* comms, int64_t levels) {
     for (int64_t j = 0; j < mpi_size; j++)
       if (comms[i].Comm_box[j] != MPI_COMM_NULL)
         MPI_Comm_free(&comms[i].Comm_box[j]);
-    MPI_Comm_free(&comms[i].Comm_merge);
+    if (comms[i].Comm_merge != MPI_COMM_NULL)
+      MPI_Comm_free(&comms[i].Comm_merge);
     free(comms[i].Comms.COL_INDEX);
     free(comms[i].Comm_box);
   }
@@ -639,6 +644,10 @@ void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels) {
   *bytes = count;
 }
 
+void swap_int_64(int64_t* a, int64_t* b) {
+  int64_t c = *a; *a = *b; *b = c;
+}
+
 #include "dist.h"
 
 void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* cellsNear, int64_t levels, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
@@ -699,22 +708,21 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       matrixCreate(&(base_i->Uo)[box_i], ni, rank);
       matrixCreate(&(base_i->Uc)[box_i], ni, ni - rank);
       matrixCreate(&(base_i->R)[box_i], rank, rank);
-      cpyMatToMat(ni, rank, &work_u, &(base_i->Uo)[box_i], 0, 0, 0, 0);
-      if (lc >= 0)
-        updateSubU(&(base_i->Uo)[box_i], &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
-      qr_with_complements(&(base_i->Uo)[box_i], &(base_i->Uc)[box_i], &(base_i->R)[box_i]);
+      if (rank > 0) {
+        cpyMatToMat(ni, rank, &work_u, &(base_i->Uo)[box_i], 0, 0, 0, 0);
+        if (lc >= 0)
+          updateSubU(&(base_i->Uo)[box_i], &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
+        qr_with_complements(&(base_i->Uo)[box_i], &(base_i->Uc)[box_i], &(base_i->R)[box_i]);
+
+        for (int64_t j = 0; j < rank; j++) {
+          int64_t piv = pa[j] - 1;
+          if (piv != j) 
+            swap_int_64(&cellm[piv], &cellm[j]);
+        }
+      }
 
       matrixDestroy(&S);
       matrixDestroy(&work_u);
-
-      for (int64_t j = 0; j < rank; j++) {
-        int64_t piv_i = pa[j] - 1;
-        if (piv_i != j) {
-          int64_t row_piv = cellm[piv_i];
-          cellm[piv_i] = cellm[j];
-          cellm[j] = row_piv;
-        }
-      }
       free(pa);
       base_i->DIMS[box_i] = ni;
       base_i->DIML[box_i] = rank;

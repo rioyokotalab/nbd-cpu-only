@@ -70,42 +70,38 @@ void qr_with_complements(struct Matrix* Qo, struct Matrix* Qc, struct Matrix* R)
   int64_t n = Qo->N;
   int64_t nc = m - n;
 
-  if (m > 0 && n > 0 && nc >= 0) {
-    double* work = (double*)malloc(sizeof(double) * (n + m * m));
-    struct Matrix Q = { &work[n], m, m };
-    cpyMatToMat(m, n, Qo, &Q, 0, 0, 0, 0);
+  double* work = (double*)malloc(sizeof(double) * (n + m * m));
+  struct Matrix Q = { &work[n], m, m };
+  cpyMatToMat(m, n, Qo, &Q, 0, 0, 0, 0);
 
-    LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, Q.A, m, work);
-    cpyMatToMat(n, n, &Q, R, 0, 0, 0, 0);
-    LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, Q.A, m, work);
-    cpyMatToMat(m, n, &Q, Qo, 0, 0, 0, 0);
-    if (nc > 0)
-      cpyMatToMat(m, nc, &Q, Qc, 0, n, 0, 0);
-    
-    for (int64_t i = 0; i < n - 1; i++)
-      memset(&(R->A)[i * n + i + 1], 0, sizeof(double) * (n - i - 1));
+  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, Q.A, m, work);
+  cpyMatToMat(n, n, &Q, R, 0, 0, 0, 0);
+  LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, Q.A, m, work);
+  cpyMatToMat(m, n, &Q, Qo, 0, 0, 0, 0);
+  if (nc > 0)
+    cpyMatToMat(m, nc, &Q, Qc, 0, n, 0, 0);
+  
+  for (int64_t i = 0; i < n - 1; i++)
+    memset(&(R->A)[i * n + i + 1], 0, sizeof(double) * (n - i - 1));
 
-    free(work);
-  }
+  free(work);
 }
 
 void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* R2) {
-  if (U->M > 0 && U->N > 0) {
-    int64_t m1 = R1->N;
-    int64_t m2 = R2->N;
-    int64_t n = U->N;
+  int64_t m1 = R1->N;
+  int64_t m2 = R2->N;
+  int64_t n = U->N;
 
-    double* work = (double*)malloc(sizeof(double) * n * (R1->M + R2->M));
-    struct Matrix ru1 = { work, R1->M, n };
-    struct Matrix ru2 = { &work[n * R1->M], R2->M, n };
+  double* work = (double*)malloc(sizeof(double) * n * (R1->M + R2->M));
+  struct Matrix ru1 = { work, R1->M, n };
+  struct Matrix ru2 = { &work[n * R1->M], R2->M, n };
 
-    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R1->M, n, m1, 1., R1->A, R1->M, U->A, U->M, 0., ru1.A, R1->M);
-    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R2->M, n, m2, 1., R2->A, R2->M, &(U->A)[m1], U->M, 0., ru2.A, R2->M);
-    cpyMatToMat(R1->M, n, &ru1, U, 0, 0, 0, 0);
-    cpyMatToMat(R2->M, n, &ru2, U, 0, 0, R1->M, 0);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R1->M, n, m1, 1., R1->A, R1->M, U->A, U->M, 0., ru1.A, R1->M);
+  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R2->M, n, m2, 1., R2->A, R2->M, &(U->A)[m1], U->M, 0., ru2.A, R2->M);
+  cpyMatToMat(R1->M, n, &ru1, U, 0, 0, 0, 0);
+  cpyMatToMat(R2->M, n, &ru2, U, 0, 0, R1->M, 0);
 
-    free(work);
-  }
+  free(work);
 }
 
 void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int64_t* rnk_out) {
@@ -124,36 +120,23 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
     rank = r;
   }
 
-  memcpy(A->A, U->A, sizeof(double) * A->M * rank);
   for (int64_t i = 0; i < rank; i++)
-    cblas_dscal(A->M, work[i], &(A->A)[i * A->M], 1);
+    cblas_dscal(A->M, work[i], &(U->A)[i * A->M], 1);
+  memcpy(A->A, U->A, sizeof(double) * A->M * rank);
 
 #ifdef USE_MKL
   MKL_INT* ipiv = (MKL_INT*)arows;
-  MKL_INT* np = (MKL_INT*)malloc(sizeof(MKL_INT) * rank);
 #else
-  int* ipiv = (int*)malloc(sizeof(int) * rank * 2);
-  int* np = &ipiv[rank];
+  int* ipiv = (int*)malloc(sizeof(int) * rank);
 #endif
   int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, ipiv);
   if (info > 0)
     rank = info - 1;
   *rnk_out = rank;
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
 
-  for (int64_t i = 0; i < rank; i++)
-    np[i] = i + 1;
-  LAPACKE_dgetri(LAPACK_COL_MAJOR, rank, A->A, A->M, np);
-  for (int64_t i = 0; i < rank; i++)
-    cblas_dscal(rank, work[i], &(A->A)[i], A->M);
-
-  double* work2 = (double*)malloc(sizeof(double) * (A->M * rank));
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A->M, rank, rank, 1., U->A, A->M, A->A, A->M, 0., work2, A->M);
-  memcpy(U->A, work2, sizeof(double) * A->M * rank);
-  free(work2);
-
-#ifdef USE_MKL
-  free(np);
-#else
+#ifndef USE_MKL
   for (int64_t i = 0; i < rank; i++)
     arows[i] = ipiv[i];
   free(ipiv);
