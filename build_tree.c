@@ -75,7 +75,7 @@ void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t
   *ncells = len;
 }
 
-void admis_check(int* admis, double theta, const double C1[], const double C2[], const double R1[], const double R2[]) {
+int admis_check(double theta, const double C1[], const double C2[], const double R1[], const double R2[]) {
   double dCi[3];
   dCi[0] = C1[0] - C2[0];
   dCi[1] = C1[1] - C2[1];
@@ -97,15 +97,14 @@ void admis_check(int* admis, double theta, const double C1[], const double C2[],
 
   double dC = dCi[0] + dCi[1] + dCi[2];
   double dR = (dRi[0] + dRi[1] + dRi[2] + dRj[0] + dRj[1] + dRj[2]) * theta;
-  *admis = (int)(dC > dR);
+  return (int)(dC > dR);
 }
 
 void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struct Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel, double theta) {
   const struct Cell* Ci = &cells[i];
   const struct Cell* Cj = &cells[j];
   if (ilevel == jlevel) {
-    int admis;
-    admis_check(&admis, theta, Ci->C, Cj->C, Ci->R, Cj->R);
+    int admis = admis_check(theta, Ci->C, Cj->C, Ci->R, Cj->R);
     int write_far = NoF == 'F' || NoF == 'f';
     int write_near = NoF == 'N' || NoF == 'n';
     if (admis ? write_far : write_near) {
@@ -128,7 +127,7 @@ void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struc
 
 int comp_int_64(const void *a, const void *b) {
   int64_t c = *(int64_t*)a - *(int64_t*)b;
-  return c > 0 ? 1 : (c == 0 ? 0 : -1);
+  return c < 0 ? -1 : (int)(c > 0);
 }
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta) {
@@ -161,7 +160,7 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
 int comp_cell_lvl(const struct Cell* cell, int64_t level, int64_t mpi_rank) {
   int64_t l = cell->LEVEL - level;
   int ri = (int)(mpi_rank < cell->Procs[0]) - (int)(mpi_rank >= cell->Procs[1]);
-  return l > 0 ? 1 : (l == 0 ? (mpi_rank == -1 ? 0 : ri) : -1);
+  return l < 0 ? -1 : (l > 0 ? 1 : (mpi_rank == -1 ? 0 : ri));
 }
 
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank) {
@@ -466,7 +465,11 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
   }
 }
 
-void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t mpi_rank, int64_t level) {
+void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level) {
+  int __mpi_rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
+  int64_t mpi_rank = __mpi_rank;
+  
   int64_t jbegin = 0, jend = ncells;
   get_level(&jbegin, &jend, cells, level, -1);
   int64_t ibegin = jbegin, iend = jend;
@@ -508,24 +511,24 @@ void remoteBodies(void(*ef)(double*), struct Matrix* S, const int64_t cellm[], c
   int64_t cmsize = size[2];
   int64_t nbodies = size[3];
   int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * (rmsize + clsize));
-  int64_t* close = &remote[rmsize];
 
-  int64_t sum_len = 0;
-  int64_t c_len = 0;
+  int64_t rm_len = nbodies;
+  int64_t cl_len = 0;
   int64_t cpos = -1;
   for (int64_t j = 0; j < nlen; j++) {
     int64_t jc = ngbs[j];
     const struct Cell* c = &cells[jc];
     int64_t len = c->BODY[1] - c->BODY[0];
-    sum_len = sum_len + len;
-    if (jc == ci) {
-      c_len = len;
+    rm_len = rm_len - len;
+    if (jc == ci)
       cpos = j;
-    }
+    else
+      cl_len = cl_len + len;
   }
 
-  int64_t rm_len = nbodies - sum_len;
   rmsize = rmsize > rm_len ? rm_len : rmsize;
+  clsize = clsize > cl_len ? cl_len : clsize;
+  int64_t* close = &remote[rmsize];
 
   int64_t box_i = 0;
   int64_t s_lens = 0;
@@ -544,9 +547,6 @@ void remoteBodies(void(*ef)(double*), struct Matrix* S, const int64_t cellm[], c
     }
     remote[i] = loc + s_lens;
   }
-
-  int64_t cl_len = sum_len - c_len;
-  clsize = clsize > cl_len ? cl_len : clsize;
 
   box_i = (int64_t)(cpos == 0);
   s_lens = 0;

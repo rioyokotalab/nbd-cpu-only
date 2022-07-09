@@ -165,9 +165,9 @@ int main(int argc, char* argv[]) {
   evaluateBaseAll(ef, &sp.Basis[0], ncells, cell.data(), &cellNear, levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
 
-  evaluate('N', sp.D[levels].A.data(), ef, ncells, &cell[0], body.data(), &sp.RelsNear[levels], mpi_rank, levels);
+  evaluate('N', sp.D[levels].A.data(), ef, ncells, &cell[0], body.data(), &sp.RelsNear[levels], levels);
   for (int64_t i = 0; i <= levels; i++)
-    evaluate('F', sp.D[i].S.data(), ef, ncells, &cell[0], body.data(), &sp.RelsFar[i], mpi_rank, i);
+    evaluate('F', sp.D[i].S.data(), ef, ncells, &cell[0], body.data(), &sp.RelsFar[i], i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);

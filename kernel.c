@@ -245,21 +245,21 @@ int comp_bodies_s0(const void *a, const void *b) {
   struct Body* body_a = (struct Body*)a;
   struct Body* body_b = (struct Body*)b;
   double diff = (body_a->X)[0] - (body_b->X)[0];
-  return diff < 0. ? -1 : 1;
+  return diff < 0. ? -1 : (int)(diff > 0.);
 }
 
 int comp_bodies_s1(const void *a, const void *b) {
   struct Body* body_a = (struct Body*)a;
   struct Body* body_b = (struct Body*)b;
   double diff = (body_a->X)[1] - (body_b->X)[1];
-  return diff < 0. ? -1 : 1;
+  return diff < 0. ? -1 : (int)(diff > 0.);
 }
 
 int comp_bodies_s2(const void *a, const void *b) {
   struct Body* body_a = (struct Body*)a;
   struct Body* body_b = (struct Body*)b;
   double diff = (body_a->X)[2] - (body_b->X)[2];
-  return diff < 0. ? -1 : 1;
+  return diff < 0. ? -1 : (int)(diff > 0.);
 }
 
 void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim) {
