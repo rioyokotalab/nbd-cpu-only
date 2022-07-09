@@ -162,7 +162,7 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], ncells, cell.data(), &cellNear, levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
+  evaluateBaseAll(ef, &sp.Basis[0], ncells, cell.data(), &sp.RelsNear[0], levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
 
   evaluate('N', sp.D[levels].A.data(), ef, ncells, &cell[0], body.data(), &sp.RelsNear[levels], levels);

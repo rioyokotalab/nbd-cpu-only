@@ -505,93 +505,6 @@ void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, co
   }
 }
 
-void remoteBodies(void(*ef)(double*), struct Matrix* S, const int64_t cellm[], const int64_t size[], int64_t nlen, const int64_t ngbs[], const struct Cell* cells, int64_t ci, const struct Body* bodies) {
-  int64_t rmsize = size[0];
-  int64_t clsize = size[1];
-  int64_t cmsize = size[2];
-  int64_t nbodies = size[3];
-  int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * (rmsize + clsize));
-
-  int64_t rm_len = nbodies;
-  int64_t cl_len = 0;
-  int64_t cpos = -1;
-  for (int64_t j = 0; j < nlen; j++) {
-    int64_t jc = ngbs[j];
-    const struct Cell* c = &cells[jc];
-    int64_t len = c->BODY[1] - c->BODY[0];
-    rm_len = rm_len - len;
-    if (jc == ci)
-      cpos = j;
-    else
-      cl_len = cl_len + len;
-  }
-
-  rmsize = rmsize > rm_len ? rm_len : rmsize;
-  clsize = clsize > cl_len ? cl_len : clsize;
-  int64_t* close = &remote[rmsize];
-
-  int64_t box_i = 0;
-  int64_t s_lens = 0;
-  int64_t ic = ngbs[box_i];
-  int64_t offset_i = cells[ic].BODY[0];
-  int64_t len_i = cells[ic].BODY[1] - offset_i;
-
-  for (int64_t i = 0; i < rmsize; i++) {
-    int64_t loc = (int64_t)((double)(rm_len * i) / rmsize);
-    while (box_i < nlen && loc + s_lens >= offset_i) {
-      s_lens = s_lens + len_i;
-      box_i = box_i + 1;
-      ic = box_i < nlen ? ngbs[box_i] : ic;
-      offset_i = cells[ic].BODY[0];
-      len_i = cells[ic].BODY[1] - offset_i;
-    }
-    remote[i] = loc + s_lens;
-  }
-
-  box_i = (int64_t)(cpos == 0);
-  s_lens = 0;
-  ic = box_i < nlen ? ngbs[box_i] : ic;
-  offset_i = cells[ic].BODY[0];
-  len_i = cells[ic].BODY[1] - offset_i;
-
-  for (int64_t i = 0; i < clsize; i++) {
-    int64_t loc = (int64_t)((double)(cl_len * i) / clsize);
-    while (loc - s_lens >= len_i) {
-      s_lens = s_lens + len_i;
-      box_i = box_i + 1;
-      box_i = box_i + (int64_t)(box_i == cpos);
-      ic = ngbs[box_i];
-      offset_i = cells[ic].BODY[0];
-      len_i = cells[ic].BODY[1] - offset_i;
-    }
-    close[i] = loc + offset_i - s_lens;
-  }
-
-  int64_t len_s = rmsize + (clsize > 0 ? cmsize : 0);
-  matrixCreate(S, cmsize, len_s);
-
-  if (len_s > 0) {
-    struct Matrix S_lr;
-    if (rmsize > 0) {
-      S_lr = (struct Matrix){ S->A, cmsize, rmsize };
-      gen_matrix(ef, cmsize, rmsize, bodies, bodies, S_lr.A, cellm, remote);
-    }
-
-    if (clsize > 0) {
-      struct Matrix S_dn = (struct Matrix){ &S->A[cmsize * rmsize], cmsize, cmsize };
-      struct Matrix S_dn_work;
-      matrixCreate(&S_dn_work, cmsize, clsize);
-      gen_matrix(ef, cmsize, clsize, bodies, bodies, S_dn_work.A, cellm, close);
-      mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
-      if (rmsize > 0)
-        normalizeA(&S_dn, &S_lr);
-      matrixDestroy(&S_dn_work);
-    }
-  }
-  
-  free(remote);
-}
-
 void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = 0;
@@ -630,7 +543,6 @@ void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct
 
 void deallocBasis(struct Base* basis, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = basis[i].Ulen;
     double* data = basis[i].Uo[0].A;
     if (data)
       free(data);
@@ -751,8 +663,7 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
 
     for (int64_t i = 0; i < nodes; i++) {
       struct Cell* ci = &leaves[i + gbegin];
-      int64_t box_i = i + ibegin;
-      int64_t lc = base_i->Lchild[box_i];
+      int64_t lc = base_i->Lchild[i + ibegin];
       int64_t ni = 0;
       int64_t* cellm;
 
@@ -774,15 +685,94 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       }
       cms[i] = cellm;
       
-      int64_t n[4] = { sp_pts, sp_pts, ni, nbodies };
+      int64_t lbegin = cellsNear[l].COL_INDEX[i];
+      int64_t nlen = cellsNear[l].COL_INDEX[i + 1] - lbegin;
+      const int64_t* ngbs = &cellsNear[l].ROW_INDEX[lbegin];
 
-      int64_t ii = ci - cells;
-      int64_t lbegin = cellsNear->COL_INDEX[ii];
-      int64_t llen = cellsNear->COL_INDEX[ii + 1] - lbegin;
+      int64_t rmsize = sp_pts;
+      int64_t clsize = sp_pts;
+
+      int64_t rm_len = nbodies;
+      int64_t cl_len = 0;
+      int64_t cpos = -1;
+      for (int64_t j = 0; j < nlen; j++) {
+        int64_t jc = ngbs[j];
+        const struct Cell* c = &leaves[jc];
+        int64_t len = c->BODY[1] - c->BODY[0];
+        rm_len = rm_len - len;
+        if (jc == i + gbegin)
+          cpos = j;
+        else
+          cl_len = cl_len + len;
+      }
+
+      rmsize = rmsize > rm_len ? rm_len : rmsize;
+      clsize = clsize > cl_len ? cl_len : clsize;
+      int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * (rmsize + clsize));
+      int64_t* close = &remote[rmsize];
+
+      int64_t box_i = 0;
+      int64_t s_lens = 0;
+      int64_t ic = ngbs[box_i];
+      int64_t offset_i = leaves[ic].BODY[0];
+      int64_t len_i = leaves[ic].BODY[1] - offset_i;
+
+      for (int64_t j = 0; j < rmsize; j++) {
+        int64_t loc = (int64_t)((double)(rm_len * j) / rmsize);
+        while (box_i < nlen && loc + s_lens >= offset_i) {
+          s_lens = s_lens + len_i;
+          box_i = box_i + 1;
+          ic = box_i < nlen ? ngbs[box_i] : ic;
+          offset_i = leaves[ic].BODY[0];
+          len_i = leaves[ic].BODY[1] - offset_i;
+        }
+        remote[j] = loc + s_lens;
+      }
+
+      box_i = (int64_t)(cpos == 0);
+      s_lens = 0;
+      ic = box_i < nlen ? ngbs[box_i] : ic;
+      offset_i = leaves[ic].BODY[0];
+      len_i = leaves[ic].BODY[1] - offset_i;
+
+      for (int64_t j = 0; j < clsize; j++) {
+        int64_t loc = (int64_t)((double)(cl_len * j) / clsize);
+        while (loc - s_lens >= len_i) {
+          s_lens = s_lens + len_i;
+          box_i = box_i + 1;
+          box_i = box_i + (int64_t)(box_i == cpos);
+          ic = ngbs[box_i];
+          offset_i = leaves[ic].BODY[0];
+          len_i = leaves[ic].BODY[1] - offset_i;
+        }
+        close[j] = loc + offset_i - s_lens;
+      }
+
+      int64_t len_s = rmsize + (clsize > 0 ? ni : 0);
       struct Matrix S;
-      remoteBodies(ef, &S, cellm, n, llen, &cellsNear->ROW_INDEX[lbegin], cells, ii, bodies);
+      matrixCreate(&S, ni, len_s);
 
-      int64_t len_s = S.N < ni ? S.N : ni;
+      if (len_s > 0) {
+        struct Matrix S_lr;
+        if (rmsize > 0) {
+          S_lr = (struct Matrix){ S.A, ni, rmsize };
+          gen_matrix(ef, ni, rmsize, bodies, bodies, S_lr.A, cellm, remote);
+        }
+
+        if (clsize > 0) {
+          struct Matrix S_dn = (struct Matrix){ &S.A[ni * rmsize], ni, ni };
+          struct Matrix S_dn_work;
+          matrixCreate(&S_dn_work, ni, clsize);
+          gen_matrix(ef, ni, clsize, bodies, bodies, S_dn_work.A, cellm, close);
+          mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
+          if (rmsize > 0)
+            normalizeA(&S_dn, &S_lr);
+          matrixDestroy(&S_dn_work);
+        }
+      }
+      
+      free(remote);
+
       int64_t rank = mrank > 0 ? (mrank < len_s ? mrank : len_s) : len_s;
       double* mat = (double*)malloc(sizeof(double) * (ni * ni + rank * rank));
       int64_t* pa = (int64_t*)malloc(sizeof(int64_t) * ni);
@@ -808,8 +798,8 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       matrixDestroy(&S);
       mms[i + ibegin] = mat;
       free(pa);
-      base_i->DIMS[box_i] = ni;
-      base_i->DIML[box_i] = rank;
+      base_i->DIMS[i + ibegin] = ni;
+      base_i->DIML[i + ibegin] = rank;
     }
 
     dist_int_64_xlen(base_i->DIMS, &comm[l]);

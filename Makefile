@@ -1,6 +1,6 @@
 
-CC	= mpiicc
-CXX	= mpiicpc
+CC	= mpicc
+CXX	= mpicxx
 
 CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -I.
 CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -I.
@@ -10,7 +10,7 @@ ifneq (${MKLROOT},)
 	MKLFLAG	= -DUSE_MKL
 	CCFLAGS	+=  -I"${MKLROOT}/include"
 	CXXFLAGS	+=  -I"${MKLROOT}/include"
-	LDFLAGS	+= -L${MKLROOT}/lib/intel64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5
+	LDFLAGS	+= -fopenmp -L${MKLROOT}/lib/intel64 -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core 
 	MSG	= *** Successfully found and linking with Intel MKL! ***
 else
 	LDFLAGS	+= -lblas -llapacke
