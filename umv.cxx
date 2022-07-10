@@ -34,53 +34,6 @@ void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, co
   }
 }
 
-void factorAcc(Matrix* A_cc, const CSC& rels, int64_t level) {
-  int64_t ibegin = 0, iend = 0, lbegin = 0;
-  selfLocalRange(&ibegin, &iend, level);
-  iGlobal(&lbegin, ibegin, level);
-
-  for (int64_t i = 0; i < rels.N; i++) {
-    int64_t ii;
-    lookupIJ(&ii, &rels, i + lbegin, i);
-    Matrix& A_ii = A_cc[ii];
-    chol_decomp(&A_ii);
-
-    for (int64_t yi = rels.COL_INDEX[i]; yi < rels.COL_INDEX[i + 1]; yi++) {
-      int64_t y = rels.ROW_INDEX[yi];
-      if (y > i + lbegin)
-        trsm_lowerA(&A_cc[yi], &A_ii);
-    }
-  }
-}
-
-void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels, int64_t level) {
-  int64_t ibegin = 0, iend = 0, lbegin = 0;
-  selfLocalRange(&ibegin, &iend, level);
-  iGlobal(&lbegin, ibegin, level);
-
-  for (int64_t i = 0; i < rels.N; i++) {
-    int64_t ii;
-    lookupIJ(&ii, &rels, i + lbegin, i);
-    const Matrix& A_ii = A_cc[ii];
-    for (int64_t yi = rels.COL_INDEX[i]; yi < rels.COL_INDEX[i + 1]; yi++)
-      trsm_lowerA(&A_oc[yi], &A_ii);
-  }
-}
-
-void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels, int64_t level) {
-  int64_t ibegin = 0, iend = 0, lbegin = 0;
-  selfLocalRange(&ibegin, &iend, level);
-  iGlobal(&lbegin, ibegin, level);
-
-  for (int64_t i = 0; i < rels.N; i++) {
-    int64_t ii;
-    lookupIJ(&ii, &rels, i + lbegin, i);
-    const Matrix& A_ii = A_oc[ii];
-    Matrix& S_i = S[ii];
-    mmult('N', 'T', &A_ii, &A_ii, &S_i, -1., 1.);
-  }
-}
-
 
 void allocNodes(Node* nodes, const CSC rels_near[], const CSC rels_far[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
@@ -168,17 +121,21 @@ void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level) {
   }
 }
 
-void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t diml[], int64_t level) {
-  int64_t ibegin = 0, iend = 0;
-  selfLocalRange(&ibegin, &iend, level);
 
-  for (int64_t j = 0; j < rels.N; j++) {
+void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level) {
+  int64_t ibegin = 0, iend = 0, lbegin = 0;
+  selfLocalRange(&ibegin, &iend, level);
+  iGlobal(&lbegin, ibegin, level);
+  const int64_t* diml = basis.DIML;
+  const int64_t* dims = basis.DIMS;
+
+  for (int64_t j = 0; j < rels_near.N; j++) {
     int64_t box_j = ibegin + j;
     int64_t diml_j = diml[box_j];
     int64_t dimc_j = dims[box_j] - diml_j;
 
-    for (int64_t ij = rels.COL_INDEX[j]; ij < rels.COL_INDEX[j + 1]; ij++) {
-      int64_t i = rels.ROW_INDEX[ij];
+    for (int64_t ij = rels_near.COL_INDEX[j]; ij < rels_near.COL_INDEX[j + 1]; ij++) {
+      int64_t i = rels_near.ROW_INDEX[ij];
       int64_t box_i = i;
       iLocal(&box_i, i, level);
       int64_t diml_i = diml[box_i];
@@ -189,10 +146,7 @@ void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int6
       matrixCreate(&n.A_oo[ij], diml_i, diml_j);
     }
   }
-}
 
-void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level) {
-  allocSubMatrices(n, rels_near, &basis.DIMS[0], &basis.DIML[0], level);
   allocA(n.S_oo.data(), rels_far, &basis.DIML[0], level);
 
   splitA(n.A_cc.data(), rels_near, n.A.data(), basis.Uc, basis.Uc, level);
@@ -200,9 +154,25 @@ void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rel
   splitA(n.A_oo.data(), rels_near, n.A.data(), basis.Uo, basis.Uo, level);
   splitS(n.S_oo.data(), rels_far, n.S.data(), basis.R, basis.R, level);
 
-  factorAcc(n.A_cc.data(), rels_near, level);
-  factorAoc(n.A_oc.data(), n.A_cc.data(), rels_near, level);
-  schurCmplm(n.A_oo.data(), n.A_oc.data(), rels_near, level);
+  struct Matrix* A_cc = &n.A_cc[0];
+  struct Matrix* A_oc = &n.A_oc[0];
+  struct Matrix* A_oo = &n.A_oo[0];
+
+  for (int64_t i = 0; i < rels_near.N; i++) {
+    int64_t ii;
+    lookupIJ(&ii, &rels_near, i + lbegin, i);
+    chol_decomp(&A_cc[ii]);
+
+    for (int64_t yi = rels_near.COL_INDEX[i]; yi < rels_near.COL_INDEX[i + 1]; yi++) {
+      int64_t y = rels_near.ROW_INDEX[yi];
+      if (y > i + lbegin)
+        trsm_lowerA(&A_cc[yi], &A_cc[ii]);
+    }
+
+    for (int64_t yi = rels_near.COL_INDEX[i]; yi < rels_near.COL_INDEX[i + 1]; yi++)
+      trsm_lowerA(&A_oc[yi], &A_cc[ii]);
+    mmult('N', 'T', &A_oc[ii], &A_oc[ii], &A_oo[ii], -1., 1.);
+  }
 }
 
 void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rels_low_near, const CSC& rels_low_far, int64_t nlevel) {

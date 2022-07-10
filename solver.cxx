@@ -223,7 +223,6 @@ void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[
 
   for (int64_t i = ibegin; i < iend; i++)
     cpyMatToMat(X[i].M, X[i].N, &X[i], &st[levels].X[i], 0, 0, 0, 0);
-  DistributeMatricesList(st[levels].X.data(), levels);
 
   for (int64_t i = levels; i > 0; i--) {
     basisXoc('F', st[i], B[i], i);

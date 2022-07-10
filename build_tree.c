@@ -100,9 +100,11 @@ int admis_check(double theta, const double C1[], const double C2[], const double
   return (int)(dC > dR);
 }
 
-void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struct Cell cells[], int64_t i, int64_t j, int64_t ilevel, int64_t jlevel, double theta) {
+void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struct Cell cells[], int64_t i, int64_t j, double theta) {
   const struct Cell* Ci = &cells[i];
   const struct Cell* Cj = &cells[j];
+  int64_t ilevel = Ci->LEVEL;
+  int64_t jlevel = Cj->LEVEL; 
   if (ilevel == jlevel) {
     int admis = admis_check(theta, Ci->C, Cj->C, Ci->R, Cj->R);
     int write_far = NoF == 'F' || NoF == 'f';
@@ -116,12 +118,12 @@ void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struc
       return;
   }
   if (ilevel <= jlevel && Ci->CHILD >= 0) {
-    getList(NoF, len, rels, ncells, cells, Ci->CHILD, j, ilevel + 1, jlevel, theta);
-    getList(NoF, len, rels, ncells, cells, Ci->CHILD + 1, j, ilevel + 1, jlevel, theta);
+    getList(NoF, len, rels, ncells, cells, Ci->CHILD, j, theta);
+    getList(NoF, len, rels, ncells, cells, Ci->CHILD + 1, j, theta);
   }
   else if (jlevel <= ilevel && Cj->CHILD >= 0) {
-    getList(NoF, len, rels, ncells, cells, i, Cj->CHILD, ilevel, jlevel + 1, theta);
-    getList(NoF, len, rels, ncells, cells, i, Cj->CHILD + 1, ilevel, jlevel + 1, theta);
+    getList(NoF, len, rels, ncells, cells, i, Cj->CHILD, theta);
+    getList(NoF, len, rels, ncells, cells, i, Cj->CHILD + 1, theta);
   }
 }
 
@@ -135,7 +137,7 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
   rels->N = ncells;
   int64_t* rel_arr = (int64_t*)malloc(sizeof(int64_t) * (ncells * ncells + ncells + 1));
   int64_t len = 0;
-  getList(NoF, &len, &rel_arr[ncells + 1], ncells, cells, 0, 0, 0, 0, theta);
+  getList(NoF, &len, &rel_arr[ncells + 1], ncells, cells, 0, 0, theta);
 
   if (len < ncells * ncells)
     rel_arr = (int64_t*)realloc(rel_arr, sizeof(int64_t) * (len + ncells + 1));
@@ -431,7 +433,11 @@ void content_length(int64_t* len, const struct CellComm* comm) {
   *len = slen;
 }
 
-void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t mpi_rank, int64_t levels) {
+void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels) {
+  int __mpi_rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
+  int64_t mpi_rank = __mpi_rank;
+  
   for (int64_t i = 0; i <= levels; i++) {
     int64_t jbegin = 0, jend = ncells;
     get_level(&jbegin, &jend, cells, i, -1);
@@ -462,46 +468,6 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
     cols[nodes] = count;
     csc->COL_INDEX = cols;
     csc->ROW_INDEX = &cols[nodes + 1];
-  }
-}
-
-void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  
-  int64_t jbegin = 0, jend = ncells;
-  get_level(&jbegin, &jend, cells, level, -1);
-  int64_t ibegin = jbegin, iend = jend;
-  get_level(&ibegin, &iend, cells, level, mpi_rank);
-  int64_t nodes = iend - ibegin;
-
-  for (int64_t i = 0; i < nodes; i++) {
-    int64_t lc = ibegin + i;
-    const struct Cell* ci = &cells[lc];
-    int64_t off = csc->COL_INDEX[i];
-    int64_t len = csc->COL_INDEX[i + 1] - off;
-
-    if (NoF == 'N' || NoF == 'n')
-      for (int64_t j = 0; j < len; j++) {
-        int64_t jj = csc->ROW_INDEX[j + off] + jbegin;
-        const struct Cell* cj = &cells[jj];
-        int64_t i_begin = cj->BODY[0];
-        int64_t j_begin = ci->BODY[0];
-        int64_t m = cj->BODY[1] - i_begin;
-        int64_t n = ci->BODY[1] - j_begin;
-        matrixCreate(&d[off + j], m, n);
-        gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], d[off + j].A, NULL, NULL);
-      }
-    else if (NoF == 'F' || NoF == 'f')
-      for (int64_t j = 0; j < len; j++) {
-        int64_t jj = csc->ROW_INDEX[j + off] + jbegin;
-        const struct Cell* cj = &cells[jj];
-        int64_t m = cj->lenMultipole;
-        int64_t n = ci->lenMultipole;
-        matrixCreate(&d[off + j], m, n);
-        gen_matrix(ef, m, n, bodies, bodies, d[off + j].A, cj->Multipole, ci->Multipole);
-      }
   }
 }
 
@@ -547,7 +513,6 @@ void deallocBasis(struct Base* basis, int64_t levels) {
     if (data)
       free(data);
 
-    basis[i].Ulen = 0;
     free(basis[i].Lchild);
     if (basis[i].Multipoles)
       free(basis[i].Multipoles);
@@ -646,7 +611,9 @@ void dist_double(double* arr[], const struct CellComm* comm) {
     MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_merge);
 }
 
-void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* cellsNear, int64_t levels, const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* rel_near, int64_t levels, 
+const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+
   for (int64_t l = levels; l >= 0; l--) {
     struct Base* base_i = basis + l;
     int64_t xlen = base_i->Ulen;
@@ -685,9 +652,9 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
       }
       cms[i] = cellm;
       
-      int64_t lbegin = cellsNear[l].COL_INDEX[i];
-      int64_t nlen = cellsNear[l].COL_INDEX[i + 1] - lbegin;
-      const int64_t* ngbs = &cellsNear[l].ROW_INDEX[lbegin];
+      int64_t lbegin = rel_near[l].COL_INDEX[i];
+      int64_t nlen = rel_near[l].COL_INDEX[i + 1] - lbegin;
+      const int64_t* ngbs = &rel_near[l].ROW_INDEX[lbegin];
 
       int64_t rmsize = sp_pts;
       int64_t clsize = sp_pts;
@@ -865,4 +832,42 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
   }
 }
 
+void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level) {
+  int __mpi_rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
+  int64_t mpi_rank = __mpi_rank;
+  
+  int64_t jbegin = 0, jend = ncells;
+  get_level(&jbegin, &jend, cells, level, -1);
+  int64_t ibegin = jbegin, iend = jend;
+  get_level(&ibegin, &iend, cells, level, mpi_rank);
+  int64_t nodes = iend - ibegin;
 
+  for (int64_t i = 0; i < nodes; i++) {
+    int64_t lc = ibegin + i;
+    const struct Cell* ci = &cells[lc];
+    int64_t off = csc->COL_INDEX[i];
+    int64_t len = csc->COL_INDEX[i + 1] - off;
+
+    if (NoF == 'N' || NoF == 'n')
+      for (int64_t j = 0; j < len; j++) {
+        int64_t jj = csc->ROW_INDEX[j + off] + jbegin;
+        const struct Cell* cj = &cells[jj];
+        int64_t i_begin = cj->BODY[0];
+        int64_t j_begin = ci->BODY[0];
+        int64_t m = cj->BODY[1] - i_begin;
+        int64_t n = ci->BODY[1] - j_begin;
+        matrixCreate(&d[off + j], m, n);
+        gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], d[off + j].A, NULL, NULL);
+      }
+    else if (NoF == 'F' || NoF == 'f')
+      for (int64_t j = 0; j < len; j++) {
+        int64_t jj = csc->ROW_INDEX[j + off] + jbegin;
+        const struct Cell* cj = &cells[jj];
+        int64_t m = cj->lenMultipole;
+        int64_t n = ci->lenMultipole;
+        matrixCreate(&d[off + j], m, n);
+        gen_matrix(ef, m, n, bodies, bodies, d[off + j].A, cj->Multipole, ci->Multipole);
+      }
+  }
+}

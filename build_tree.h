@@ -51,8 +51,8 @@ struct Base {
   int64_t* Offsets;
   int64_t* Multipoles;
   
-  struct Matrix* Uc;
   struct Matrix* Uo;
+  struct Matrix* Uc;
   struct Matrix* R;
 };
 
@@ -76,9 +76,7 @@ void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* com
 
 void content_length(int64_t* len, const struct CellComm* comm);
 
-void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t mpi_rank, int64_t levels);
-
-void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
+void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels);
 
 void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm);
 
@@ -86,7 +84,9 @@ void deallocBasis(struct Base* basis, int64_t levels);
 
 void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels);
 
-void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* cellsNear, int64_t levels, const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
+void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* rel_near, int64_t levels, const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
+
+void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
 #ifdef __cplusplus
 }

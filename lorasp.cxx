@@ -155,8 +155,8 @@ int main(int argc, char* argv[]) {
 
   SpDense sp;
   allocSpDense(sp, levels);
-  relations(&sp.RelsNear[0], ncells, cell.data(), &cellNear, mpi_rank, levels);
-  relations(&sp.RelsFar[0], ncells, cell.data(), &cellFar, mpi_rank, levels);
+  relations(&sp.RelsNear[0], ncells, cell.data(), &cellNear, levels);
+  relations(&sp.RelsFar[0], ncells, cell.data(), &cellFar, levels);
   allocNodes(sp.D.data(), sp.RelsNear.data(), sp.RelsFar.data(), levels);
   allocBasis(sp.Basis.data(), levels, ncells, cell.data(), cell_comm.data());
 

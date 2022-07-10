@@ -33,12 +33,6 @@ void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, co
 
 void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, const Matrix* V, int64_t level);
 
-void factorAcc(Matrix* A_cc, const CSC& rels, int64_t level);
-
-void factorAoc(Matrix* A_oc, const Matrix* A_cc, const CSC& rels, int64_t level);
-
-void schurCmplm(Matrix* S, const Matrix* A_oc, const CSC& rels, int64_t level);
-
 void allocNodes(Node* nodes, const CSC rels_near[], const CSC rels_far[], int64_t levels);
 
 void deallocNode(Node* node, int64_t levels);
@@ -46,8 +40,6 @@ void deallocNode(Node* node, int64_t levels);
 void node_mem(int64_t* bytes, const Node* node, int64_t levels);
 
 void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level);
-
-void allocSubMatrices(Node& n, const CSC& rels, const int64_t dims[], const int64_t diml[], int64_t level);
 
 void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level);
 
