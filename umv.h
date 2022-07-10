@@ -29,10 +29,6 @@ struct SpDense {
   std::vector<CSC> RelsFar;
 };
 
-void splitA(Matrix* A_out, const CSC& rels, const Matrix* A, const Matrix* U, const Matrix* V, int64_t level);
-
-void splitS(Matrix* S_out, const CSC& rels, const Matrix* S, const Matrix* U, const Matrix* V, int64_t level);
-
 void allocNodes(Node* nodes, const CSC rels_near[], const CSC rels_far[], int64_t levels);
 
 void deallocNode(Node* node, int64_t levels);
