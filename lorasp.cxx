@@ -1,7 +1,7 @@
 
 #include "kernel.h"
 #include "linalg.h"
-#include "solver.h"
+#include "umv.h"
 #include "dist.h"
 
 #include <cstdio>

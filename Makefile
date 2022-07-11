@@ -32,14 +32,11 @@ build_tree: build_tree.c build_tree.h
 umv: umv.cxx umv.h
 	$(CXX) $(CXXFLAGS) -c umv.cxx
 
-solver: solver.cxx solver.h
-	$(CXX) $(CXXFLAGS) -c solver.cxx
-
 dist: dist.cxx dist.h
 	$(CXX) $(CXXFLAGS) -c dist.cxx
 
-lib: linalg kernel build_tree umv solver dist
-	ar rcs libnbd.a linalg.o kernel.o build_tree.o umv.o solver.o dist.o
+lib: linalg kernel build_tree umv dist
+	ar rcs libnbd.a linalg.o kernel.o build_tree.o umv.o dist.o
 
 lorasp: lorasp.cxx lib
 	$(CXX) $(CXXFLAGS) -o lorasp lorasp.cxx -L. -lnbd $(LDFLAGS)
