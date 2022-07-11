@@ -46,8 +46,6 @@ void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level);
 
 void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level);
 
-void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rels_low, int64_t nlevel);
-
 void factorA(Node A[], const Base B[], const CSC rels[], int64_t levels);
 
 void allocSpDense(SpDense& sp, int64_t levels);
@@ -65,8 +63,6 @@ void svAccBk(Matrix* Xc, const Matrix* A_cc, const CSC& rels, int64_t level);
 void svAocFw(Matrix* Xo, const Matrix* Xc, const Matrix* A_oc, const CSC& rels, int64_t level);
 
 void svAocBk(Matrix* Xc, const Matrix* Xo, const Matrix* A_oc, const CSC& rels, int64_t level);
-
-void permuteAndMerge(char fwbk, Matrix* px, Matrix* nx, int64_t nlevel);
 
 void allocRightHandSides(RightHandSides st[], const Base base[], int64_t levels);
 

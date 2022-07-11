@@ -534,10 +534,6 @@ void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels) {
   *bytes = count;
 }
 
-void swap_int_64(int64_t* a, int64_t* b) {
-  int64_t c = *a; *a = *b; *b = c;
-}
-
 void dist_int_64_xlen(int64_t arr_xlen[], const struct CellComm* comm) {
   int __mpi_rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
@@ -758,7 +754,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
         for (int64_t j = 0; j < rank; j++) {
           int64_t piv = pa[j] - 1;
           if (piv != j) 
-            swap_int_64(&cellm[piv], &cellm[j]);
+          { int64_t c = cellm[piv]; cellm[piv] = cellm[j]; cellm[j] = c; }
         }
       }
 

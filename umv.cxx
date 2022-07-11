@@ -148,7 +148,7 @@ void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rel
   }
 }
 
-void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rels_low_near, const CSC& rels_low_far, int64_t nlevel) {
+void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const int64_t* lchild, const CSC& rels_low_near, const CSC& rels_low_far, int64_t nlevel) {
   Matrix* Mup = Anext.A.data();
   const Matrix* Mlow = Aprev.A_oo.data();
   const Matrix* Slow = Aprev.S_oo.data();
@@ -161,15 +161,9 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const CSC& rel
   selfLocalRange(&nloc, &nend, nlevel);
   selfLocalRange(&ploc, &pend, plevel);
 
-  int64_t nbegin = 0;
-  int64_t pbegin = 0;
-  iGlobal(&nbegin, nloc, nlevel);
-  iGlobal(&pbegin, ploc, plevel);
-
   for (int64_t j = 0; j < rels_up.N; j++) {
-    int64_t cj = (j + nbegin) << 1;
-    int64_t cj0 = cj - pbegin;
-    int64_t cj1 = cj + 1 - pbegin;
+    int64_t cj0 = lchild[j + nloc] - ploc;
+    int64_t cj1 = cj0 + 1;
 
     for (int64_t ij = rels_up.COL_INDEX[j]; ij < rels_up.COL_INDEX[j + 1]; ij++) {
       int64_t i = rels_up.ROW_INDEX[ij];
@@ -255,7 +249,7 @@ void factorA(Node A[], const Base B[], const CSC rels_near[], const CSC rels_far
     factorNode(Ai, Bi, rels_near[i], rels_far[i], i);
 
     Node& An = A[i - 1];
-    nextNode(An, rels_near[i - 1], Ai, rels_near[i], rels_far[i], i - 1);
+    nextNode(An, rels_near[i - 1], Ai, B[i - 1].Lchild, rels_near[i], rels_far[i], i - 1);
   }
   chol_decomp(&A[0].A[0]);
 }
@@ -392,7 +386,7 @@ void svAocBk(Matrix* Xc, const Matrix* Xo, const Matrix* A_oc, const CSC& rels, 
     }
 }
 
-void permuteAndMerge(char fwbk, Matrix* px, Matrix* nx, int64_t nlevel) {
+void permuteAndMerge(char fwbk, Matrix* px, Matrix* nx, const int64_t* lchild, int64_t nlevel) {
   int64_t plevel = nlevel + 1;
   int64_t nloc = 0;
   int64_t nend = (int64_t)1 << nlevel;
@@ -400,46 +394,38 @@ void permuteAndMerge(char fwbk, Matrix* px, Matrix* nx, int64_t nlevel) {
   int64_t pend = (int64_t)1 << plevel;
   selfLocalRange(&nloc, &nend, nlevel);
   selfLocalRange(&ploc, &pend, plevel);
-
   int64_t nboxes = nend - nloc;
-  int64_t pboxes = pend - ploc;
-  int64_t nbegin = 0;
-  int64_t pbegin = 0;
-  iGlobal(&nbegin, nloc, nlevel);
-  iGlobal(&pbegin, ploc, plevel);
 
   if (fwbk == 'F' || fwbk == 'f') {
     for (int64_t i = 0; i < nboxes; i++) {
-      int64_t p = (i + nbegin) << 1;
-      int64_t c0 = p - pbegin;
-      int64_t c1 = p + 1 - pbegin;
+      int64_t c0 = lchild[i + nloc];
+      int64_t c1 = c0 + 1;
       Matrix& x0 = nx[i + nloc];
 
-      if (c0 >= 0 && c0 < pboxes) {
-        const Matrix& x1 = px[c0 + ploc];
+      if (c0 >= ploc && c0 < pend) {
+        const Matrix& x1 = px[c0];
         cpyMatToMat(x1.M, x0.N, &x1, &x0, 0, 0, 0, 0);
       }
 
-      if (c1 >= 0 && c1 < pboxes) {
-        const Matrix& x2 = px[c1 + ploc];
+      if (c1 >= ploc && c1 < pend) {
+        const Matrix& x2 = px[c1];
         cpyMatToMat(x2.M, x0.N, &x2, &x0, 0, 0, x0.M - x2.M, 0);
       }
     }
   }
   else if (fwbk == 'B' || fwbk == 'b') {
     for (int64_t i = 0; i < nboxes; i++) {
-      int64_t p = (i + nbegin) << 1;
-      int64_t c0 = p - pbegin;
-      int64_t c1 = p + 1 - pbegin;
+      int64_t c0 = lchild[i + nloc];
+      int64_t c1 = c0 + 1;
       const Matrix& x0 = nx[i + nloc];
 
-      if (c0 >= 0 && c0 < pboxes) {
-        Matrix& x1 = px[c0 + ploc];
+      if (c0 >= ploc && c0 < pend) {
+        Matrix& x1 = px[c0];
         cpyMatToMat(x1.M, x0.N, &x0, &x1, 0, 0, 0, 0);
       }
 
-      if (c1 >= 0 && c1 < pboxes) {
-        Matrix& x2 = px[c1 + ploc];
+      if (c1 >= ploc && c1 < pend) {
+        Matrix& x2 = px[c1];
         cpyMatToMat(x2.M, x0.N, &x0, &x2, x0.M - x2.M, 0, 0, 0);
       }
     }
@@ -513,7 +499,7 @@ void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[
     basisXoc('F', st[i], B[i], i);
     svAccFw(st[i].Xc.data(), A[i].A_cc.data(), rels[i], i);
     svAocFw(st[i].Xo.data(), st[i].Xc.data(), A[i].A_oc.data(), rels[i], i);
-    permuteAndMerge('F', st[i].Xo.data(), st[i - 1].X.data(), i - 1);
+    permuteAndMerge('F', st[i].Xo.data(), st[i - 1].X.data(), B[i - 1].Lchild, i - 1);
 
     int comm_needed;
     butterflyComm(&comm_needed, i);
@@ -523,7 +509,7 @@ void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[
   mat_solve('A', &st[0].X[0], &A[0].A[0]);
   
   for (int64_t i = 1; i <= levels; i++) {
-    permuteAndMerge('B', st[i].Xo.data(), st[i - 1].X.data(), i - 1);
+    permuteAndMerge('B', st[i].Xo.data(), st[i - 1].X.data(), B[i - 1].Lchild, i - 1);
     DistributeMatricesList(st[i].Xo.data(), i);
     svAocBk(st[i].Xc.data(), st[i].Xo.data(), A[i].A_oc.data(), rels[i], i);
     svAccBk(st[i].Xc.data(), A[i].A_cc.data(), rels[i], i);
