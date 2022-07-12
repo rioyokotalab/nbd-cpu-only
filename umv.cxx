@@ -5,7 +5,7 @@
 #include "stdlib.h"
 #include "math.h"
 
-void allocNodes(Node* nodes, const CSC rels_near[], const CSC rels_far[], int64_t levels) {
+void allocNodes(Node* nodes, const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t n_i = rels_near[i].N;
     int64_t nnz = rels_near[i].COL_INDEX[n_i];
@@ -18,6 +18,41 @@ void allocNodes(Node* nodes, const CSC rels_near[], const CSC rels_far[], int64_
     nodes[i].S_oo.resize(nnz_f);
     nodes[i].lenA = nnz;
     nodes[i].lenS = nnz_f;
+
+    int64_t ibegin = 0, iend = 0;
+    selfLocalRange(&ibegin, &iend, i);
+
+    for (int64_t x = 0; x < rels_near[i].N; x++) {
+      int64_t box_x = ibegin + x;
+      int64_t dim_x = B[i].DIMS[box_x];
+      int64_t diml_x = B[i].DIML[box_x];
+      int64_t dimc_x = dim_x - diml_x;
+
+      for (int64_t yx = rels_near[i].COL_INDEX[x]; yx < rels_near[i].COL_INDEX[x + 1]; yx++) {
+        int64_t y = rels_near[i].ROW_INDEX[yx];
+        int64_t box_y = y;
+        iLocal(&box_y, y, i);
+        int64_t dim_y = B[i].DIMS[box_y];
+        int64_t diml_y = B[i].DIML[box_y];
+        int64_t dimc_y = dim_y - diml_y;
+
+        matrixCreate(&nodes[i].A[yx], dim_y, dim_x);
+        matrixCreate(&nodes[i].A_cc[yx], dimc_y, dimc_x);
+        matrixCreate(&nodes[i].A_oc[yx], diml_y, dimc_x);
+        matrixCreate(&nodes[i].A_oo[yx], diml_y, diml_x);
+        zeroMatrix(&nodes[i].A[yx]);
+      }
+
+      for (int64_t yx = rels_far[i].COL_INDEX[x]; yx < rels_far[i].COL_INDEX[x + 1]; yx++) {
+        int64_t y = rels_far[i].ROW_INDEX[yx];
+        int64_t box_y = y;
+        iLocal(&box_y, y, i);
+        int64_t diml_y = B[i].DIML[box_y];
+
+        matrixCreate(&nodes[i].S[yx], diml_y, diml_x);
+        matrixCreate(&nodes[i].S_oo[yx], diml_y, diml_x);
+      }
+    }
   }
 }
 
@@ -70,50 +105,10 @@ void node_mem(int64_t* bytes, const Node* node, int64_t levels) {
   *bytes = count;
 }
 
-void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level) {
-  int64_t ibegin = 0, iend = 0;
-  selfLocalRange(&ibegin, &iend, level);
-
-  for (int64_t j = 0; j < rels.N; j++) {
-    int64_t box_j = ibegin + j;
-    int64_t n_j = dims[box_j];
-
-    for (int64_t ij = rels.COL_INDEX[j]; ij < rels.COL_INDEX[j + 1]; ij++) {
-      int64_t i = rels.ROW_INDEX[ij];
-      int64_t box_i = i;
-      iLocal(&box_i, i, level);
-      int64_t n_i = dims[box_i];
-
-      Matrix& A_ij = A[ij];
-      matrixCreate(&A_ij, n_i, n_j);
-      zeroMatrix(&A_ij);
-    }
-  }
-}
-
-
 void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level) {
   int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
-
-  for (int64_t j = 0; j < rels_near.N; j++) {
-    int64_t box_j = ibegin + j;
-    int64_t diml_j = basis.DIML[box_j];
-    int64_t dimc_j = basis.DIMS[box_j] - diml_j;
-
-    for (int64_t ij = rels_near.COL_INDEX[j]; ij < rels_near.COL_INDEX[j + 1]; ij++) {
-      int64_t i = rels_near.ROW_INDEX[ij];
-      int64_t box_i = i;
-      iLocal(&box_i, i, level);
-      int64_t diml_i = basis.DIML[box_i];
-      int64_t dimc_i = basis.DIMS[box_i] - diml_i;
-
-      matrixCreate(&n.A_cc[ij], dimc_i, dimc_j);
-      matrixCreate(&n.A_oc[ij], diml_i, dimc_j);
-      matrixCreate(&n.A_oo[ij], diml_i, diml_j);
-    }
-  }
 
   for (int64_t x = 0; x < rels_near.N; x++) {
     for (int64_t yx = rels_near.COL_INDEX[x]; yx < rels_near.COL_INDEX[x + 1]; yx++) {
@@ -177,58 +172,34 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const int64_t*
       lookupIJ(&i10, &rels_low_near, ci1, cj0);
       lookupIJ(&i11, &rels_low_near, ci1, cj1);
 
-      if (i00 >= 0) {
-        const Matrix& m00 = Mlow[i00];
-        cpyMatToMat(m00.M, m00.N, &m00, &Mup[ij], 0, 0, 0, 0);
-      }
+      if (i00 >= 0)
+        cpyMatToMat(Mlow[i00].M, Mlow[i00].N, &Mlow[i00], &Mup[ij], 0, 0, 0, 0);
 
-      if (i01 >= 0) {
-        const Matrix& m01 = Mlow[i01];
-        int64_t xbegin = Mup[ij].N - m01.N;
-        cpyMatToMat(m01.M, m01.N, &m01, &Mup[ij], 0, 0, 0, xbegin);
-      }
+      if (i01 >= 0)
+        cpyMatToMat(Mlow[i01].M, Mlow[i01].N, &Mlow[i01], &Mup[ij], 0, 0, 0, Mup[ij].N - Mlow[i01].N);
 
-      if (i10 >= 0) {
-        const Matrix& m10 = Mlow[i10];
-        int64_t ybegin = Mup[ij].M - m10.M;
-        cpyMatToMat(m10.M, m10.N, &m10, &Mup[ij], 0, 0, ybegin, 0);
-      }
+      if (i10 >= 0)
+        cpyMatToMat(Mlow[i10].M, Mlow[i10].N, &Mlow[i10], &Mup[ij], 0, 0, Mup[ij].M - Mlow[i10].M, 0);
 
-      if (i11 >= 0) {
-        const Matrix& m11 = Mlow[i11];
-        int64_t ybegin = Mup[ij].M - m11.M;
-        int64_t xbegin = Mup[ij].N - m11.N;
-        cpyMatToMat(m11.M, m11.N, &m11, &Mup[ij], 0, 0, ybegin, xbegin);
-      }
+      if (i11 >= 0)
+        cpyMatToMat(Mlow[i11].M, Mlow[i11].N, &Mlow[i11], &Mup[ij], 0, 0, Mup[ij].M - Mlow[i11].M, Mup[ij].N - Mlow[i11].N);
 
       lookupIJ(&i00, &rels_low_far, ci0, cj0);
       lookupIJ(&i01, &rels_low_far, ci0, cj1);
       lookupIJ(&i10, &rels_low_far, ci1, cj0);
       lookupIJ(&i11, &rels_low_far, ci1, cj1);
 
-      if (i00 >= 0) {
-        const Matrix& m00 = Slow[i00];
-        cpyMatToMat(m00.M, m00.N, &m00, &Mup[ij], 0, 0, 0, 0);
-      }
+      if (i00 >= 0)
+        cpyMatToMat(Slow[i00].M, Slow[i00].N, &Slow[i00], &Mup[ij], 0, 0, 0, 0);
 
-      if (i01 >= 0) {
-        const Matrix& m01 = Slow[i01];
-        int64_t xbegin = Mup[ij].N - m01.N;
-        cpyMatToMat(m01.M, m01.N, &m01, &Mup[ij], 0, 0, 0, xbegin);
-      }
+      if (i01 >= 0)
+        cpyMatToMat(Slow[i01].M, Slow[i01].N, &Slow[i01], &Mup[ij], 0, 0, 0, Mup[ij].N - Slow[i01].N);
 
-      if (i10 >= 0) {
-        const Matrix& m10 = Slow[i10];
-        int64_t ybegin = Mup[ij].M - m10.M;
-        cpyMatToMat(m10.M, m10.N, &m10, &Mup[ij], 0, 0, ybegin, 0);
-      }
+      if (i10 >= 0)
+        cpyMatToMat(Slow[i10].M, Slow[i10].N, &Slow[i10], &Mup[ij], 0, 0, Mup[ij].M - Slow[i10].M, 0);
 
-      if (i11 >= 0) {
-        const Matrix& m11 = Slow[i11];
-        int64_t ybegin = Mup[ij].M - m11.M;
-        int64_t xbegin = Mup[ij].N - m11.N;
-        cpyMatToMat(m11.M, m11.N, &m11, &Mup[ij], 0, 0, ybegin, xbegin);
-      }
+      if (i11 >= 0)
+        cpyMatToMat(Slow[i11].M, Slow[i11].N, &Slow[i11], &Mup[ij], 0, 0, Mup[ij].M - Slow[i11].M, Mup[ij].N - Slow[i11].N);
     }
   }
   
@@ -240,14 +211,9 @@ void nextNode(Node& Anext, const CSC& rels_up, const Node& Aprev, const int64_t*
 
 
 void factorA(Node A[], const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels) {
-  for (int64_t i = levels - 1; i >= 0; i--) {
-    allocA(A[i].A.data(), rels_near[i], B[i].DIMS, i);
-  }
-
   for (int64_t i = levels; i > 0; i--) {
     Node& Ai = A[i];
     const Base& Bi = B[i];
-    allocA(A[i].S_oo.data(), rels_far[i], B[i].DIML, i);
     factorNode(Ai, Bi, rels_near[i], rels_far[i], i);
 
     Node& An = A[i - 1];

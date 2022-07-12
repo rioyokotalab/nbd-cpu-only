@@ -36,13 +36,11 @@ struct SpDense {
   std::vector<CSC> RelsFar;
 };
 
-void allocNodes(Node* nodes, const CSC rels_near[], const CSC rels_far[], int64_t levels);
+void allocNodes(Node* nodes, const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels);
 
 void deallocNode(Node* node, int64_t levels);
 
 void node_mem(int64_t* bytes, const Node* node, int64_t levels);
-
-void allocA(Matrix* A, const CSC& rels, const int64_t dims[], int64_t level);
 
 void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level);
 

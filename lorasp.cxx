@@ -157,13 +157,14 @@ int main(int argc, char* argv[]) {
   allocSpDense(sp, levels);
   relations(&sp.RelsNear[0], ncells, cell.data(), &cellNear, levels);
   relations(&sp.RelsFar[0], ncells, cell.data(), &cellFar, levels);
-  allocNodes(sp.D.data(), sp.RelsNear.data(), sp.RelsFar.data(), levels);
   allocBasis(sp.Basis.data(), levels, ncells, cell.data(), cell_comm.data());
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
   evaluateBaseAll(ef, &sp.Basis[0], ncells, cell.data(), &sp.RelsNear[0], levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
+  
+  allocNodes(sp.D.data(), sp.Basis.data(), sp.RelsNear.data(), sp.RelsFar.data(), levels);
 
   evaluate('N', sp.D[levels].A.data(), ef, ncells, &cell[0], body.data(), &sp.RelsNear[levels], levels);
   for (int64_t i = 0; i <= levels; i++)
