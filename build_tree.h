@@ -88,6 +88,8 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
 
 void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
+void solveRelErr(double* err_out, const struct Matrix* X, const struct Matrix* ref, const struct CellComm* comm);
+
 #ifdef __cplusplus
 }
 #endif

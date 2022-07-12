@@ -193,7 +193,7 @@ int main(int argc, char* argv[]) {
   DistributeMatricesList(rhs[levels].X.data(), levels);
 
   double err;
-  solveRelErr(&err, rhs[levels].X.data(), Xref.data(), levels);
+  solveRelErr(&err, rhs[levels].X.data(), Xref.data(), &cell_comm[levels]);
 
   int64_t dim = 3;
 

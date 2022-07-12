@@ -867,3 +867,33 @@ void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, co
       }
   }
 }
+
+void solveRelErr(double* err_out, const struct Matrix* X, const struct Matrix* ref, const struct CellComm* comm) {
+  int64_t ibegin = 0, iend = 0;
+  self_local_range(&ibegin, &iend, comm);
+  double err = 0.;
+  double nrm = 0.;
+
+  for (int64_t i = ibegin; i < iend; i++) {
+    double e, n;
+    struct Matrix work;
+    matrixCreate(&work, X[i].M, X[i].N);
+
+    maxpby(&work, X[i].A, 1., 0.);
+    maxpby(&work, ref[i].A, -1., 1.);
+    mnrm2(&work, &e);
+    mnrm2(&ref[i], &n);
+
+    matrixDestroy(&work);
+    err = err + e * e;
+    nrm = nrm + n * n;
+  }
+
+  double buf = err;
+  MPI_Allreduce(&buf, &err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+  buf = nrm;
+  MPI_Allreduce(&buf, &nrm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  *err_out = sqrt(err / nrm);
+}
+
