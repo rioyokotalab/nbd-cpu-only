@@ -8,8 +8,8 @@
 void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t n_i = rels_near[i].N;
-    int64_t nnz = rels_near[i].COL_INDEX[n_i];
-    int64_t nnz_f = rels_far[i].COL_INDEX[n_i];
+    int64_t nnz = rels_near[i].ColIndex[n_i];
+    int64_t nnz_f = rels_far[i].ColIndex[n_i];
     struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nnz * 4 + nnz_f));
     nodes[i].A = arr_m;
     nodes[i].A_cc = &arr_m[nnz];
@@ -28,8 +28,8 @@ void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels
       int64_t diml_x = B[i].DimsLr[box_x];
       int64_t dimc_x = dim_x - diml_x;
 
-      for (int64_t yx = rels_near[i].COL_INDEX[x]; yx < rels_near[i].COL_INDEX[x + 1]; yx++) {
-        int64_t y = rels_near[i].ROW_INDEX[yx];
+      for (int64_t yx = rels_near[i].ColIndex[x]; yx < rels_near[i].ColIndex[x + 1]; yx++) {
+        int64_t y = rels_near[i].RowIndex[yx];
         int64_t box_y = y;
         iLocal(&box_y, y, i);
         int64_t dim_y = B[i].Dims[box_y];
@@ -43,8 +43,8 @@ void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels
         zeroMatrix(&nodes[i].A[yx]);
       }
 
-      for (int64_t yx = rels_far[i].COL_INDEX[x]; yx < rels_far[i].COL_INDEX[x + 1]; yx++) {
-        int64_t y = rels_far[i].ROW_INDEX[yx];
+      for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
+        int64_t y = rels_far[i].RowIndex[yx];
         int64_t box_y = y;
         iLocal(&box_y, y, i);
         int64_t diml_y = B[i].DimsLr[box_y];
@@ -97,8 +97,8 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, c
   iGlobal(&lbegin, ibegin, level);
 
   for (int64_t x = 0; x < rels->N; x++) {
-    for (int64_t yx = rels->COL_INDEX[x]; yx < rels->COL_INDEX[x + 1]; yx++) {
-      int64_t y = rels->ROW_INDEX[yx];
+    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
+      int64_t y = rels->RowIndex[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
       utav(&Uc[box_y], &A[yx], &Uc[x + ibegin], &A_cc[yx]);
@@ -110,28 +110,13 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, c
     lookupIJ(&xx, rels, x + lbegin, x);
     chol_decomp(&A_cc[xx]);
 
-    for (int64_t yx = rels->COL_INDEX[x]; yx < rels->COL_INDEX[x + 1]; yx++) {
-      int64_t y = rels->ROW_INDEX[yx];
+    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
+      int64_t y = rels->RowIndex[yx];
       trsm_lowerA(&A_oc[yx], &A_cc[xx]);
       if (y > x + lbegin)
         trsm_lowerA(&A_cc[yx], &A_cc[xx]);
     }
     mmult('N', 'T', &A_oc[xx], &A_oc[xx], &A_oo[xx], -1., 1.);
-  }
-}
-
-void updateS(struct Matrix* S, const struct Matrix* R, const struct CSC* rels, int64_t level) {
-  int64_t ibegin = 0, iend = 0, lbegin = 0;
-  selfLocalRange(&ibegin, &iend, level);
-  iGlobal(&lbegin, ibegin, level);
-
-  for (int64_t x = 0; x < rels->N; x++) {
-    for (int64_t yx = rels->COL_INDEX[x]; yx < rels->COL_INDEX[x + 1]; yx++) {
-      int64_t y = rels->ROW_INDEX[yx];
-      int64_t box_y = y;
-      iLocal(&box_y, y, level);
-      rsr(&R[box_y], &R[x + ibegin], &S[yx]);
-    }
   }
 }
 
@@ -145,8 +130,8 @@ void nextNode(struct Matrix* Mup, const struct CSC* rels_up, const struct Matrix
     int64_t cj0 = lchild[j + nloc] - ploc;
     int64_t cj1 = cj0 + 1;
 
-    for (int64_t ij = rels_up->COL_INDEX[j]; ij < rels_up->COL_INDEX[j + 1]; ij++) {
-      int64_t i = rels_up->ROW_INDEX[ij];
+    for (int64_t ij = rels_up->ColIndex[j]; ij < rels_up->ColIndex[j + 1]; ij++) {
+      int64_t i = rels_up->RowIndex[ij];
       int64_t li = i;
       iLocal(&li, i, nlevel);
       int64_t cli0 = lchild[li];
@@ -188,13 +173,12 @@ void nextNode(struct Matrix* Mup, const struct CSC* rels_up, const struct Matrix
   int comm_needed;
   butterflyComm(&comm_needed, plevel);
   if (comm_needed)
-    butterflySumA(Mup, rels_up->COL_INDEX[rels_up->N], plevel);
+    butterflySumA(Mup, rels_up->ColIndex[rels_up->N], plevel);
 }
 
 void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels) {
   for (int64_t i = levels; i > 0; i--) {
     factorNode(A[i].A_cc, A[i].A_oc, A[i].A_oo, A[i].A, B[i].Uc, B[i].Uo, &rels_near[i], i);
-    updateS(A[i].S, B[i].R, &rels_far[i], i);
     nextNode(A[i - 1].A, &rels_near[i - 1], A[i].A_oo, A[i].S, B[i - 1].Lchild, &rels_near[i], &rels_far[i], i - 1);
   }
   chol_decomp(&A[0].A[0]);
@@ -213,8 +197,8 @@ void svAccFw(struct Matrix* Xc, struct Matrix* Xo, const struct Matrix* X, const
     lookupIJ(&xx, rels, x + lbegin, x);
     mat_solve('F', &Xc[x + ibegin], &A_cc[xx]);
 
-    for (int64_t yx = rels->COL_INDEX[x]; yx < rels->COL_INDEX[x + 1]; yx++) {
-      int64_t y = rels->ROW_INDEX[yx];
+    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
+      int64_t y = rels->RowIndex[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
       if (y > x + lbegin)
@@ -234,8 +218,8 @@ void svAccBk(struct Matrix* Xc, const struct Matrix* Xo, struct Matrix* X, const
   recvBkSubstituted(Xc, level);
 
   for (int64_t x = rels->N - 1; x >= 0; x--) {
-    for (int64_t yx = rels->COL_INDEX[x]; yx < rels->COL_INDEX[x + 1]; yx++) {
-      int64_t y = rels->ROW_INDEX[yx];
+    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
+      int64_t y = rels->RowIndex[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
       mmult('T', 'N', &A_oc[yx], &Xo[box_y], &Xc[x + ibegin], -1., 1.);

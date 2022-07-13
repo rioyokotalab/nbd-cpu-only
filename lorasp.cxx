@@ -20,8 +20,8 @@ void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies,
     const struct Cell* ci = &leaves[gi];
 
     struct Matrix* Xi = &X[i];
-    int64_t nbegin = ci->BODY[0];
-    int64_t ni = ci->BODY[1] - nbegin;
+    int64_t nbegin = ci->Body[0];
+    int64_t ni = ci->Body[1] - nbegin;
     matrixCreate(Xi, ni, 1);
     for (int64_t n = 0; n < ni; n++)
       Xi->A[n] = bodies[n + nbegin].B;
@@ -29,7 +29,7 @@ void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies,
 }
 
 void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* cell, const struct Body* bodies, int64_t level) {
-  int64_t nbodies = cell->BODY[1];
+  int64_t nbodies = cell->Body[1];
   int64_t xlen = (int64_t)1 << level;
   contentLength(&xlen, level);
   int64_t len = (int64_t)1 << level;
@@ -41,8 +41,8 @@ void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* 
     const struct Cell* ci = &leaves[gi];
 
     struct Matrix* Bi = &B[i];
-    int64_t ibegin = ci->BODY[0];
-    int64_t m = ci->BODY[1] - ibegin;
+    int64_t ibegin = ci->Body[0];
+    int64_t m = ci->Body[1] - ibegin;
     matrixCreate(Bi, m, 1);
 
     int64_t block = 500;
@@ -88,19 +88,19 @@ void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_
 
     int64_t offc = (int64_t)(1 << i) - 1;
     int64_t nc = offc + gbegin;
-    int64_t nbegin = cellNear->COL_INDEX[nc];
-    int64_t nlen = cellNear->COL_INDEX[nc + nodes] - nbegin;
-    int64_t fbegin = cellFar->COL_INDEX[nc];
-    int64_t flen = cellFar->COL_INDEX[nc + nodes] - fbegin;
+    int64_t nbegin = cellNear->ColIndex[nc];
+    int64_t nlen = cellNear->ColIndex[nc + nodes] - nbegin;
+    int64_t fbegin = cellFar->ColIndex[nc];
+    int64_t flen = cellFar->ColIndex[nc + nodes] - fbegin;
     int64_t* ngbs = (int64_t*)malloc(sizeof(int64_t) * (nlen + flen));
 
     for (int64_t j = 0; j < nlen; j++) {
-      int64_t ngb = cellNear->ROW_INDEX[nbegin + j] - offc;
+      int64_t ngb = cellNear->RowIndex[nbegin + j] - offc;
       ngb /= nodes;
       ngbs[j] = ngb;
     }
     for (int64_t j = 0; j < flen; j++) {
-      int64_t ngb = cellFar->ROW_INDEX[fbegin + j] - offc;
+      int64_t ngb = cellFar->RowIndex[fbegin + j] - offc;
       ngb /= nodes;
       ngbs[j + nlen] = ngb;
     }
@@ -167,9 +167,9 @@ int main(int argc, char* argv[]) {
   std::vector<Node> nodes(levels + 1);
   allocNodes(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], levels);
 
-  evaluate('N', nodes[levels].A, ef, ncells, &cell[0], body.data(), &rels_near[levels], levels);
+  evalD(ef, nodes[levels].A, ncells, &cell[0], body.data(), &rels_near[levels], levels);
   for (int64_t i = 0; i <= levels; i++)
-    evaluate('F', nodes[i].S, ef, ncells, &cell[0], body.data(), &rels_far[i], i);
+    evalS(ef, nodes[i].S, &basis[i], body.data(), &rels_far[i], &cell_comm[i]);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
@@ -217,8 +217,8 @@ int main(int argc, char* argv[]) {
   deallocBasis(&basis[0], levels);
   deallocNode(&nodes[0], levels);
   for (int64_t i = 0; i <= levels; i++) {
-    free(rels_far[i].COL_INDEX);
-    free(rels_near[i].COL_INDEX);
+    free(rels_far[i].ColIndex);
+    free(rels_near[i].ColIndex);
   }
   deallocRightHandSides(&rhs[0], levels);
   for (int64_t i = 0; i < xlen; i++) {
@@ -226,8 +226,8 @@ int main(int argc, char* argv[]) {
     matrixDestroy(&Xref[i]);
     matrixDestroy(&B[i]);
   }
-  free(cellFar.COL_INDEX);
-  free(cellNear.COL_INDEX);
+  free(cellFar.ColIndex);
+  free(cellNear.ColIndex);
   cellComm_free(cell_comm.data(), levels);
   
   closeComm();
