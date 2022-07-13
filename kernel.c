@@ -1,5 +1,5 @@
 
-#include "kernel.h"
+#include "nbd.h"
 
 #include "stdio.h"
 #include "stdlib.h"

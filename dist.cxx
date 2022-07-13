@@ -1,6 +1,6 @@
 
 #include "dist.h"
-#include "linalg.h"
+#include "nbd.h"
 
 #include "mpi.h"
 #include <cstdio>

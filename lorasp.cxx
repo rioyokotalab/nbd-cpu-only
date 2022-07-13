@@ -1,13 +1,12 @@
 
-#include "kernel.h"
-#include "linalg.h"
-#include "umv.h"
+#include "nbd.h"
 #include "dist.h"
 
 #include <cstdio>
 #include <cmath>
 #include <iostream>
 #include <algorithm>
+#include <vector>
 
 void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level) {
   int64_t xlen = (int64_t)1 << level;
@@ -168,9 +167,9 @@ int main(int argc, char* argv[]) {
   std::vector<Node> nodes(levels + 1);
   allocNodes(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], levels);
 
-  evaluate('N', nodes[levels].A.data(), ef, ncells, &cell[0], body.data(), &rels_near[levels], levels);
+  evaluate('N', nodes[levels].A, ef, ncells, &cell[0], body.data(), &rels_near[levels], levels);
   for (int64_t i = 0; i <= levels; i++)
-    evaluate('F', nodes[i].S.data(), ef, ncells, &cell[0], body.data(), &rels_far[i], i);
+    evaluate('F', nodes[i].S, ef, ncells, &cell[0], body.data(), &rels_far[i], i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
@@ -194,10 +193,8 @@ int main(int argc, char* argv[]) {
   solveA(&rhs[0], &nodes[0], &basis[0], &rels_near[0], &B[0], levels);
   stopTimer(&solve_time, &solve_comm_time);
 
-  DistributeMatricesList(rhs[levels].X.data(), levels);
-
   double err;
-  solveRelErr(&err, rhs[levels].X.data(), Xref.data(), &cell_comm[levels]);
+  solveRelErr(&err, rhs[levels].X, Xref.data(), &cell_comm[levels]);
 
   int64_t dim = 3;
 

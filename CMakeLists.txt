@@ -20,11 +20,11 @@ project ("shimo" LANGUAGES C CXX)
 find_package(MKL REQUIRED)
 find_package(MPI REQUIRED)
 
-add_library(nbd STATIC 
-  kernel.c kernel.h
-  linalg.c linalg.h
-  build_tree.c build_tree.h
-  umv.cxx umv.h
+add_library(nbd STATIC nbd.h
+  kernel.c
+  linalg.c
+  build_tree.c
+  umv.c
   dist.cxx dist.h
 )
 target_include_directories(nbd PRIVATE "./")

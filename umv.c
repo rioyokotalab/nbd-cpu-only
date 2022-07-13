@@ -1,20 +1,21 @@
 
-#include "umv.h"
+#include "nbd.h"
 #include "dist.h"
 
 #include "stdlib.h"
 #include "math.h"
 
-void allocNodes(Node* nodes, const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels) {
+void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t n_i = rels_near[i].N;
     int64_t nnz = rels_near[i].COL_INDEX[n_i];
-    nodes[i].A.resize(nnz);
-    nodes[i].A_cc.resize(nnz);
-    nodes[i].A_oc.resize(nnz);
-    nodes[i].A_oo.resize(nnz);
     int64_t nnz_f = rels_far[i].COL_INDEX[n_i];
-    nodes[i].S.resize(nnz_f);
+    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nnz * 4 + nnz_f));
+    nodes[i].A = arr_m;
+    nodes[i].A_cc = &arr_m[nnz];
+    nodes[i].A_oc = &arr_m[nnz * 2];
+    nodes[i].A_oo = &arr_m[nnz * 3];
+    nodes[i].S = &arr_m[nnz * 4];
     nodes[i].lenA = nnz;
     nodes[i].lenS = nnz_f;
 
@@ -53,7 +54,7 @@ void allocNodes(Node* nodes, const Base B[], const CSC rels_near[], const CSC re
   }
 }
 
-void deallocNode(Node* node, int64_t levels) {
+void deallocNode(struct Node* node, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nnz = node[i].lenA;
     for (int64_t n = 0; n < nnz; n++) {
@@ -68,17 +69,11 @@ void deallocNode(Node* node, int64_t levels) {
       matrixDestroy(&node[i].S[n]);
     }
 
-    node[i].A.clear();
-    node[i].A_cc.clear();
-    node[i].A_oc.clear();
-    node[i].A_oo.clear();
-    node[i].S.clear();
-    node[i].lenA = 0;
-    node[i].lenS = 0;
+    free(node[i].A);
   }
 }
 
-void node_mem(int64_t* bytes, const Node* node, int64_t levels) {
+void node_mem(int64_t* bytes, const struct Node* node, int64_t levels) {
   int64_t count = 0;
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nnz = node[i].lenA;
@@ -96,7 +91,7 @@ void node_mem(int64_t* bytes, const Node* node, int64_t levels) {
   *bytes = count;
 }
 
-void factorNode(Matrix* A_cc, Matrix* A_oc, Matrix* A_oo, const Matrix* A, const Matrix* Uc, const Matrix* Uo, const CSC* rels, int64_t level) {
+void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, const struct Matrix* A, const struct Matrix* Uc, const struct Matrix* Uo, const struct CSC* rels, int64_t level) {
   int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
@@ -125,7 +120,7 @@ void factorNode(Matrix* A_cc, Matrix* A_oc, Matrix* A_oo, const Matrix* A, const
   }
 }
 
-void updateS(Matrix* S, const Matrix* R, const CSC* rels, int64_t level) {
+void updateS(struct Matrix* S, const struct Matrix* R, const struct CSC* rels, int64_t level) {
   int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
@@ -140,7 +135,7 @@ void updateS(Matrix* S, const Matrix* R, const CSC* rels, int64_t level) {
   }
 }
 
-void nextNode(Matrix* Mup, const CSC* rels_up, const Matrix* Mlow, const Matrix* Slow, const int64_t* lchild, const CSC* rels_low_near, const CSC* rels_low_far, int64_t nlevel) {
+void nextNode(struct Matrix* Mup, const struct CSC* rels_up, const struct Matrix* Mlow, const struct Matrix* Slow, const int64_t* lchild, const struct CSC* rels_low_near, const struct CSC* rels_low_far, int64_t nlevel) {
   int64_t plevel = nlevel + 1;
   int64_t nloc = 0, nend = 0, ploc = 0, pend = 0;
   selfLocalRange(&nloc, &nend, nlevel);
@@ -167,13 +162,10 @@ void nextNode(Matrix* Mup, const CSC* rels_up, const Matrix* Mlow, const Matrix*
 
       if (i00 >= 0)
         cpyMatToMat(Mlow[i00].M, Mlow[i00].N, &Mlow[i00], &Mup[ij], 0, 0, 0, 0);
-
       if (i01 >= 0)
         cpyMatToMat(Mlow[i01].M, Mlow[i01].N, &Mlow[i01], &Mup[ij], 0, 0, 0, Mup[ij].N - Mlow[i01].N);
-
       if (i10 >= 0)
         cpyMatToMat(Mlow[i10].M, Mlow[i10].N, &Mlow[i10], &Mup[ij], 0, 0, Mup[ij].M - Mlow[i10].M, 0);
-
       if (i11 >= 0)
         cpyMatToMat(Mlow[i11].M, Mlow[i11].N, &Mlow[i11], &Mup[ij], 0, 0, Mup[ij].M - Mlow[i11].M, Mup[ij].N - Mlow[i11].N);
 
@@ -184,13 +176,10 @@ void nextNode(Matrix* Mup, const CSC* rels_up, const Matrix* Mlow, const Matrix*
 
       if (i00 >= 0)
         cpyMatToMat(Slow[i00].M, Slow[i00].N, &Slow[i00], &Mup[ij], 0, 0, 0, 0);
-
       if (i01 >= 0)
         cpyMatToMat(Slow[i01].M, Slow[i01].N, &Slow[i01], &Mup[ij], 0, 0, 0, Mup[ij].N - Slow[i01].N);
-
       if (i10 >= 0)
         cpyMatToMat(Slow[i10].M, Slow[i10].N, &Slow[i10], &Mup[ij], 0, 0, Mup[ij].M - Slow[i10].M, 0);
-
       if (i11 >= 0)
         cpyMatToMat(Slow[i11].M, Slow[i11].N, &Slow[i11], &Mup[ij], 0, 0, Mup[ij].M - Slow[i11].M, Mup[ij].N - Slow[i11].N);
     }
@@ -202,30 +191,30 @@ void nextNode(Matrix* Mup, const CSC* rels_up, const Matrix* Mlow, const Matrix*
     butterflySumA(Mup, rels_up->COL_INDEX[rels_up->N], plevel);
 }
 
-void factorA(Node A[], const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels) {
+void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels) {
   for (int64_t i = levels; i > 0; i--) {
-    factorNode(A[i].A_cc.data(), A[i].A_oc.data(), A[i].A_oo.data(), A[i].A.data(), B[i].Uc, B[i].Uo, &rels_near[i], i);
-    updateS(A[i].S.data(), B[i].R, &rels_far[i], i);
-    nextNode(A[i - 1].A.data(), &rels_near[i - 1], A[i].A_oo.data(), A[i].S.data(), B[i - 1].Lchild, &rels_near[i], &rels_far[i], i - 1);
+    factorNode(A[i].A_cc, A[i].A_oc, A[i].A_oo, A[i].A, B[i].Uc, B[i].Uo, &rels_near[i], i);
+    updateS(A[i].S, B[i].R, &rels_far[i], i);
+    nextNode(A[i - 1].A, &rels_near[i - 1], A[i].A_oo, A[i].S, B[i - 1].Lchild, &rels_near[i], &rels_far[i], i - 1);
   }
   chol_decomp(&A[0].A[0]);
 }
 
-void svAccFw(Matrix* Xc, Matrix* Xo, const Matrix* X, const Matrix* Uc, const Matrix* Uo, const Matrix* A_cc, const Matrix* A_oc, const CSC& rels, int64_t level) {
+void svAccFw(struct Matrix* Xc, struct Matrix* Xo, const struct Matrix* X, const struct Matrix* Uc, const struct Matrix* Uo, const struct Matrix* A_cc, const struct Matrix* A_oc, const struct CSC* rels, int64_t level) {
   int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
   recvFwSubstituted(Xc, level);
 
-  for (int64_t x = 0; x < rels.N; x++) {
+  for (int64_t x = 0; x < rels->N; x++) {
     mmult('T', 'N', &Uc[x + ibegin], &X[x + ibegin], &Xc[x + ibegin], 1., 1.);
     mmult('T', 'N', &Uo[x + ibegin], &X[x + ibegin], &Xo[x + ibegin], 1., 1.);
     int64_t xx;
-    lookupIJ(&xx, &rels, x + lbegin, x);
+    lookupIJ(&xx, rels, x + lbegin, x);
     mat_solve('F', &Xc[x + ibegin], &A_cc[xx]);
 
-    for (int64_t yx = rels.COL_INDEX[x]; yx < rels.COL_INDEX[x + 1]; yx++) {
-      int64_t y = rels.ROW_INDEX[yx];
+    for (int64_t yx = rels->COL_INDEX[x]; yx < rels->COL_INDEX[x + 1]; yx++) {
+      int64_t y = rels->ROW_INDEX[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
       if (y > x + lbegin)
@@ -238,15 +227,15 @@ void svAccFw(Matrix* Xc, Matrix* Xo, const Matrix* X, const Matrix* Uc, const Ma
   distributeSubstituted(Xo, level);
 }
 
-void svAccBk(Matrix* Xc, const Matrix* Xo, Matrix* X, const Matrix* Uc, const Matrix* Uo, const Matrix* A_cc, const Matrix* A_oc, const CSC& rels, int64_t level) {
+void svAccBk(struct Matrix* Xc, const struct Matrix* Xo, struct Matrix* X, const struct Matrix* Uc, const struct Matrix* Uo, const struct Matrix* A_cc, const struct Matrix* A_oc, const struct CSC* rels, int64_t level) {
   int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
   iGlobal(&lbegin, ibegin, level);
   recvBkSubstituted(Xc, level);
 
-  for (int64_t x = rels.N - 1; x >= 0; x--) {
-    for (int64_t yx = rels.COL_INDEX[x]; yx < rels.COL_INDEX[x + 1]; yx++) {
-      int64_t y = rels.ROW_INDEX[yx];
+  for (int64_t x = rels->N - 1; x >= 0; x--) {
+    for (int64_t yx = rels->COL_INDEX[x]; yx < rels->COL_INDEX[x + 1]; yx++) {
+      int64_t y = rels->ROW_INDEX[yx];
       int64_t box_y = y;
       iLocal(&box_y, y, level);
       mmult('T', 'N', &A_oc[yx], &Xo[box_y], &Xc[x + ibegin], -1., 1.);
@@ -255,7 +244,7 @@ void svAccBk(Matrix* Xc, const Matrix* Xo, Matrix* X, const Matrix* Uc, const Ma
     }
 
     int64_t xx;
-    lookupIJ(&xx, &rels, x + lbegin, x);
+    lookupIJ(&xx, rels, x + lbegin, x);
     mat_solve('B', &Xc[x + ibegin], &A_cc[xx]);
     mmult('N', 'N', &Uc[x + ibegin], &Xc[x + ibegin], &X[x + ibegin], 1., 0.);
     mmult('N', 'N', &Uo[x + ibegin], &Xo[x + ibegin], &X[x + ibegin], 1., 1.);
@@ -264,7 +253,7 @@ void svAccBk(Matrix* Xc, const Matrix* Xo, Matrix* X, const Matrix* Uc, const Ma
   sendBkSubstituted(Xc, level);
 }
 
-void permuteAndMerge(char fwbk, Matrix* px, Matrix* nx, const int64_t* lchild, int64_t nlevel) {
+void permuteAndMerge(char fwbk, struct Matrix* px, struct Matrix* nx, const int64_t* lchild, int64_t nlevel) {
   int64_t nloc = 0, nend = 0;
   selfLocalRange(&nloc, &nend, nlevel);
   int64_t nboxes = nend - nloc;
@@ -287,32 +276,30 @@ void permuteAndMerge(char fwbk, Matrix* px, Matrix* nx, const int64_t* lchild, i
     }
 }
 
-void allocRightHandSides(RightHandSides st[], const Base base[], int64_t levels) {
+void allocRightHandSides(struct RightHandSides st[], const struct Base base[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = (int64_t)1 << i;
-    contentLength(&nodes, i);
-
-    RightHandSides& rhs_i = st[i];
-    rhs_i.Xlen = nodes;
-    rhs_i.X.resize(nodes);
-    rhs_i.Xc.resize(nodes);
-    rhs_i.Xo.resize(nodes);
+    int64_t nodes = base[i].Ulen;
+    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nodes * 3));
+    st[i].Xlen = nodes;
+    st[i].X = arr_m;
+    st[i].Xc = &arr_m[nodes];
+    st[i].Xo = &arr_m[nodes * 2];
 
     for (int64_t n = 0; n < nodes; n++) {
       int64_t dim = base[i].DIMS[n];
       int64_t dim_o = base[i].DIML[n];
       int64_t dim_c = dim - dim_o;
-      matrixCreate(&rhs_i.X[n], dim, 1);
-      matrixCreate(&rhs_i.Xc[n], dim_c, 1);
-      matrixCreate(&rhs_i.Xo[n], dim_o, 1);
-      zeroMatrix(&rhs_i.X[n]);
-      zeroMatrix(&rhs_i.Xc[n]);
-      zeroMatrix(&rhs_i.Xo[n]);
+      matrixCreate(&st[i].X[n], dim, 1);
+      matrixCreate(&st[i].Xc[n], dim_c, 1);
+      matrixCreate(&st[i].Xo[n], dim_o, 1);
+      zeroMatrix(&st[i].X[n]);
+      zeroMatrix(&st[i].Xc[n]);
+      zeroMatrix(&st[i].Xo[n]);
     }
   }
 }
 
-void deallocRightHandSides(RightHandSides* st, int64_t levels) {
+void deallocRightHandSides(struct RightHandSides* st, int64_t levels) {
   for (int i = 0; i <= levels; i++) {
     int64_t nodes = st[i].Xlen;
     for (int64_t n = 0; n < nodes; n++) {
@@ -321,14 +308,11 @@ void deallocRightHandSides(RightHandSides* st, int64_t levels) {
       matrixDestroy(&st[i].Xo[n]);
     }
 
-    st[i].Xlen = 0;
-    st[i].X.clear();
-    st[i].Xc.clear();
-    st[i].Xo.clear();
+    free(st[i].X);
   }
 }
 
-void RightHandSides_mem(int64_t* bytes, const RightHandSides* st, int64_t levels) {
+void RightHandSides_mem(int64_t* bytes, const struct RightHandSides* st, int64_t levels) {
   int64_t count = 0;
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = st[i].Xlen;
@@ -342,7 +326,7 @@ void RightHandSides_mem(int64_t* bytes, const RightHandSides* st, int64_t levels
   *bytes = count;
 }
 
-void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Matrix* X, int64_t levels) {
+void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], const struct Matrix* X, int64_t levels) {
   int64_t ibegin = 0;
   int64_t iend = (int64_t)1 << levels;
   selfLocalRange(&ibegin, &iend, levels);
@@ -351,16 +335,16 @@ void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[
     cpyMatToMat(X[i].M, X[i].N, &X[i], &st[levels].X[i], 0, 0, 0, 0);
 
   for (int64_t i = levels; i > 0; i--) {
-    svAccFw(st[i].Xc.data(), st[i].Xo.data(), st[i].X.data(), B[i].Uc, B[i].Uo, A[i].A_cc.data(), A[i].A_oc.data(), rels[i], i);
-    DistributeMatricesList(st[i].Xo.data(), i);
-    permuteAndMerge('F', st[i].Xo.data(), st[i - 1].X.data(), B[i - 1].Lchild, i - 1);
+    svAccFw(st[i].Xc, st[i].Xo, st[i].X, B[i].Uc, B[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], i);
+    DistributeMatricesList(st[i].Xo, i);
+    permuteAndMerge('F', st[i].Xo, st[i - 1].X, B[i - 1].Lchild, i - 1);
   }
   mat_solve('A', &st[0].X[0], &A[0].A[0]);
   
   for (int64_t i = 1; i <= levels; i++) {
-    permuteAndMerge('B', st[i].Xo.data(), st[i - 1].X.data(), B[i - 1].Lchild, i - 1);
-    DistributeMatricesList(st[i].Xo.data(), i);
-    svAccBk(st[i].Xc.data(), st[i].Xo.data(), st[i].X.data(), B[i].Uc, B[i].Uo, A[i].A_cc.data(), A[i].A_oc.data(), rels[i], i);
+    permuteAndMerge('B', st[i].Xo, st[i - 1].X, B[i - 1].Lchild, i - 1);
+    DistributeMatricesList(st[i].Xo, i);
+    svAccBk(st[i].Xc, st[i].Xo, st[i].X, B[i].Uc, B[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], i);
   }
 }
 

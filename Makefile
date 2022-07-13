@@ -20,17 +20,17 @@ endif
 all: lorasp
 	$(info $(MSG))
 
-linalg: linalg.c linalg.h
+linalg: linalg.c
 	$(CC) $(CCFLAGS) $(MKLFLAG) -c linalg.c
 
-kernel: kernel.c kernel.h
+kernel: kernel.c
 	$(CC) $(CCFLAGS) -c kernel.c
 
-build_tree: build_tree.c build_tree.h
+build_tree: build_tree.c
 	$(CC) $(CCFLAGS) -c build_tree.c
 
-umv: umv.cxx umv.h
-	$(CXX) $(CXXFLAGS) -c umv.cxx
+umv: umv.c
+	$(CC) $(CCFLAGS) -c umv.c
 
 dist: dist.cxx dist.h
 	$(CXX) $(CXXFLAGS) -c dist.cxx
