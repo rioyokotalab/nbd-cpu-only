@@ -222,35 +222,6 @@ void factorA(Node A[], const Base B[], const CSC rels_near[], const CSC rels_far
   chol_decomp(&A[0].A[0]);
 }
 
-void allocSpDense(SpDense& sp, int64_t levels) {
-  sp.Levels = levels;
-  sp.D.resize(levels + 1);
-  sp.Basis.resize(levels + 1);
-  sp.RelsNear.resize(levels + 1);
-  sp.RelsFar.resize(levels + 1);
-}
-
-void deallocSpDense(SpDense* sp) {
-  int64_t level = sp->Levels;
-  deallocBasis(&(sp->Basis)[0], level);
-  deallocNode(&(sp->D)[0], level);
-  
-  sp->Levels = 0;
-  sp->Basis.clear();
-  sp->D.clear();
-
-  for (int64_t i = 0; i <= level; i++) {
-    free(sp->RelsFar[i].COL_INDEX);
-    free(sp->RelsNear[i].COL_INDEX);
-  }
-  sp->RelsNear.clear();
-  sp->RelsFar.clear();
-}
-
-void factorSpDense(SpDense& sp) {
-  factorA(&sp.D[0], &sp.Basis[0], &sp.RelsNear[0], &sp.RelsFar[0], sp.Levels);
-}
-
 void svAccFw(Matrix* Xc, Matrix* Xo, const Matrix* X, const Matrix* Uc, const Matrix* Uo, const Matrix* A_cc, const Matrix* A_oc, const CSC& rels, int64_t level) {
   int64_t ibegin = 0, iend = 0, lbegin = 0;
   selfLocalRange(&ibegin, &iend, level);
@@ -311,23 +282,19 @@ void permuteAndMerge(char fwbk, Matrix* px, Matrix* nx, const int64_t* lchild, i
 
   if (fwbk == 'F' || fwbk == 'f')
     for (int64_t i = 0; i < nboxes; i++) {
-      int64_t c0 = lchild[i + nloc];
+      int64_t c = i + nloc;
+      int64_t c0 = lchild[c];
       int64_t c1 = c0 + 1;
-      Matrix& x0 = nx[i + nloc];
-      const Matrix& x1 = px[c0];
-      cpyMatToMat(x1.M, x0.N, &x1, &x0, 0, 0, 0, 0);
-      const Matrix& x2 = px[c1];
-      cpyMatToMat(x2.M, x0.N, &x2, &x0, 0, 0, x0.M - x2.M, 0);
+      cpyMatToMat(px[c0].M, nx[c].N, &px[c0], &nx[c], 0, 0, 0, 0);
+      cpyMatToMat(px[c1].M, nx[c].N, &px[c1], &nx[c], 0, 0, nx[c].M - px[c1].M, 0);
     }
   else if (fwbk == 'B' || fwbk == 'b')
     for (int64_t i = 0; i < nboxes; i++) {
-      int64_t c0 = lchild[i + nloc];
+      int64_t c = i + nloc;
+      int64_t c0 = lchild[c];
       int64_t c1 = c0 + 1;
-      const Matrix& x0 = nx[i + nloc];
-      Matrix& x1 = px[c0];
-      cpyMatToMat(x1.M, x0.N, &x0, &x1, 0, 0, 0, 0);
-      Matrix& x2 = px[c1];
-      cpyMatToMat(x2.M, x0.N, &x0, &x2, x0.M - x2.M, 0, 0, 0);
+      cpyMatToMat(px[c0].M, nx[c].N, &nx[c], &px[c0], 0, 0, 0, 0);
+      cpyMatToMat(px[c1].M, nx[c].N, &nx[c], &px[c1], nx[c].M - px[c1].M, 0, 0, 0);
     }
 }
 
@@ -406,10 +373,5 @@ void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[
     DistributeMatricesList(st[i].Xo.data(), i);
     svAccBk(st[i].Xc.data(), st[i].Xo.data(), st[i].X.data(), B[i].Uc, B[i].Uo, A[i].A_cc.data(), A[i].A_oc.data(), rels[i], i);
   }
-}
-
-void solveSpDense(RightHandSides st[], const SpDense& sp, const Matrix* X) {
-  allocRightHandSides(st, &sp.Basis[0], sp.Levels);
-  solveA(st, &sp.D[0], &sp.Basis[0], &sp.RelsNear[0], X, sp.Levels);
 }
 

@@ -28,14 +28,6 @@ struct RightHandSides {
   std::vector<Matrix> Xo;
 };
 
-struct SpDense {
-  int64_t Levels;
-  std::vector<Node> D;
-  std::vector<Base> Basis;
-  std::vector<CSC> RelsNear;
-  std::vector<CSC> RelsFar;
-};
-
 void allocNodes(Node* nodes, const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels);
 
 void deallocNode(Node* node, int64_t levels);
@@ -44,13 +36,7 @@ void node_mem(int64_t* bytes, const Node* node, int64_t levels);
 
 void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level);
 
-void factorA(Node A[], const Base B[], const CSC rels[], int64_t levels);
-
-void allocSpDense(SpDense& sp, int64_t levels);
-
-void deallocSpDense(SpDense* sp);
-
-void factorSpDense(SpDense& sp);
+void factorA(Node A[], const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels);
 
 void allocRightHandSides(RightHandSides st[], const Base base[], int64_t levels);
 
@@ -59,9 +45,6 @@ void deallocRightHandSides(RightHandSides* st, int64_t levels);
 void RightHandSides_mem(int64_t* bytes, const RightHandSides* st, int64_t levels);
 
 void solveA(RightHandSides st[], const Node A[], const Base B[], const CSC rels[], const Matrix* X, int64_t levels);
-
-void solveSpDense(RightHandSides st[], const SpDense& sp, const Matrix* X);
-
 
 #ifdef __cplusplus
 }

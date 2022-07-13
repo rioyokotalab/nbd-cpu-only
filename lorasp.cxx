@@ -153,26 +153,28 @@ int main(int argc, char* argv[]) {
   std::vector<CellComm> cell_comm(levels + 1);
   buildComm(cell_comm.data(), ncells, cell.data(), &cellFar, &cellNear, levels);
 
-  SpDense sp;
-  allocSpDense(sp, levels);
-  relations(&sp.RelsNear[0], ncells, cell.data(), &cellNear, levels);
-  relations(&sp.RelsFar[0], ncells, cell.data(), &cellFar, levels);
-  allocBasis(sp.Basis.data(), levels, ncells, cell.data(), cell_comm.data());
+  std::vector<CSC> rels_far(levels + 1);
+  std::vector<CSC> rels_near(levels + 1);
+  std::vector<Base> basis(levels + 1);
+  relations(&rels_near[0], ncells, cell.data(), &cellNear, levels);
+  relations(&rels_far[0], ncells, cell.data(), &cellFar, levels);
+  allocBasis(&basis[0], levels, ncells, cell.data(), cell_comm.data());
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &sp.Basis[0], ncells, cell.data(), &sp.RelsNear[0], levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
+  evaluateBaseAll(ef, &basis[0], ncells, cell.data(), &rels_near[0], levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
   
-  allocNodes(sp.D.data(), sp.Basis.data(), sp.RelsNear.data(), sp.RelsFar.data(), levels);
+  std::vector<Node> nodes(levels + 1);
+  allocNodes(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], levels);
 
-  evaluate('N', sp.D[levels].A.data(), ef, ncells, &cell[0], body.data(), &sp.RelsNear[levels], levels);
+  evaluate('N', nodes[levels].A.data(), ef, ncells, &cell[0], body.data(), &rels_near[levels], levels);
   for (int64_t i = 0; i <= levels; i++)
-    evaluate('F', sp.D[i].S.data(), ef, ncells, &cell[0], body.data(), &sp.RelsFar[i], i);
+    evaluate('F', nodes[i].S.data(), ef, ncells, &cell[0], body.data(), &rels_far[i], i);
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorSpDense(sp);
+  factorA(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], levels);
   stopTimer(&factor_time, &factor_comm_time);
 
   int64_t xlen = (int64_t)1 << levels;
@@ -185,10 +187,11 @@ int main(int argc, char* argv[]) {
   h2MatVecReference(B.data(), ef, &cell[0], body.data(), levels);
 
   std::vector<RightHandSides> rhs(levels + 1);
+  allocRightHandSides(&rhs[0], &basis[0], levels);
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
-  solveSpDense(&rhs[0], sp, B.data());
+  solveA(&rhs[0], &nodes[0], &basis[0], &rels_near[0], &B[0], levels);
   stopTimer(&solve_time, &solve_comm_time);
 
   DistributeMatricesList(rhs[levels].X.data(), levels);
@@ -199,8 +202,8 @@ int main(int argc, char* argv[]) {
   int64_t dim = 3;
 
   int64_t mem_basis, mem_A, mem_X;
-  basis_mem(&mem_basis, &sp.Basis[0], levels);
-  node_mem(&mem_A, &sp.D[0], levels);
+  basis_mem(&mem_basis, &basis[0], levels);
+  node_mem(&mem_A, &nodes[0], levels);
   RightHandSides_mem(&mem_X, &rhs[0], levels);
 
   if (mpi_rank == 0) {
@@ -214,7 +217,12 @@ int main(int argc, char* argv[]) {
     std::cout << "Err: " << err << std::endl;
   }
 
-  deallocSpDense(&sp);
+  deallocBasis(&basis[0], levels);
+  deallocNode(&nodes[0], levels);
+  for (int64_t i = 0; i <= levels; i++) {
+    free(rels_far[i].COL_INDEX);
+    free(rels_near[i].COL_INDEX);
+  }
   deallocRightHandSides(&rhs[0], levels);
   for (int64_t i = 0; i < xlen; i++) {
     matrixDestroy(&X[i]);
