@@ -9,9 +9,6 @@
 #include "inttypes.h"
 
 #ifdef USE_MKL
-#ifndef MKL_ILP64
-#define MKL_ILP64
-#endif
 #include "mkl.h"
 #else
 #include "cblas.h"
@@ -58,53 +55,36 @@ void maxpby(struct Matrix* A, const double* v, double alpha, double beta) {
 
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2) {
   if (m > 0 && n > 0)
+#ifdef USE_MKL
+    mkl_domatcopy('C', 'N', m, n, 1., &(m1->A)[y1 + x1 * m1->M], m1->M, &(m2->A)[y2 + x2 * m2->M], m2->M);
+#else
     for (int64_t j = 0; j < n; j++) {
       int64_t j1 = y1 + (x1 + j) * m1->M;
       int64_t j2 = y2 + (x2 + j) * m2->M;
       memcpy(&(m2->A)[j2], &(m1->A)[j1], sizeof(double) * m);
     }
+#endif
 }
 
-void qr_with_complements(struct Matrix* Qo, struct Matrix* Qc, struct Matrix* R) {
-  int64_t m = Qo->M;
-  int64_t n = Qo->N;
-  int64_t nc = m - n;
-
-  double* work = (double*)malloc(sizeof(double) * (n + m * m));
-  struct Matrix Q = { &work[n], m, m };
-  cpyMatToMat(m, n, Qo, &Q, 0, 0, 0, 0);
-
-  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, Q.A, m, work);
-  cpyMatToMat(n, n, &Q, R, 0, 0, 0, 0);
-  LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, Q.A, m, work);
-  cpyMatToMat(m, n, &Q, Qo, 0, 0, 0, 0);
-  if (nc > 0)
-    cpyMatToMat(m, nc, &Q, Qc, 0, n, 0, 0);
-  
-  for (int64_t i = 0; i < n - 1; i++)
-    memset(&(R->A)[i * n + i + 1], 0, sizeof(double) * (n - i - 1));
-
-  free(work);
+void qr_full(struct Matrix* Q, struct Matrix* R) {
+  int64_t m = Q->M;
+  int64_t n = R->N;
+  double* tau = (double*)calloc(n, sizeof(double));
+  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, Q->A, m, tau);
+  cpyMatToMat(n, n, Q, R, 0, 0, 0, 0);
+  LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, Q->A, m, tau);
+  free(tau);
 }
 
 void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* R2) {
   int64_t m1 = R1->N;
   int64_t m2 = R2->N;
   int64_t n = U->N;
-
-  double* work = (double*)malloc(sizeof(double) * n * (R1->M + R2->M));
-  struct Matrix ru1 = { work, R1->M, n };
-  struct Matrix ru2 = { &work[n * R1->M], R2->M, n };
-
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R1->M, n, m1, 1., R1->A, R1->M, U->A, U->M, 0., ru1.A, R1->M);
-  cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R2->M, n, m2, 1., R2->A, R2->M, &(U->A)[m1], U->M, 0., ru2.A, R2->M);
-  cpyMatToMat(R1->M, n, &ru1, U, 0, 0, 0, 0);
-  cpyMatToMat(R2->M, n, &ru2, U, 0, 0, R1->M, 0);
-
-  free(work);
+  cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, m1, n, 1., R1->A, R1->M, U->A, U->M);
+  cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, m2, n, 1., R2->A, R2->M, &U->A[m1], U->M);
 }
 
-void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int64_t* rnk_out) {
+void lraID(double epi, struct Matrix* A, struct Matrix* U, int32_t arows[], int64_t* rnk_out) {
   int64_t rank_a = A->M < A->N ? A->M : A->N;
   int64_t rank = rank_a;
   if (*rnk_out > 0)
@@ -124,23 +104,12 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int6
     cblas_dscal(A->M, work[i], &(U->A)[i * A->M], 1);
   memcpy(A->A, U->A, sizeof(double) * A->M * rank);
 
-#ifdef USE_MKL
-  MKL_INT* ipiv = (MKL_INT*)arows;
-#else
-  int* ipiv = (int*)malloc(sizeof(int) * rank);
-#endif
-  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, ipiv);
+  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, arows);
   if (info > 0)
     rank = info - 1;
   *rnk_out = rank;
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
-
-#ifndef USE_MKL
-  for (int64_t i = 0; i < rank; i++)
-    arows[i] = ipiv[i];
-  free(ipiv);
-#endif
   free(work);
 }
 
@@ -176,11 +145,8 @@ void utav(const struct Matrix* U, const struct Matrix* A, const struct Matrix* V
 }
 
 void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S) {
-  double* work = (double*)malloc(sizeof(double) * S->M * S->N);
-  struct Matrix RS = { work, S->M, S->N };
-  mmult('N', 'N', R1, S, &RS, 1., 0.);
-  mmult('N', 'T', &RS, R2, S, 1., 0.);
-  free(work);
+  cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, R1->N, S->N, 1., R1->A, R1->M, S->A, S->M);
+  cblas_dtrmm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, S->M, R2->N, 1., R2->A, R2->M, S->A, S->M);
 }
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {

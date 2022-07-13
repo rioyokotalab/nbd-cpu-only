@@ -10,7 +10,7 @@ ifneq (${MKLROOT},)
 	MKLFLAG	= -DUSE_MKL
 	CCFLAGS	+=  -I"${MKLROOT}/include"
 	CXXFLAGS	+=  -I"${MKLROOT}/include"
-	LDFLAGS	+= -fopenmp -L${MKLROOT}/lib/intel64 -lmkl_intel_ilp64 -lmkl_gnu_thread -lmkl_core 
+	LDFLAGS	+= -fopenmp -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core 
 	MSG	= *** Successfully found and linking with Intel MKL! ***
 else
 	LDFLAGS	+= -lblas -llapacke

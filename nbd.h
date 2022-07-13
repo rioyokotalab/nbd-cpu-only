@@ -14,69 +14,11 @@ struct Body {
   double B;
 };
 
-void laplace3d(double* r2);
-
-void yukawa3d(double* r2);
-
-void set_kernel_constants(double singularity, double alpha);
-
-void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]);
-
-void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsigned int seed);
-
-void mesh_unit_sphere(struct Body* bodies, int64_t nbodies);
-
-void mesh_unit_cube(struct Body* bodies, int64_t nbodies);
-
-void magnify_reloc(struct Body* bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[]);
-
-void body_neutral_charge(struct Body* bodies, int64_t nbodies, double cmax, unsigned int seed);
-
-void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C[]);
-
-void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);
-
 struct Matrix {
   double* A;
   int64_t M;
   int64_t N;
 };
-
-void matrixCreate(struct Matrix* mat, int64_t m, int64_t n);
-
-void matrixDestroy(struct Matrix* mat);
-
-void cpyFromMatrix(const struct Matrix* A, double* v);
-
-void maxpby(struct Matrix* A, const double* v, double alpha, double beta);
-
-void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
-
-void qr_with_complements(struct Matrix* Qo, struct Matrix* Qc, struct Matrix* R);
-
-void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* R2);
-
-void lraID(double epi, struct Matrix* A, struct Matrix* U, int64_t arows[], int64_t* rnk_out);
-
-void zeroMatrix(struct Matrix* A);
-
-void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
-
-void chol_decomp(struct Matrix* A);
-
-void trsm_lowerA(struct Matrix* A, const struct Matrix* L);
-
-void utav(const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C);
-
-void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S);
-
-void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
-
-void normalizeA(struct Matrix* A, const struct Matrix* B);
-
-void mnrm2(const struct Matrix* A, double* nrm);
-
-void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA);
 
 struct Cell {
   int64_t CHILD;
@@ -100,27 +42,87 @@ struct CSC {
 
 struct CellComm {
   struct CSC Comms; // P by P sparse. Entry (i, j) proc i comm with j.
-  int64_t* ProcRootI; // len P. The PRI[i]'th element in comms is Entry (i, i) on row/column i.
-  int64_t* ProcBoxes; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
-  int64_t* ProcBoxesEnd; // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
+  int64_t *ProcRootI, *ProcBoxes, *ProcBoxesEnd, Proc[2]; // len P. The PRI[i]'th element in comms is Entry (i, i) on row/column i.
+  // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
+  // len P. Proc i hold boxes within [PB[i], PBEnd[i]) as LET.
 
-  int64_t Proc[2]; // Local Proc num used by searching. Same content stored in range [P0, P1).
-  MPI_Comm* Comm_box; // len P. CB[i] is used when Proc i broadcasts.
-  MPI_Comm Comm_merge; // Local comm for merged procs.
+  // Local Proc num used by searching. Same content stored in range [P0, P1).
+  MPI_Comm Comm_merge, *Comm_box; // len P. CB[i] is used when Proc i broadcasts.
+  // Local comm for merged procs.
 };
 
 struct Base {
-  int64_t Ulen;
-  int64_t* Lchild;
-  int64_t* DIMS;
-  int64_t* DIML;
-  int64_t* Offsets;
-  int64_t* Multipoles;
-  
-  struct Matrix* Uo;
-  struct Matrix* Uc;
-  struct Matrix* R;
+  int64_t Ulen, *Lchild, *Dims, *DimsLr, *Offsets, *Multipoles;
+  struct Matrix *Uo, *Uc, *R;
 };
+
+struct Node {
+  int64_t lenA, lenS;
+  struct Matrix *A, *S, *A_cc, *A_oc, *A_oo;
+};
+
+struct RightHandSides {
+  int64_t Xlen;
+  struct Matrix *X, *Xc, *Xo;
+};
+
+void laplace3d(double* r2);
+
+void yukawa3d(double* r2);
+
+void set_kernel_constants(double singularity, double alpha);
+
+void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]);
+
+void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsigned int seed);
+
+void mesh_unit_sphere(struct Body* bodies, int64_t nbodies);
+
+void mesh_unit_cube(struct Body* bodies, int64_t nbodies);
+
+void magnify_reloc(struct Body* bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[]);
+
+void body_neutral_charge(struct Body* bodies, int64_t nbodies, double cmax, unsigned int seed);
+
+void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C[]);
+
+void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);
+
+void matrixCreate(struct Matrix* mat, int64_t m, int64_t n);
+
+void matrixDestroy(struct Matrix* mat);
+
+void cpyFromMatrix(const struct Matrix* A, double* v);
+
+void maxpby(struct Matrix* A, const double* v, double alpha, double beta);
+
+void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
+
+void qr_full(struct Matrix* Q, struct Matrix* R);
+
+void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* R2);
+
+void lraID(double epi, struct Matrix* A, struct Matrix* U, int32_t arows[], int64_t* rnk_out);
+
+void zeroMatrix(struct Matrix* A);
+
+void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
+
+void chol_decomp(struct Matrix* A);
+
+void trsm_lowerA(struct Matrix* A, const struct Matrix* L);
+
+void utav(const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C);
+
+void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S);
+
+void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
+
+void normalizeA(struct Matrix* A, const struct Matrix* B);
+
+void mnrm2(const struct Matrix* A, double* nrm);
+
+void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA);
 
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
 
@@ -155,23 +157,6 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
 void evaluate(char NoF, struct Matrix* d, void(*ef)(double*), int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
 void solveRelErr(double* err_out, const struct Matrix* X, const struct Matrix* ref, const struct CellComm* comm);
-
-struct Node {
-  int64_t lenA;
-  int64_t lenS;
-  struct Matrix* A;
-  struct Matrix* S;
-  struct Matrix* A_cc;
-  struct Matrix* A_oc;
-  struct Matrix* A_oo;
-};
-
-struct RightHandSides {
-  int64_t Xlen;
-  struct Matrix* X;
-  struct Matrix* Xc;
-  struct Matrix* Xo;
-};
 
 void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels);
 

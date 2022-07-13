@@ -11,7 +11,7 @@ set(CMAKE_CXX_FLAGS "-O3 -m64 -Wall -Wextra")
 
 set(MKL_ARCH intel64)
 set(MKL_LINK dynamic)
-set(MKL_INTERFACE_FULL intel_ilp64)
+set(MKL_INTERFACE_FULL intel_lp64)
 set(MKL_THREADING gnu_thread)
 set(MKL_MPI intelmpi)
 

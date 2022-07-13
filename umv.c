@@ -24,16 +24,16 @@ void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels
 
     for (int64_t x = 0; x < rels_near[i].N; x++) {
       int64_t box_x = ibegin + x;
-      int64_t dim_x = B[i].DIMS[box_x];
-      int64_t diml_x = B[i].DIML[box_x];
+      int64_t dim_x = B[i].Dims[box_x];
+      int64_t diml_x = B[i].DimsLr[box_x];
       int64_t dimc_x = dim_x - diml_x;
 
       for (int64_t yx = rels_near[i].COL_INDEX[x]; yx < rels_near[i].COL_INDEX[x + 1]; yx++) {
         int64_t y = rels_near[i].ROW_INDEX[yx];
         int64_t box_y = y;
         iLocal(&box_y, y, i);
-        int64_t dim_y = B[i].DIMS[box_y];
-        int64_t diml_y = B[i].DIML[box_y];
+        int64_t dim_y = B[i].Dims[box_y];
+        int64_t diml_y = B[i].DimsLr[box_y];
         int64_t dimc_y = dim_y - diml_y;
 
         matrixCreate(&nodes[i].A[yx], dim_y, dim_x);
@@ -47,7 +47,7 @@ void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels
         int64_t y = rels_far[i].ROW_INDEX[yx];
         int64_t box_y = y;
         iLocal(&box_y, y, i);
-        int64_t diml_y = B[i].DIML[box_y];
+        int64_t diml_y = B[i].DimsLr[box_y];
         matrixCreate(&nodes[i].S[yx], diml_y, diml_x);
       }
     }
@@ -286,8 +286,8 @@ void allocRightHandSides(struct RightHandSides st[], const struct Base base[], i
     st[i].Xo = &arr_m[nodes * 2];
 
     for (int64_t n = 0; n < nodes; n++) {
-      int64_t dim = base[i].DIMS[n];
-      int64_t dim_o = base[i].DIML[n];
+      int64_t dim = base[i].Dims[n];
+      int64_t dim_o = base[i].DimsLr[n];
       int64_t dim_c = dim - dim_o;
       matrixCreate(&st[i].X[n], dim, 1);
       matrixCreate(&st[i].Xc[n], dim_c, 1);
