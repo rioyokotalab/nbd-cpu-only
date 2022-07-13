@@ -38,7 +38,9 @@ void chol_decomp(struct Matrix* A);
 
 void trsm_lowerA(struct Matrix* A, const struct Matrix* L);
 
-void utav(char tb, const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C);
+void utav(const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C);
+
+void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S);
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 

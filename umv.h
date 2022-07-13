@@ -18,7 +18,6 @@ struct Node {
   std::vector<Matrix> A_cc;
   std::vector<Matrix> A_oc;
   std::vector<Matrix> A_oo;
-  std::vector<Matrix> S_oo;
 };
 
 struct RightHandSides {
@@ -33,8 +32,6 @@ void allocNodes(Node* nodes, const Base B[], const CSC rels_near[], const CSC re
 void deallocNode(Node* node, int64_t levels);
 
 void node_mem(int64_t* bytes, const Node* node, int64_t levels);
-
-void factorNode(Node& n, const Base& basis, const CSC& rels_near, const CSC& rels_far, int64_t level);
 
 void factorA(Node A[], const Base B[], const CSC rels_near[], const CSC rels_far[], int64_t levels);
 

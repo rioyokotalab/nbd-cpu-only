@@ -167,21 +167,20 @@ void trsm_lowerA(struct Matrix* A, const struct Matrix* L) {
     cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, A->M, A->N, 1., L->A, L->M, A->A, A->M);
 }
 
-void utav(char tb, const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C) {
-  if (tb == 'N' || tb == 'n') {
-    double* work = (double*)malloc(sizeof(double) * C->M * A->N);
-    struct Matrix UA = { work, C->M, A->N };
-    mmult('T', 'N', U, A, &UA, 1., 0.);
-    mmult('N', 'N', &UA, VT, C, 1., 0.);
-    free(work);
-  }
-  else if (tb == 'T' || tb == 't') {
-    double* work = (double*)malloc(sizeof(double) * C->M * A->N);
-    struct Matrix UA = { work, C->M, A->N };
-    mmult('N', 'N', U, A, &UA, 1., 0.);
-    mmult('N', 'T', &UA, VT, C, 1., 0.);
-    free(work);
-  }
+void utav(const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C) {
+  double* work = (double*)malloc(sizeof(double) * C->M * A->N);
+  struct Matrix UA = { work, C->M, A->N };
+  mmult('T', 'N', U, A, &UA, 1., 0.);
+  mmult('N', 'N', &UA, VT, C, 1., 0.);
+  free(work);
+}
+
+void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S) {
+  double* work = (double*)malloc(sizeof(double) * S->M * S->N);
+  struct Matrix RS = { work, S->M, S->N };
+  mmult('N', 'N', R1, S, &RS, 1., 0.);
+  mmult('N', 'T', &RS, R2, S, 1., 0.);
+  free(work);
 }
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {
