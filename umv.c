@@ -3,72 +3,80 @@
 #include "dist.h"
 
 #include "stdlib.h"
+#include "string.h"
 #include "math.h"
 
-void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels) {
+void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t n_i = rels_near[i].N;
     int64_t nnz = rels_near[i].ColIndex[n_i];
     int64_t nnz_f = rels_far[i].ColIndex[n_i];
-    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nnz * 4 + nnz_f));
-    nodes[i].A = arr_m;
-    nodes[i].A_cc = &arr_m[nnz];
-    nodes[i].A_oc = &arr_m[nnz * 2];
-    nodes[i].A_oo = &arr_m[nnz * 3];
-    nodes[i].S = &arr_m[nnz * 4];
-    nodes[i].lenA = nnz;
-    nodes[i].lenS = nnz_f;
+    int64_t len_arr = nnz * 4 + nnz_f;
+    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
+    A[i].A = arr_m;
+    A[i].A_cc = &arr_m[nnz];
+    A[i].A_oc = &arr_m[nnz * 2];
+    A[i].A_oo = &arr_m[nnz * 3];
+    A[i].S = &arr_m[nnz * 4];
+    A[i].lenA = nnz;
+    A[i].lenS = nnz_f;
 
     int64_t ibegin = 0, iend = 0;
-    selfLocalRange(&ibegin, &iend, i);
+    self_local_range(&ibegin, &iend, &comm[i]);
 
+    int64_t count = 0;
     for (int64_t x = 0; x < rels_near[i].N; x++) {
       int64_t box_x = ibegin + x;
-      int64_t dim_x = B[i].Dims[box_x];
-      int64_t diml_x = B[i].DimsLr[box_x];
+      int64_t dim_x = basis[i].Dims[box_x];
+      int64_t diml_x = basis[i].DimsLr[box_x];
       int64_t dimc_x = dim_x - diml_x;
 
       for (int64_t yx = rels_near[i].ColIndex[x]; yx < rels_near[i].ColIndex[x + 1]; yx++) {
         int64_t y = rels_near[i].RowIndex[yx];
         int64_t box_y = y;
-        iLocal(&box_y, y, i);
-        int64_t dim_y = B[i].Dims[box_y];
-        int64_t diml_y = B[i].DimsLr[box_y];
+        i_local(&box_y, &comm[i]);
+        int64_t dim_y = basis[i].Dims[box_y];
+        int64_t diml_y = basis[i].DimsLr[box_y];
         int64_t dimc_y = dim_y - diml_y;
-
-        matrixCreate(&nodes[i].A[yx], dim_y, dim_x);
-        matrixCreate(&nodes[i].A_cc[yx], dimc_y, dimc_x);
-        matrixCreate(&nodes[i].A_oc[yx], diml_y, dimc_x);
-        matrixCreate(&nodes[i].A_oo[yx], diml_y, diml_x);
-        zeroMatrix(&nodes[i].A[yx]);
+        arr_m[yx].M = dim_y; // A
+        arr_m[yx].N = dim_x;
+        arr_m[yx + nnz].M = dimc_y; // A_cc
+        arr_m[yx + nnz].N = dimc_x;
+        arr_m[yx + nnz * 2].M = diml_y; // A_oc
+        arr_m[yx + nnz * 2].N = dimc_x;
+        arr_m[yx + nnz * 3].M = diml_y; // A_oo
+        arr_m[yx + nnz * 3].N = diml_x;
+        count += dim_y * dim_x + dimc_y * dimc_x + diml_y * dimc_x + diml_y * diml_x;
       }
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
         int64_t y = rels_far[i].RowIndex[yx];
         int64_t box_y = y;
-        iLocal(&box_y, y, i);
-        int64_t diml_y = B[i].DimsLr[box_y];
-        matrixCreate(&nodes[i].S[yx], diml_y, diml_x);
+        i_local(&box_y, &comm[i]);
+        int64_t diml_y = basis[i].DimsLr[box_y];
+        arr_m[yx + nnz * 4].M = diml_y; // S
+        arr_m[yx + nnz * 4].N = diml_x;
+        count += diml_y * diml_x;
       }
+    }
+
+    double* data = NULL;
+    if (count > 0)
+      data = (double*)calloc(count, sizeof(double));
+    
+    for (int64_t j = 0; j < len_arr; j++) {
+      arr_m[j].A = data;
+      int64_t len = arr_m[j].M * arr_m[j].N;
+      data = data + len;
     }
   }
 }
 
 void deallocNode(struct Node* node, int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t nnz = node[i].lenA;
-    for (int64_t n = 0; n < nnz; n++) {
-      matrixDestroy(&node[i].A[n]);
-      matrixDestroy(&node[i].A_cc[n]);
-      matrixDestroy(&node[i].A_oc[n]);
-      matrixDestroy(&node[i].A_oo[n]);
-    }
-
-    int64_t nnz_f = node[i].lenS;
-    for (int64_t n = 0; n < nnz_f; n++) {
-      matrixDestroy(&node[i].S[n]);
-    }
-
+    double* data = node[i].A[0].A;
+    if (data)
+      free(data);
     free(node[i].A);
   }
 }
@@ -176,12 +184,71 @@ void nextNode(struct Matrix* Mup, const struct CSC* rels_up, const struct Matrix
     butterflySumA(Mup, rels_up->ColIndex[rels_up->N], plevel);
 }
 
-void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels) {
+void factorA(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels) {
   for (int64_t i = levels; i > 0; i--) {
-    factorNode(A[i].A_cc, A[i].A_oc, A[i].A_oo, A[i].A, B[i].Uc, B[i].Uo, &rels_near[i], i);
-    nextNode(A[i - 1].A, &rels_near[i - 1], A[i].A_oo, A[i].S, B[i - 1].Lchild, &rels_near[i], &rels_far[i], i - 1);
+    factorNode(A[i].A_cc, A[i].A_oc, A[i].A_oo, A[i].A, basis[i].Uc, basis[i].Uo, &rels_near[i], i);
+    nextNode(A[i - 1].A, &rels_near[i - 1], A[i].A_oo, A[i].S, basis[i - 1].Lchild, &rels_near[i], &rels_far[i], i - 1);
   }
   chol_decomp(&A[0].A[0]);
+}
+
+void allocRightHandSides(struct RightHandSides rhs[], const struct Base base[], int64_t levels) {
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t len = base[i].Ulen;
+    int64_t len_arr = len * 3;
+    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
+    rhs[i].Xlen = len;
+    rhs[i].X = arr_m;
+    rhs[i].Xc = &arr_m[len];
+    rhs[i].Xo = &arr_m[len * 2];
+
+    int64_t count = 0;
+    for (int64_t j = 0; j < len; j++) {
+      int64_t dim = base[i].Dims[j];
+      int64_t diml = base[i].DimsLr[j];
+      int64_t dimc = dim - diml;
+      arr_m[j].M = dim; // X
+      arr_m[j].N = 1;
+      arr_m[j + len].M = dimc; // Xc
+      arr_m[j + len].N = 1;
+      arr_m[j + len * 2].M = diml; // Xo
+      arr_m[j + len * 2].N = 1;
+      count += dim + dimc + diml;
+    }
+
+    double* data = NULL;
+    if (count > 0)
+      data = (double*)calloc(count, sizeof(double));
+    
+    for (int64_t j = 0; j < len_arr; j++) {
+      arr_m[j].A = data;
+      int64_t len = arr_m[j].M * arr_m[j].N;
+      data = data + len;
+    }
+  }
+}
+
+void deallocRightHandSides(struct RightHandSides* rhs, int64_t levels) {
+  for (int i = 0; i <= levels; i++) {
+    double* data = rhs[i].X[0].A;
+    if (data)
+      free(data);
+    free(rhs[i].X);
+  }
+}
+
+void RightHandSides_mem(int64_t* bytes, const struct RightHandSides* rhs, int64_t levels) {
+  int64_t count = 0;
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t len = rhs[i].Xlen;
+    int64_t bytes_x, bytes_o, bytes_c;
+    matrix_mem(&bytes_x, &rhs[i].X[0], len);
+    matrix_mem(&bytes_o, &rhs[i].Xo[0], len);
+    matrix_mem(&bytes_c, &rhs[i].Xc[0], len);
+
+    count = count + bytes_x + bytes_o + bytes_c;
+  }
+  *bytes = count;
 }
 
 void svAccFw(struct Matrix* Xc, struct Matrix* Xo, const struct Matrix* X, const struct Matrix* Uc, const struct Matrix* Uo, const struct Matrix* A_cc, const struct Matrix* A_oc, const struct CSC* rels, int64_t level) {
@@ -260,75 +327,25 @@ void permuteAndMerge(char fwbk, struct Matrix* px, struct Matrix* nx, const int6
     }
 }
 
-void allocRightHandSides(struct RightHandSides st[], const struct Base base[], int64_t levels) {
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = base[i].Ulen;
-    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nodes * 3));
-    st[i].Xlen = nodes;
-    st[i].X = arr_m;
-    st[i].Xc = &arr_m[nodes];
-    st[i].Xo = &arr_m[nodes * 2];
-
-    for (int64_t n = 0; n < nodes; n++) {
-      int64_t dim = base[i].Dims[n];
-      int64_t dim_o = base[i].DimsLr[n];
-      int64_t dim_c = dim - dim_o;
-      matrixCreate(&st[i].X[n], dim, 1);
-      matrixCreate(&st[i].Xc[n], dim_c, 1);
-      matrixCreate(&st[i].Xo[n], dim_o, 1);
-      zeroMatrix(&st[i].X[n]);
-      zeroMatrix(&st[i].Xc[n]);
-      zeroMatrix(&st[i].Xo[n]);
-    }
-  }
-}
-
-void deallocRightHandSides(struct RightHandSides* st, int64_t levels) {
-  for (int i = 0; i <= levels; i++) {
-    int64_t nodes = st[i].Xlen;
-    for (int64_t n = 0; n < nodes; n++) {
-      matrixDestroy(&st[i].X[n]);
-      matrixDestroy(&st[i].Xc[n]);
-      matrixDestroy(&st[i].Xo[n]);
-    }
-
-    free(st[i].X);
-  }
-}
-
-void RightHandSides_mem(int64_t* bytes, const struct RightHandSides* st, int64_t levels) {
-  int64_t count = 0;
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = st[i].Xlen;
-    int64_t bytes_x, bytes_o, bytes_c;
-    matrix_mem(&bytes_x, &st[i].X[0], nodes);
-    matrix_mem(&bytes_o, &st[i].Xo[0], nodes);
-    matrix_mem(&bytes_c, &st[i].Xc[0], nodes);
-
-    count = count + bytes_x + bytes_o + bytes_c;
-  }
-  *bytes = count;
-}
-
-void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], const struct Matrix* X, int64_t levels) {
+void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels[], const struct Matrix* X, int64_t levels) {
   int64_t ibegin = 0;
   int64_t iend = (int64_t)1 << levels;
   selfLocalRange(&ibegin, &iend, levels);
 
   for (int64_t i = ibegin; i < iend; i++)
-    cpyMatToMat(X[i].M, X[i].N, &X[i], &st[levels].X[i], 0, 0, 0, 0);
+    cpyMatToMat(X[i].M, X[i].N, &X[i], &rhs[levels].X[i], 0, 0, 0, 0);
 
   for (int64_t i = levels; i > 0; i--) {
-    svAccFw(st[i].Xc, st[i].Xo, st[i].X, B[i].Uc, B[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], i);
-    DistributeMatricesList(st[i].Xo, i);
-    permuteAndMerge('F', st[i].Xo, st[i - 1].X, B[i - 1].Lchild, i - 1);
+    svAccFw(rhs[i].Xc, rhs[i].Xo, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], i);
+    DistributeMatricesList(rhs[i].Xo, i);
+    permuteAndMerge('F', rhs[i].Xo, rhs[i - 1].X, basis[i - 1].Lchild, i - 1);
   }
-  mat_solve('A', &st[0].X[0], &A[0].A[0]);
+  mat_solve('A', &rhs[0].X[0], &A[0].A[0]);
   
   for (int64_t i = 1; i <= levels; i++) {
-    permuteAndMerge('B', st[i].Xo, st[i - 1].X, B[i - 1].Lchild, i - 1);
-    DistributeMatricesList(st[i].Xo, i);
-    svAccBk(st[i].Xc, st[i].Xo, st[i].X, B[i].Uc, B[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], i);
+    permuteAndMerge('B', rhs[i].Xo, rhs[i - 1].X, basis[i - 1].Lchild, i - 1);
+    DistributeMatricesList(rhs[i].Xo, i);
+    svAccBk(rhs[i].Xc, rhs[i].Xo, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], i);
   }
 }
 

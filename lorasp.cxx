@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
   stopTimer(&construct_time, &construct_comm_time);
   
   std::vector<Node> nodes(levels + 1);
-  allocNodes(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], levels);
+  allocNodes(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], cell_comm.data(), levels);
 
   evalD(ef, nodes[levels].A, ncells, &cell[0], body.data(), &rels_near[levels], levels);
   for (int64_t i = 0; i <= levels; i++)

@@ -112,7 +112,7 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
 
 void solveRelErr(double* err_out, const struct Matrix* X, const struct Matrix* ref, const struct CellComm* comm);
 
-void allocNodes(struct Node* nodes, const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels);
+void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
 void deallocNode(struct Node* node, int64_t levels);
 
