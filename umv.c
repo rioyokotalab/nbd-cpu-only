@@ -317,20 +317,83 @@ void permuteAndMerge(char fwbk, struct Matrix* px, struct Matrix* nx, const int6
       int64_t c = i + nloc;
       int64_t c0 = lchild[c];
       int64_t c1 = c0 + 1;
-      cpyMatToMat(px[c0].M, nx[c].N, &px[c0], &nx[c], 0, 0, 0, 0);
-      cpyMatToMat(px[c1].M, nx[c].N, &px[c1], &nx[c], 0, 0, nx[c].M - px[c1].M, 0);
+      cpyMatToMat(px[c0].M, 1, &px[c0], &nx[c], 0, 0, 0, 0);
+      cpyMatToMat(px[c1].M, 1, &px[c1], &nx[c], 0, 0, nx[c].M - px[c1].M, 0);
     }
   else if (fwbk == 'B' || fwbk == 'b')
     for (int64_t i = 0; i < nboxes; i++) {
       int64_t c = i + nloc;
       int64_t c0 = lchild[c];
       int64_t c1 = c0 + 1;
-      cpyMatToMat(px[c0].M, nx[c].N, &nx[c], &px[c0], 0, 0, 0, 0);
-      cpyMatToMat(px[c1].M, nx[c].N, &nx[c], &px[c1], nx[c].M - px[c1].M, 0, 0, 0);
+      cpyMatToMat(px[c0].M, 1, &nx[c], &px[c0], 0, 0, 0, 0);
+      cpyMatToMat(px[c1].M, 1, &nx[c], &px[c1], nx[c].M - px[c1].M, 0, 0, 0);
     }
 }
 
-#include "dist.h"
+void dist_double_svfw(char fwbk, double* arr[], const struct CellComm* comm) {
+  int __mpi_rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
+  int64_t mpi_rank = __mpi_rank;
+  int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
+  int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
+  const int64_t* row = &comm->Comms.RowIndex[pbegin];
+  double* data = arr[0];
+  int is_all = fwbk == 'A' || fwbk == 'a';
+
+  for (int64_t i = 0; i < plen; i++) {
+    int64_t p = row[i];
+    int is_fw = (fwbk == 'F' || fwbk == 'f') && p <= mpi_rank;
+    int is_bk = (fwbk == 'B' || fwbk == 'b') && mpi_rank < p;
+    if (is_all || is_fw || is_bk) {
+      int64_t lbegin = comm->ProcBoxes[p];
+      int64_t llen = comm->ProcBoxesEnd[p] - lbegin;
+      i_local(&lbegin, comm);
+      int64_t offset = arr[lbegin] - data;
+      int64_t len = arr[lbegin + llen] - arr[lbegin];
+      double* arr_sum = (double*)malloc(sizeof(double) * len);
+      MPI_Allreduce(&data[offset], arr_sum, len, MPI_DOUBLE, MPI_SUM, comm->Comm_box[p]);
+      memcpy(&data[offset], arr_sum, sizeof(double) * len);
+      free(arr_sum);
+    }
+  }
+
+  int64_t xlen = 0;
+  content_length(&xlen, comm);
+  int64_t alen = arr[xlen] - data;
+  if (comm->Proc[1] - comm->Proc[0] > 1)
+    MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
+}
+
+void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
+  int __mpi_rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
+  int64_t mpi_rank = __mpi_rank;
+  int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
+  int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
+  const int64_t* row = &comm->Comms.RowIndex[pbegin];
+  double* data = arr[0];
+  int is_all = fwbk == 'A' || fwbk == 'a';
+
+  for (int64_t i = plen - 1; i >= 0; i--) {
+    int64_t p = row[i];
+    int is_fw = (fwbk == 'F' || fwbk == 'f') && p <= mpi_rank;
+    int is_bk = (fwbk == 'B' || fwbk == 'b') && mpi_rank < p;
+    if (is_all || is_fw || is_bk) {
+      int64_t lbegin = comm->ProcBoxes[p];
+      int64_t llen = comm->ProcBoxesEnd[p] - lbegin;
+      i_local(&lbegin, comm);
+      int64_t offset = arr[lbegin] - data;
+      int64_t len = arr[lbegin + llen] - arr[lbegin];
+      MPI_Bcast(&data[offset], len, MPI_DOUBLE, comm->ProcRootI[p], comm->Comm_box[p]);
+    }
+  }
+
+  int64_t xlen = 0;
+  content_length(&xlen, comm);
+  int64_t alen = arr[xlen] - data;
+  if (comm->Proc[1] - comm->Proc[0] > 1)
+    MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
+}
 
 void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels[], const struct Matrix* X, const struct CellComm comm[], int64_t levels) {
   int64_t ibegin = 0, iend = 0;
@@ -338,24 +401,46 @@ void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Bas
   int64_t iboxes = iend - ibegin;
 
   for (int64_t i = 0; i < iboxes; i++)
-    cpyMatToMat(X[i + ibegin].M, X[i + ibegin].N, &X[i + ibegin], &rhs[levels].X[i + ibegin], 0, 0, 0, 0);
+    cpyMatToMat(X[i + ibegin].M, 1, &X[i + ibegin], &rhs[levels].X[i + ibegin], 0, 0, 0, 0);
 
   for (int64_t i = levels; i > 0; i--) {
-    recvFwSubstituted(rhs[i].Xc, i);
+    int64_t xlen = rhs[i].Xlen;
+    double** arr_comm = (double**)malloc(sizeof(double*) * (xlen + 1));
+    for (int64_t j = 0; j < xlen; j++)
+      arr_comm[j] = rhs[i].Xc[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].Xc[xlen - 1].M;
+    dist_double_svfw('F', arr_comm, &comm[i]);
+
     svAccFw(rhs[i].Xc, rhs[i].Xo, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], &comm[i]);
-    sendFwSubstituted(rhs[i].Xc, i);
-    distributeSubstituted(rhs[i].Xo, i);
-    DistributeMatricesList(rhs[i].Xo, i);
+    dist_double_svfw('B', arr_comm, &comm[i]);
+
+    for (int64_t j = 0; j < xlen; j++)
+      arr_comm[j] = rhs[i].Xo[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].Xo[xlen - 1].M;
+    dist_double_svfw('A', arr_comm, &comm[i]);
+
+    free(arr_comm);
     permuteAndMerge('F', rhs[i].Xo, rhs[i - 1].X, basis[i - 1].Lchild, &comm[i - 1]);
   }
   mat_solve('A', &rhs[0].X[0], &A[0].A[0]);
   
   for (int64_t i = 1; i <= levels; i++) {
     permuteAndMerge('B', rhs[i].Xo, rhs[i - 1].X, basis[i - 1].Lchild, &comm[i - 1]);
-    DistributeMatricesList(rhs[i].Xo, i);
-    recvBkSubstituted(rhs[i].Xc, i);
+    int64_t xlen = rhs[i].Xlen;
+    double** arr_comm = (double**)malloc(sizeof(double*) * (xlen + 1));
+    for (int64_t j = 0; j < xlen; j++)
+      arr_comm[j] = rhs[i].Xo[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].Xo[xlen - 1].M;
+    dist_double_svbk('A', arr_comm, &comm[i]);
+
+    for (int64_t j = 0; j < xlen; j++)
+      arr_comm[j] = rhs[i].Xc[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].Xc[xlen - 1].M;
+    dist_double_svbk('B', arr_comm, &comm[i]);
+    
     svAccBk(rhs[i].Xc, rhs[i].Xo, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], &comm[i]);
-    sendBkSubstituted(rhs[i].Xc, i);
+    dist_double_svbk('F', arr_comm, &comm[i]);
+    free(arr_comm);
   }
 }
 
