@@ -443,6 +443,24 @@ void content_length(int64_t* len, const struct CellComm* comm) {
   *len = slen;
 }
 
+void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int64_t levels) {
+  int __mpi_rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
+  int64_t mpi_rank = __mpi_rank;
+  int64_t ibegin = 0, iend = ncells;
+  get_level(&ibegin, &iend, cells, levels, mpi_rank);
+  body[0] = cells[ibegin].Body[0];
+  body[1] = cells[iend - 1].Body[1];
+}
+
+void loadX(double* X, int64_t body[], const struct Body* bodies) {
+  int64_t ibegin = body[0], iend = body[1];
+  int64_t iboxes = iend - ibegin;
+  const struct Body* blocal = &bodies[ibegin];
+  for (int64_t i = 0; i < iboxes; i++)
+    X[i] = blocal[i].B;
+}
+
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels) {
   int __mpi_rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
@@ -875,34 +893,5 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
       rsr(&basis->R[box_y], &basis->R[x + ibegin], &S[yx]);
     }
   }
-}
-
-void solveRelErr(double* err_out, const struct Matrix* X, const struct Matrix* ref, const struct CellComm* comm) {
-  int64_t ibegin = 0, iend = 0;
-  self_local_range(&ibegin, &iend, comm);
-  double err = 0.;
-  double nrm = 0.;
-
-  for (int64_t i = ibegin; i < iend; i++) {
-    double e, n;
-    struct Matrix work;
-    matrixCreate(&work, X[i].M, X[i].N);
-
-    maxpby(&work, X[i].A, 1., 0.);
-    maxpby(&work, ref[i].A, -1., 1.);
-    mnrm2(&work, &e);
-    mnrm2(&ref[i], &n);
-
-    matrixDestroy(&work);
-    err = err + e * e;
-    nrm = nrm + n * n;
-  }
-
-  double buf = err;
-  MPI_Allreduce(&buf, &err, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-
-  buf = nrm;
-  MPI_Allreduce(&buf, &nrm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  *err_out = sqrt(err / nrm);
 }
 

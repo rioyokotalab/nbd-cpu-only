@@ -20,13 +20,7 @@ project ("shimo" LANGUAGES C CXX)
 find_package(MKL REQUIRED)
 find_package(MPI REQUIRED)
 
-add_library(nbd STATIC nbd.h
-  kernel.c
-  linalg.c
-  build_tree.c
-  umv.c
-  dist.cxx dist.h
-)
+add_library(nbd STATIC nbd.h kernel.c linalg.c build_tree.c umv.c)
 target_include_directories(nbd PRIVATE "./")
 target_compile_options(nbd PRIVATE "-DUSE_MKL")
 target_link_libraries(nbd MKL::MKL MPI::MPI_C MPI::MPI_CXX)

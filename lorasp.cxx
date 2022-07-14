@@ -1,6 +1,5 @@
 
 #include "nbd.h"
-#include "dist.h"
 
 #include <cstdio>
 #include <cmath>
@@ -8,114 +7,26 @@
 #include <algorithm>
 #include <vector>
 
-void loadX(struct Matrix* X, const struct Cell* cell, const struct Body* bodies, int64_t level) {
-  int64_t xlen = (int64_t)1 << level;
-  contentLength(&xlen, level);
-  int64_t len = (int64_t)1 << level;
-  const struct Cell* leaves = &cell[len - 1];
+double tot_time = 0.;
 
-  for (int64_t i = 0; i < xlen; i++) {
-    int64_t gi = i;
-    iGlobal(&gi, i, level);
-    const struct Cell* ci = &leaves[gi];
-
-    struct Matrix* Xi = &X[i];
-    int64_t nbegin = ci->Body[0];
-    int64_t ni = ci->Body[1] - nbegin;
-    matrixCreate(Xi, ni, 1);
-    for (int64_t n = 0; n < ni; n++)
-      Xi->A[n] = bodies[n + nbegin].B;
-  }
+void startTimer(double* wtime, double* cmtime) {
+  MPI_Barrier(MPI_COMM_WORLD);
+  *wtime = MPI_Wtime();
+  *cmtime = tot_time;
 }
 
-void h2MatVecReference(struct Matrix* B, void(*ef)(double*), const struct Cell* cell, const struct Body* bodies, int64_t level) {
-  int64_t nbodies = cell->Body[1];
-  int64_t xlen = (int64_t)1 << level;
-  contentLength(&xlen, level);
-  int64_t len = (int64_t)1 << level;
-  const struct Cell* leaves = &cell[len - 1];
-
-  for (int64_t i = 0; i < xlen; i++) {
-    int64_t gi = i;
-    iGlobal(&gi, i, level);
-    const struct Cell* ci = &leaves[gi];
-
-    struct Matrix* Bi = &B[i];
-    int64_t ibegin = ci->Body[0];
-    int64_t m = ci->Body[1] - ibegin;
-    matrixCreate(Bi, m, 1);
-
-    int64_t block = 500;
-    int64_t last = nbodies % block;
-    struct Matrix X;
-    struct Matrix Aij;
-    matrixCreate(&X, block, 1);
-    matrixCreate(&Aij, m, block);
-    zeroMatrix(&X);
-    zeroMatrix(&Aij);
-
-    if (last > 0) {
-      for (int64_t k = 0; k < last; k++)
-        X.A[k] = bodies[k].B;
-      gen_matrix(ef, m, last, &bodies[ibegin], bodies, Aij.A, NULL, NULL);
-      mmult('N', 'N', &Aij, &X, Bi, 1., 0.);
-    }
-    else
-      zeroMatrix(Bi);
-
-    for (int64_t j = last; j < nbodies; j += block) {
-      for (int64_t k = 0; k < block; k++)
-        X.A[k] = bodies[k + j].B;
-      gen_matrix(ef, m, block, &bodies[ibegin], &bodies[j], Aij.A, NULL, NULL);
-      mmult('N', 'N', &Aij, &X, Bi, 1., 1.);
-    }
-
-    matrixDestroy(&Aij);
-    matrixDestroy(&X);
-  }
+void stopTimer(double* wtime, double* cmtime) {
+  MPI_Barrier(MPI_COMM_WORLD);
+  double stime = *wtime;
+  double scmtime = *cmtime;
+  double etime = MPI_Wtime();
+  *wtime = etime - stime;
+  *cmtime = tot_time - scmtime;
 }
 
-void traverse_dist(const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
-  int64_t mpi_rank, mpi_levels;
-  commRank(&mpi_rank, &mpi_levels);
-
-  configureComm(levels, NULL, 0);
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = i > mpi_levels ? (int64_t)1 << (i - mpi_levels) : 1;
-    int64_t lvl_diff = i < mpi_levels ? mpi_levels - i : 0;
-    int64_t my_rank = mpi_rank >> lvl_diff;
-    int64_t gbegin = my_rank * nodes;
-
-    int64_t offc = (int64_t)(1 << i) - 1;
-    int64_t nc = offc + gbegin;
-    int64_t nbegin = cellNear->ColIndex[nc];
-    int64_t nlen = cellNear->ColIndex[nc + nodes] - nbegin;
-    int64_t fbegin = cellFar->ColIndex[nc];
-    int64_t flen = cellFar->ColIndex[nc + nodes] - fbegin;
-    int64_t* ngbs = (int64_t*)malloc(sizeof(int64_t) * (nlen + flen));
-
-    for (int64_t j = 0; j < nlen; j++) {
-      int64_t ngb = cellNear->RowIndex[nbegin + j] - offc;
-      ngb /= nodes;
-      ngbs[j] = ngb;
-    }
-    for (int64_t j = 0; j < flen; j++) {
-      int64_t ngb = cellFar->RowIndex[fbegin + j] - offc;
-      ngb /= nodes;
-      ngbs[j + nlen] = ngb;
-    }
-
-    std::sort(ngbs, &ngbs[nlen + flen]);
-    const int64_t* iter = std::unique(ngbs, &ngbs[nlen + flen]);
-    int64_t size = iter - ngbs;
-    configureComm(i, &ngbs[0], size);
-    free(ngbs);
-  }
-}
 
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
-  initComm();
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
   double theta = argc > 2 ? atof(argv[2]) : 1;
@@ -127,10 +38,6 @@ int main(int argc, char* argv[]) {
 
   int64_t levels = (int64_t)std::log2(Nbody / leaf_size);
   int64_t Nleaf = (int64_t)1 << levels;
-
-  int64_t mpi_rank;
-  int64_t mpi_levels;
-  commRank(&mpi_rank, &mpi_levels);
   
   auto ef = laplace3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
@@ -148,7 +55,6 @@ int main(int argc, char* argv[]) {
   traverse('N', &cellNear, cell.size(), cell.data(), theta);
   traverse('F', &cellFar, cell.size(), cell.data(), theta);
 
-  traverse_dist(&cellFar, &cellNear, levels);
   std::vector<CellComm> cell_comm(levels + 1);
   buildComm(cell_comm.data(), ncells, cell.data(), &cellFar, &cellNear, levels);
 
@@ -176,14 +82,13 @@ int main(int argc, char* argv[]) {
   factorA(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], cell_comm.data(), levels);
   stopTimer(&factor_time, &factor_comm_time);
 
-  int64_t xlen = (int64_t)1 << levels;
-  contentLength(&xlen, levels);
-  std::vector<Matrix> X(xlen), Xref(xlen);
-  loadX(X.data(), cell.data(), body.data(), levels);
-  loadX(Xref.data(), cell.data(), body.data(), levels);
+  int64_t body_local[2];
+  local_bodies(body_local, ncells, cell.data(), levels);
+  std::vector<double> X(body_local[1] - body_local[0]);
+  loadX(X.data(), body_local, body.data());
 
-  std::vector<Matrix> B(xlen);
-  h2MatVecReference(B.data(), ef, &cell[0], body.data(), levels);
+  std::vector<double> B(body_local[1] - body_local[0]);
+  mat_vec_reference(ef, body_local[0], body_local[1], &B[0], Nbody, body.data());
 
   std::vector<RightHandSides> rhs(levels + 1);
   allocRightHandSides(&rhs[0], &basis[0], levels);
@@ -194,7 +99,7 @@ int main(int argc, char* argv[]) {
   stopTimer(&solve_time, &solve_comm_time);
 
   double err;
-  solveRelErr(&err, rhs[levels].X, Xref.data(), &cell_comm[levels]);
+  solveRelErr(&err, B.data(), X.data(), X.size());
 
   int64_t dim = 3;
 
@@ -203,8 +108,12 @@ int main(int argc, char* argv[]) {
   node_mem(&mem_A, &nodes[0], levels);
   RightHandSides_mem(&mem_X, &rhs[0], levels);
 
+  int mpi_rank, mpi_size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+
   if (mpi_rank == 0) {
-    std::cout << "LORASP: " << Nbody << "," << (int64_t)(Nbody / Nleaf) << "," << theta << "," << dim << "," << (int64_t)(1 << mpi_levels) << std::endl;
+    std::cout << "LORASP: " << Nbody << "," << (int64_t)(Nbody / Nleaf) << "," << theta << "," << dim << "," << mpi_size << std::endl;
     std::cout << "Construct: " << construct_time << " COMM: " << construct_comm_time << std::endl;
     std::cout << "Factorize: " << factor_time << " COMM: " << factor_comm_time << std::endl;
     std::cout << "Solution: " << solve_time << " COMM: " << solve_comm_time << std::endl;
@@ -221,16 +130,10 @@ int main(int argc, char* argv[]) {
     free(rels_near[i].ColIndex);
   }
   deallocRightHandSides(&rhs[0], levels);
-  for (int64_t i = 0; i < xlen; i++) {
-    matrixDestroy(&X[i]);
-    matrixDestroy(&Xref[i]);
-    matrixDestroy(&B[i]);
-  }
   free(cellFar.ColIndex);
   free(cellNear.ColIndex);
   cellComm_free(cell_comm.data(), levels);
   
-  closeComm();
   MPI_Finalize();
   return 0;
 }

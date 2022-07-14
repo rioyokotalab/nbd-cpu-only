@@ -40,6 +40,8 @@ void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C
 
 void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);
 
+void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies);
+
 void matrixCreate(struct Matrix* mat, int64_t m, int64_t n);
 
 void matrixDestroy(struct Matrix* mat);
@@ -96,6 +98,10 @@ void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* com
 
 void content_length(int64_t* len, const struct CellComm* comm);
 
+void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int64_t levels);
+
+void loadX(double* X, int64_t body[], const struct Body* bodies);
+
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels);
 
 void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm);
@@ -109,8 +115,6 @@ void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, st
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
 void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm);
-
-void solveRelErr(double* err_out, const struct Matrix* X, const struct Matrix* ref, const struct CellComm* comm);
 
 void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
@@ -126,7 +130,9 @@ void deallocRightHandSides(struct RightHandSides* st, int64_t levels);
 
 void RightHandSides_mem(int64_t* bytes, const struct RightHandSides* st, int64_t levels);
 
-void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], const struct Matrix* X, const struct CellComm comm[], int64_t levels);
+void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels);
+
+void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 
 #ifdef __cplusplus
 }

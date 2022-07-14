@@ -32,11 +32,8 @@ build_tree: build_tree.c
 umv: umv.c
 	$(CC) $(CCFLAGS) -c umv.c
 
-dist: dist.cxx dist.h
-	$(CXX) $(CXXFLAGS) -c dist.cxx
-
-lib: linalg kernel build_tree umv dist
-	ar rcs libnbd.a linalg.o kernel.o build_tree.o umv.o dist.o
+lib: linalg kernel build_tree umv
+	ar rcs libnbd.a linalg.o kernel.o build_tree.o umv.o
 
 lorasp: lorasp.cxx lib
 	$(CXX) $(CXXFLAGS) -o lorasp lorasp.cxx -L. -lnbd $(LDFLAGS)

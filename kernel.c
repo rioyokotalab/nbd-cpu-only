@@ -271,3 +271,24 @@ void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim) {
   else if (sdim == 2)
     qsort(bodies, nbodies, size, comp_bodies_s2);
 }
+
+void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies) {
+  int64_t m = end - begin;
+  int64_t n = nbodies;
+  for (int64_t i = 0; i < m; i++) {
+    int64_t y = begin + i;
+    const struct Body* bi = bodies + y;
+    double s = 0.;
+    for (int64_t j = 0; j < n; j++) {
+      const struct Body* bj = bodies + j;
+      double dX = bi->X[0] - bj->X[0];
+      double dY = bi->X[1] - bj->X[1];
+      double dZ = bi->X[2] - bj->X[2];
+
+      double r2 = dX * dX + dY * dY + dZ * dZ;
+      ef(&r2);
+      s = s + r2 * bj->B;
+    }
+    B[i] = s;
+  }
+}

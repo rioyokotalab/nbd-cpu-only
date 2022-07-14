@@ -177,13 +177,8 @@ const struct CSC* rels_low_near, const struct CSC* rels_low_far, const struct Ce
 }
 
 void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
-  if (comm->Comm_merge != MPI_COMM_NULL) {
-    double* arr_sum = (double*)malloc(sizeof(double) * alen);
-    MPI_Reduce(arr, arr_sum, alen, MPI_DOUBLE, MPI_SUM, 0, comm->Comm_merge);
-    memcpy(arr, arr_sum, sizeof(double) * alen);
-    free(arr_sum);
-  }
-
+  if (comm->Comm_merge != MPI_COMM_NULL)
+    MPI_Allreduce(MPI_IN_PLACE, arr, alen, MPI_DOUBLE, MPI_SUM, comm->Comm_merge);
   if (comm->Proc[1] - comm->Proc[0] > 1)
     MPI_Bcast(arr, alen, MPI_DOUBLE, 0, comm->Comm_share);
 }
@@ -350,10 +345,7 @@ void dist_double_svfw(char fwbk, double* arr[], const struct CellComm* comm) {
       i_local(&lbegin, comm);
       int64_t offset = arr[lbegin] - data;
       int64_t len = arr[lbegin + llen] - arr[lbegin];
-      double* arr_sum = (double*)malloc(sizeof(double) * len);
-      MPI_Allreduce(&data[offset], arr_sum, len, MPI_DOUBLE, MPI_SUM, comm->Comm_box[p]);
-      memcpy(&data[offset], arr_sum, sizeof(double) * len);
-      free(arr_sum);
+      MPI_Allreduce(MPI_IN_PLACE, &data[offset], len, MPI_DOUBLE, MPI_SUM, comm->Comm_box[p]);
     }
   }
 
@@ -395,13 +387,12 @@ void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
     MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
 }
 
-void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels[], const struct Matrix* X, const struct CellComm comm[], int64_t levels) {
+void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, &comm[levels]);
-  int64_t iboxes = iend - ibegin;
-
-  for (int64_t i = 0; i < iboxes; i++)
-    cpyMatToMat(X[i + ibegin].M, 1, &X[i + ibegin], &rhs[levels].X[i + ibegin], 0, 0, 0, 0);
+  double* xbegin = rhs[levels].X[ibegin].A;
+  int64_t lenX = (rhs[levels].X[iend - 1].A - xbegin) + rhs[levels].X[iend - 1].M;
+  memcpy(xbegin, X, lenX * sizeof(double));
 
   for (int64_t i = levels; i > 0; i--) {
     int64_t xlen = rhs[i].Xlen;
@@ -442,5 +433,18 @@ void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Bas
     dist_double_svbk('F', arr_comm, &comm[i]);
     free(arr_comm);
   }
+  memcpy(X, xbegin, lenX * sizeof(double));
+}
+
+
+void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX) {
+  double err[2] = { 0., 0. };
+  for (int64_t i = 0; i < lenX; i++) {
+    double diff = X[i] - ref[i];
+    err[0] = err[0] + diff * diff;
+    err[1] = err[1] + ref[i] * ref[i];
+  }
+  MPI_Allreduce(MPI_IN_PLACE, err, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  *err_out = sqrt(err[0] / err[1]);
 }
 
