@@ -308,29 +308,32 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t lenp = cm->Procs[1] - p;
     comms[i].Proc[0] = p;
     comms[i].Proc[1] = p + lenp;
+    comms[i].Comm_merge = MPI_COMM_NULL;
+    comms[i].Comm_share = MPI_COMM_NULL;
 
     if (lenp > 1 && cm->Child >= 0) {
       const int64_t lenc = 2;
-      for (int64_t j = 0; j < lenc; j++)
+      int incl = 0;
+      for (int64_t j = 0; j < lenc; j++) {
         ranks[j] = cells[cm->Child + j].Procs[0];
-      MPI_Group group_merge;
-      MPI_Group_incl(world_group, lenc, ranks, &group_merge);
-      MPI_Comm_create_group(MPI_COMM_WORLD, group_merge, mpi_size, &comms[i].Comm_merge);
-      MPI_Group_free(&group_merge);
+        incl = incl || (ranks[j] == mpi_rank);
+      }
+      if (incl) {
+        MPI_Group group_merge;
+        MPI_Group_incl(world_group, lenc, ranks, &group_merge);
+        MPI_Comm_create_group(MPI_COMM_WORLD, group_merge, mpi_size, &comms[i].Comm_merge);
+        MPI_Group_free(&group_merge);
+      }
     }
-    else
-      comms[i].Comm_merge = MPI_COMM_NULL;
 
     if (lenp > 1) {
       for (int64_t j = 0; j < lenp; j++)
         ranks[j] = j + p;
       MPI_Group group_share;
       MPI_Group_incl(world_group, lenp, ranks, &group_share);
-      MPI_Comm_create_group(MPI_COMM_WORLD, group_share, mpi_size, &comms[i].Comm_share);
+      MPI_Comm_create_group(MPI_COMM_WORLD, group_share, mpi_size + 1, &comms[i].Comm_share);
       MPI_Group_free(&group_share);
     }
-    else
-      comms[i].Comm_share = MPI_COMM_NULL;
   }
 
   MPI_Group_free(&world_group);

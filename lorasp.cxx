@@ -173,7 +173,7 @@ int main(int argc, char* argv[]) {
 
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorA(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], levels);
+  factorA(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], cell_comm.data(), levels);
   stopTimer(&factor_time, &factor_comm_time);
 
   int64_t xlen = (int64_t)1 << levels;
@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
-  solveA(&rhs[0], &nodes[0], &basis[0], &rels_near[0], &B[0], levels);
+  solveA(&rhs[0], &nodes[0], &basis[0], &rels_near[0], &B[0], cell_comm.data(), levels);
   stopTimer(&solve_time, &solve_comm_time);
 
   double err;

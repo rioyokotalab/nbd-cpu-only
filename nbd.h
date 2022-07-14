@@ -118,7 +118,7 @@ void deallocNode(struct Node* node, int64_t levels);
 
 void node_mem(int64_t* bytes, const struct Node* node, int64_t levels);
 
-void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], int64_t levels);
+void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
 void allocRightHandSides(struct RightHandSides st[], const struct Base base[], int64_t levels);
 
@@ -126,7 +126,7 @@ void deallocRightHandSides(struct RightHandSides* st, int64_t levels);
 
 void RightHandSides_mem(int64_t* bytes, const struct RightHandSides* st, int64_t levels);
 
-void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], const struct Matrix* X, int64_t levels);
+void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], const struct Matrix* X, const struct CellComm comm[], int64_t levels);
 
 #ifdef __cplusplus
 }
