@@ -157,21 +157,17 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
     rel_arr[i] = len;
 }
 
-int comp_cell_lvl(const struct Cell* cell, int64_t level, int64_t mpi_rank) {
-  int64_t l = cell->Level - level;
-  int ri = (int)(mpi_rank < cell->Procs[0]) - (int)(mpi_rank >= cell->Procs[1]);
-  return l < 0 ? -1 : (l > 0 ? 1 : (mpi_rank == -1 ? 0 : ri));
-}
-
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank) {
   int64_t low = *begin;
   int64_t high = *end;
   while (low < high) {
     int64_t mid = low + (high - low) / 2;
-    if (comp_cell_lvl(&cells[mid], level, mpi_rank) < 0)
-      low = mid + 1;
-    else
-      high = mid;
+    const struct Cell* c = &cells[mid];
+    int64_t l = c->Level - level;
+    int ri = (int)(mpi_rank < c->Procs[0]) - (int)(mpi_rank >= c->Procs[1]);
+    int cmp = l < 0 ? -1 : (l > 0 ? 1 : (mpi_rank == -1 ? 0 : ri));
+    low = cmp < 0 ? mid + 1 : low;
+    high = cmp < 0 ? high : mid;
   }
   *begin = high;
 
@@ -179,10 +175,12 @@ void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t l
   high = *end;
   while (low < high) {
     int64_t mid = low + (high - low) / 2;
-    if (comp_cell_lvl(&cells[mid], level, mpi_rank) <= 0)
-      low = mid + 1;
-    else
-      high = mid;
+    const struct Cell* c = &cells[mid];
+    int64_t l = c->Level - level;
+    int ri = (int)(mpi_rank < c->Procs[0]) - (int)(mpi_rank >= c->Procs[1]);
+    int cmp = l < 0 ? -1 : (l > 0 ? 1 : (mpi_rank == -1 ? 0 : ri));
+    low = cmp <= 0 ? mid + 1 : low;
+    high = cmp <= 0 ? high : mid;
   }
   *end = low;
 }
@@ -308,6 +306,7 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t lenp = cm->Procs[1] - p;
     comms[i].Proc[0] = p;
     comms[i].Proc[1] = p + lenp;
+    comms[i].Proc[2] = mpi_rank;
     comms[i].Comm_merge = MPI_COMM_NULL;
     comms[i].Comm_share = MPI_COMM_NULL;
 
@@ -499,350 +498,6 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
   }
 }
 
-void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm) {
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = 0;
-    content_length(&nodes, &comm[i]);
-
-    basis[i].Ulen = nodes;
-    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * (nodes * 4 + 1));
-    basis[i].Lchild = arr_i;
-    basis[i].Dims = &arr_i[nodes];
-    basis[i].DimsLr = &arr_i[nodes * 2];
-    basis[i].Offsets = &arr_i[nodes * 3];
-    basis[i].Multipoles = NULL;
-
-    int64_t ibegin = 0, iend = ncells;
-    get_level(&ibegin, &iend, cells, i, -1);
-    for (int64_t j = 0; j < nodes; j++) {
-      int64_t gj = j;
-      i_global(&gj, &comm[i]);
-      const struct Cell* c = &cells[ibegin + gj];
-      int64_t coc = c->Child;
-      if (coc >= 0) {
-        int64_t cc = coc - iend;
-        i_local(&cc, &comm[i + 1]);
-        arr_i[j] = cc;
-      }
-      else
-        arr_i[j] = -1;
-    }
-
-    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * (nodes * 3));
-    basis[i].Uo = arr_m;
-    basis[i].Uc = &arr_m[nodes];
-    basis[i].R = &arr_m[nodes * 2];
-  }
-}
-
-void deallocBasis(struct Base* basis, int64_t levels) {
-  for (int64_t i = 0; i <= levels; i++) {
-    double* data = basis[i].Uo[0].A;
-    if (data)
-      free(data);
-
-    free(basis[i].Lchild);
-    if (basis[i].Multipoles)
-      free(basis[i].Multipoles);
-    free(basis[i].Uo);
-  }
-}
-
-void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels) {
-  int64_t count = 0;
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = basis[i].Ulen;
-    int64_t bytes_o, bytes_c, bytes_r;
-    matrix_mem(&bytes_o, &basis[i].Uo[0], nodes);
-    matrix_mem(&bytes_c, &basis[i].Uc[0], nodes);
-    matrix_mem(&bytes_r, &basis[i].R[0], nodes);
-
-    count = count + bytes_o + bytes_c + bytes_r;
-  }
-  *bytes = count;
-}
-
-void dist_int_64_xlen(int64_t arr_xlen[], const struct CellComm* comm) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
-  int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
-  const int64_t* row = &comm->Comms.RowIndex[pbegin];
-
-  for (int64_t i = 0; i < plen; i++) {
-    int64_t p = row[i];
-    int64_t lbegin = comm->ProcBoxes[p];
-    int64_t len = comm->ProcBoxesEnd[p] - lbegin;
-    i_local(&lbegin, comm);
-    MPI_Bcast(&arr_xlen[lbegin], len, MPI_INT64_T, comm->ProcRootI[p], comm->Comm_box[p]);
-  }
-
-  int64_t xlen = 0;
-  content_length(&xlen, comm);
-  if (comm->Proc[1] - comm->Proc[0] > 1)
-    MPI_Bcast(arr_xlen, xlen, MPI_INT64_T, 0, comm->Comm_share);
-}
-
-void dist_int_64(int64_t arr[], const int64_t offsets[], const struct CellComm* comm) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
-  int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
-  const int64_t* row = &comm->Comms.RowIndex[pbegin];
-
-  for (int64_t i = 0; i < plen; i++) {
-    int64_t p = row[i];
-    int64_t lbegin = comm->ProcBoxes[p];
-    int64_t llen = comm->ProcBoxesEnd[p] - lbegin;
-    i_local(&lbegin, comm);
-    int64_t offset = offsets[lbegin];
-    int64_t len = offsets[lbegin + llen] - offset;
-    MPI_Bcast(&arr[offset], len, MPI_INT64_T, comm->ProcRootI[p], comm->Comm_box[p]);
-  }
-
-  int64_t xlen = 0;
-  content_length(&xlen, comm);
-  int64_t alen = offsets[xlen];
-  if (comm->Proc[1] - comm->Proc[0] > 1)
-    MPI_Bcast(arr, alen, MPI_INT64_T, 0, comm->Comm_share);
-}
-
-void dist_double(double* arr[], const struct CellComm* comm) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
-  int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
-  const int64_t* row = &comm->Comms.RowIndex[pbegin];
-  double* data = arr[0];
-
-  for (int64_t i = 0; i < plen; i++) {
-    int64_t p = row[i];
-    int64_t lbegin = comm->ProcBoxes[p];
-    int64_t llen = comm->ProcBoxesEnd[p] - lbegin;
-    i_local(&lbegin, comm);
-    int64_t offset = arr[lbegin] - data;
-    int64_t len = arr[lbegin + llen] - arr[lbegin];
-    MPI_Bcast(&data[offset], len, MPI_DOUBLE, comm->ProcRootI[p], comm->Comm_box[p]);
-  }
-
-  int64_t xlen = 0;
-  content_length(&xlen, comm);
-  int64_t alen = arr[xlen] - data;
-  if (comm->Proc[1] - comm->Proc[0] > 1)
-    MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
-}
-
-void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* rel_near, int64_t levels, 
-const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
-
-  for (int64_t l = levels; l >= 0; l--) {
-    struct Base* base_i = basis + l;
-    int64_t xlen = base_i->Ulen;
-    int64_t jbegin = 0, jend = ncells;
-    get_level(&jbegin, &jend, cells, l, -1);
-    int64_t ibegin = 0, iend = xlen;
-    self_local_range(&ibegin, &iend, &comm[l]);
-    int64_t gbegin = ibegin;
-    i_global(&gbegin, &comm[l]);
-    int64_t nodes = iend - ibegin;
-    struct Cell* leaves = &cells[jbegin];
-    int64_t** cms = (int64_t**)malloc(sizeof(int64_t*) * nodes);
-    double** mms = (double**)malloc(sizeof(double*) * (xlen + 1));
-
-    for (int64_t i = 0; i < nodes; i++) {
-      struct Cell* ci = &leaves[i + gbegin];
-      int64_t lc = base_i->Lchild[i + ibegin];
-      int64_t ni = 0;
-      int64_t* cellm;
-
-      if (lc >= 0) {
-        int64_t len0 = basis[l + 1].DimsLr[lc];
-        int64_t len1 = basis[l + 1].DimsLr[lc + 1];
-        ni = len0 + len1;
-        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
-
-        int64_t offset = basis[l + 1].Offsets[lc];
-        memcpy(cellm, &basis[l + 1].Multipoles[offset], sizeof(int64_t) * ni);
-      }
-      else {
-        int64_t nbegin = ci->Body[0];
-        ni = ci->Body[1] - nbegin;
-        cellm = (int64_t*)malloc(sizeof(int64_t) * ni);
-        for (int64_t j = 0; j < ni; j++)
-          cellm[j] = nbegin + j;
-      }
-      cms[i] = cellm;
-      
-      int64_t lbegin = rel_near[l].ColIndex[i];
-      int64_t nlen = rel_near[l].ColIndex[i + 1] - lbegin;
-      const int64_t* ngbs = &rel_near[l].RowIndex[lbegin];
-
-      int64_t rmsize = sp_pts;
-      int64_t clsize = sp_pts;
-
-      int64_t rm_len = nbodies;
-      int64_t cl_len = 0;
-      int64_t cpos = -1;
-      for (int64_t j = 0; j < nlen; j++) {
-        int64_t jc = ngbs[j];
-        const struct Cell* c = &leaves[jc];
-        int64_t len = c->Body[1] - c->Body[0];
-        rm_len = rm_len - len;
-        if (jc == i + gbegin)
-          cpos = j;
-        else
-          cl_len = cl_len + len;
-      }
-
-      rmsize = rmsize > rm_len ? rm_len : rmsize;
-      clsize = clsize > cl_len ? cl_len : clsize;
-      int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * (rmsize + clsize));
-      int64_t* close = &remote[rmsize];
-
-      int64_t box_i = 0;
-      int64_t s_lens = 0;
-      int64_t ic = ngbs[box_i];
-      int64_t offset_i = leaves[ic].Body[0];
-      int64_t len_i = leaves[ic].Body[1] - offset_i;
-
-      for (int64_t j = 0; j < rmsize; j++) {
-        int64_t loc = (int64_t)((double)(rm_len * j) / rmsize);
-        while (box_i < nlen && loc + s_lens >= offset_i) {
-          s_lens = s_lens + len_i;
-          box_i = box_i + 1;
-          ic = box_i < nlen ? ngbs[box_i] : ic;
-          offset_i = leaves[ic].Body[0];
-          len_i = leaves[ic].Body[1] - offset_i;
-        }
-        remote[j] = loc + s_lens;
-      }
-
-      box_i = (int64_t)(cpos == 0);
-      s_lens = 0;
-      ic = box_i < nlen ? ngbs[box_i] : ic;
-      offset_i = leaves[ic].Body[0];
-      len_i = leaves[ic].Body[1] - offset_i;
-
-      for (int64_t j = 0; j < clsize; j++) {
-        int64_t loc = (int64_t)((double)(cl_len * j) / clsize);
-        while (loc - s_lens >= len_i) {
-          s_lens = s_lens + len_i;
-          box_i = box_i + 1;
-          box_i = box_i + (int64_t)(box_i == cpos);
-          ic = ngbs[box_i];
-          offset_i = leaves[ic].Body[0];
-          len_i = leaves[ic].Body[1] - offset_i;
-        }
-        close[j] = loc + offset_i - s_lens;
-      }
-
-      int64_t len_s = rmsize + (clsize > 0 ? ni : 0);
-      struct Matrix S;
-      matrixCreate(&S, ni, len_s);
-
-      if (len_s > 0) {
-        struct Matrix S_lr;
-        if (rmsize > 0) {
-          S_lr = (struct Matrix){ S.A, ni, rmsize };
-          gen_matrix(ef, ni, rmsize, bodies, bodies, S_lr.A, cellm, remote);
-        }
-
-        if (clsize > 0) {
-          struct Matrix S_dn = (struct Matrix){ &S.A[ni * rmsize], ni, ni };
-          struct Matrix S_dn_work;
-          matrixCreate(&S_dn_work, ni, clsize);
-          gen_matrix(ef, ni, clsize, bodies, bodies, S_dn_work.A, cellm, close);
-          mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
-          if (rmsize > 0)
-            normalizeA(&S_dn, &S_lr);
-          matrixDestroy(&S_dn_work);
-        }
-      }
-      
-      free(remote);
-
-      int64_t rank = mrank > 0 ? (mrank < len_s ? mrank : len_s) : len_s;
-      double* mat = (double*)malloc(sizeof(double) * (ni * ni + rank * rank));
-      int32_t* pa = (int32_t*)malloc(sizeof(int32_t) * ni);
-      struct Matrix U = { mat, ni, ni };
-      if (rank > 0)
-        lraID(epi, &S, &U, pa, &rank);
-
-      struct Matrix Q = { mat, ni, rank };
-      struct Matrix R = { &mat[ni * ni], rank, rank };
-      if (rank > 0) {
-        if (lc >= 0)
-          updateSubU(&Q, &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
-        qr_full(&Q, &R);
-
-        for (int64_t j = 0; j < rank; j++) {
-          int64_t piv = (int64_t)pa[j] - 1;
-          if (piv != j) 
-          { int64_t c = cellm[piv]; cellm[piv] = cellm[j]; cellm[j] = c; }
-        }
-      }
-
-      matrixDestroy(&S);
-      mms[i + ibegin] = mat;
-      free(pa);
-      base_i->Dims[i + ibegin] = ni;
-      base_i->DimsLr[i + ibegin] = rank;
-    }
-
-    dist_int_64_xlen(base_i->Dims, &comm[l]);
-    dist_int_64_xlen(base_i->DimsLr, &comm[l]);
-
-    int64_t count = 0;
-    int64_t count_m = 0;
-    int64_t* offsets = base_i->Offsets;
-    for (int64_t i = 0; i < xlen; i++) {
-      int64_t m = base_i->Dims[i];
-      int64_t n = base_i->DimsLr[i];
-      offsets[i] = count;
-      count = count + n;
-      count_m = count_m + m * m + n * n;
-    }
-    offsets[xlen] = count;
-
-    int64_t* mps_comm = NULL;
-    if (count > 0)
-      mps_comm = (int64_t*)malloc(sizeof(int64_t) * count);
-    base_i->Multipoles = mps_comm;
-    for (int64_t i = 0; i < nodes; i++) {
-      int64_t offset_i = offsets[i + ibegin];
-      int64_t n = base_i->DimsLr[i + ibegin];
-      if (n > 0)
-        memcpy(&mps_comm[offset_i], cms[i], sizeof(int64_t) * n);
-      free(cms[i]);
-    }
-    free(cms);
-    dist_int_64(mps_comm, base_i->Offsets, &comm[l]);
-
-    double* mat_comm = NULL;
-    if (count_m > 0)
-      mat_comm = (double*)malloc(sizeof(int64_t) * count_m);
-    double* mat_iter = mat_comm;
-    for (int64_t i = 0; i < xlen; i++) {
-      int64_t m = base_i->Dims[i];
-      int64_t n = base_i->DimsLr[i];
-      if (ibegin <= i && i < iend) {
-        memcpy(mat_iter, mms[i], sizeof(double) * (m * m + n * n));
-        free(mms[i]);
-      }
-      base_i->Uo[i] = (struct Matrix) { mat_iter, m, n };
-      base_i->Uc[i] = (struct Matrix) { &mat_iter[m * n], m, m - n };
-      base_i->R[i] = (struct Matrix) { &mat_iter[m * m], n, n };
-      mms[i] = mat_iter;
-      mat_iter = &mat_iter[m * m + n * n];
-    }
-    mms[xlen] = mat_iter;
-    dist_double(mms, &comm[l]);
-    free(mms);
-  }
-}
 
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level) {
   int __mpi_rank = 0;
@@ -872,26 +527,3 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
     }
   }
 }
-
-void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm) {
-  int64_t ibegin = 0, iend = 0;
-  self_local_range(&ibegin, &iend, comm);
-  int64_t lbegin = ibegin;
-  i_global(&lbegin, comm);
-
-  for (int64_t x = 0; x < rels->N; x++) {
-    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      int64_t y = rels->RowIndex[yx];
-      int64_t box_y = y;
-      i_local(&box_y, comm);
-      int64_t m = basis->DimsLr[box_y];
-      int64_t n = basis->DimsLr[x + ibegin];
-      int64_t* multipoles = basis->Multipoles;
-      int64_t off_y = basis->Offsets[box_y];
-      int64_t off_x = basis->Offsets[x + ibegin];
-      gen_matrix(ef, m, n, bodies, bodies, S[yx].A, &multipoles[off_y], &multipoles[off_x]);
-      rsr(&basis->R[box_y], &basis->R[x + ibegin], &S[yx]);
-    }
-  }
-}
-

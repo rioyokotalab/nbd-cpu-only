@@ -29,11 +29,14 @@ kernel: kernel.c
 build_tree: build_tree.c
 	$(CC) $(CCFLAGS) -c build_tree.c
 
+basis: basis.c
+	$(CC) $(CCFLAGS) -c basis.c
+
 umv: umv.c
 	$(CC) $(CCFLAGS) -c umv.c
 
-lib: linalg kernel build_tree umv
-	ar rcs libnbd.a linalg.o kernel.o build_tree.o umv.o
+lib: linalg kernel build_tree basis umv
+	ar rcs libnbd.a linalg.o kernel.o build_tree.o basis.o umv.o
 
 lorasp: lorasp.cxx lib
 	$(CXX) $(CXXFLAGS) -o lorasp lorasp.cxx -L. -lnbd $(LDFLAGS)

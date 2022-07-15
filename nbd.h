@@ -13,7 +13,7 @@ struct Body { double X[3], B; };
 struct Matrix { double* A; int64_t M, N; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
-struct CellComm { struct CSC Comms; int64_t *ProcRootI, *ProcBoxes, *ProcBoxesEnd, Proc[2]; MPI_Comm Comm_share, Comm_merge, *Comm_box; };
+struct CellComm { struct CSC Comms; int64_t Proc[3], *ProcRootI, *ProcBoxes, *ProcBoxesEnd; MPI_Comm Comm_share, Comm_merge, *Comm_box; };
 struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, *Offsets, *Multipoles; struct Matrix *Uo, *Uc, *R; };
 struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo; };
@@ -46,10 +46,6 @@ void matrixCreate(struct Matrix* mat, int64_t m, int64_t n);
 
 void matrixDestroy(struct Matrix* mat);
 
-void cpyFromMatrix(const struct Matrix* A, double* v);
-
-void maxpby(struct Matrix* A, const double* v, double alpha, double beta);
-
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
 
 void qr_full(struct Matrix* Q, struct Matrix* R);
@@ -57,8 +53,6 @@ void qr_full(struct Matrix* Q, struct Matrix* R);
 void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* R2);
 
 void lraID(double epi, struct Matrix* A, struct Matrix* U, int32_t arows[], int64_t* rnk_out);
-
-void zeroMatrix(struct Matrix* A);
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 
@@ -73,8 +67,6 @@ void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S);
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 
 void normalizeA(struct Matrix* A, const struct Matrix* B);
-
-void mnrm2(const struct Matrix* A, double* nrm);
 
 void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA);
 
@@ -104,6 +96,8 @@ void loadX(double* X, int64_t body[], const struct Body* bodies);
 
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels);
 
+void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
+
 void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm);
 
 void deallocBasis(struct Base* basis, int64_t levels);
@@ -111,8 +105,6 @@ void deallocBasis(struct Base* basis, int64_t levels);
 void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels);
 
 void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* rel_near, int64_t levels, const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
-
-void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
 void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm);
 

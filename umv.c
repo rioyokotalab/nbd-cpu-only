@@ -326,9 +326,7 @@ void permuteAndMerge(char fwbk, struct Matrix* px, struct Matrix* nx, const int6
 }
 
 void dist_double_svfw(char fwbk, double* arr[], const struct CellComm* comm) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
+  int64_t mpi_rank = comm->Proc[2];
   int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
   int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
   const int64_t* row = &comm->Comms.RowIndex[pbegin];
@@ -357,9 +355,7 @@ void dist_double_svfw(char fwbk, double* arr[], const struct CellComm* comm) {
 }
 
 void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
+  int64_t mpi_rank = comm->Proc[2];
   int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
   int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
   const int64_t* row = &comm->Comms.RowIndex[pbegin];

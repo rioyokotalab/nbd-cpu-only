@@ -37,22 +37,6 @@ void matrixDestroy(struct Matrix* mat) {
   mat->N = 0;
 }
 
-
-void cpyFromMatrix(const struct Matrix* A, double* v) {
-  int64_t size = A->M * A->N;
-  if (size > 0)
-    memcpy(v, A->A, sizeof(double) * size);
-}
-
-void maxpby(struct Matrix* A, const double* v, double alpha, double beta) {
-  int64_t size = A->M * A->N;
-  if (beta == 0.)
-    memset(A->A, 0, sizeof(double) * size);
-  else if (beta != 1.)
-    cblas_dscal(size, beta, A->A, 1);
-  cblas_daxpy(size, alpha, v, 1, A->A, 1);
-}
-
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2) {
   if (m > 0 && n > 0)
 #ifdef USE_MKL
@@ -104,17 +88,11 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int32_t arows[], int6
     cblas_dscal(A->M, work[i], &(U->A)[i * A->M], 1);
   memcpy(A->A, U->A, sizeof(double) * A->M * rank);
 
-  int info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, arows);
-  if (info > 0)
-    rank = info - 1;
-  *rnk_out = rank;
+  LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, arows);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
   cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
   free(work);
-}
-
-void zeroMatrix(struct Matrix* A) {
-  memset(A->A, 0, sizeof(double) * A->M * A->N);
+  *rnk_out = rank;
 }
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta) {
@@ -166,10 +144,6 @@ void normalizeA(struct Matrix* A, const struct Matrix* B) {
     double nrm_B = cblas_dnrm2(len_B, B->A, 1);
     cblas_dscal(len_A, nrm_B / nrm_A, A->A, 1);
   }
-}
-
-void mnrm2(const struct Matrix* A, double* nrm) {
-  *nrm = cblas_dnrm2(A->M * A->N, A->A, 1);
 }
 
 void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA) {
