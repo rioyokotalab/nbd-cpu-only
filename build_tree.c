@@ -499,7 +499,7 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
 }
 
 
-void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level) {
+void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* rels, int64_t level) {
   int __mpi_rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   int64_t mpi_rank = __mpi_rank;
@@ -513,17 +513,18 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
   for (int64_t i = 0; i < nodes; i++) {
     int64_t lc = ibegin + i;
     const struct Cell* ci = &cells[lc];
-    int64_t off = csc->ColIndex[i];
-    int64_t len = csc->ColIndex[i + 1] - off;
+    int64_t nbegin = rels->ColIndex[i];
+    int64_t nlen = rels->ColIndex[i + 1] - nbegin;
+    const int64_t* ngbs = &rels->RowIndex[nbegin];
+    int64_t x_begin = ci->Body[0];
+    int64_t n = ci->Body[1] - x_begin;
 
-    for (int64_t j = 0; j < len; j++) {
-      int64_t jj = csc->RowIndex[j + off] + jbegin;
-      const struct Cell* cj = &cells[jj];
-      int64_t i_begin = cj->Body[0];
-      int64_t j_begin = ci->Body[0];
-      int64_t m = cj->Body[1] - i_begin;
-      int64_t n = ci->Body[1] - j_begin;
-      gen_matrix(ef, m, n, &bodies[i_begin], &bodies[j_begin], D[off + j].A, NULL, NULL);
+    for (int64_t j = 0; j < nlen; j++) {
+      int64_t lj = ngbs[j];
+      const struct Cell* cj = &cells[lj + jbegin];
+      int64_t y_begin = cj->Body[0];
+      int64_t m = cj->Body[1] - y_begin;
+      gen_matrix(ef, m, n, &bodies[y_begin], &bodies[x_begin], D[nbegin + j].A, NULL, NULL);
     }
   }
 }
