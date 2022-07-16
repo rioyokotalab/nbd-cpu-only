@@ -14,11 +14,11 @@ int main(int argc, char* argv[]) {
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
   double theta = argc > 2 ? atof(argv[2]) : 1;
-  int64_t leaf_size = 256;
+  int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
 
-  double epi = 1.e-10;
-  int64_t rank_max = 100;
-  int64_t sp_pts = 2000;
+  double epi = argc > 4 ? atof(argv[4]) : 1.e-10;
+  int64_t rank_max = argc > 5 ? atol(argv[5]) : 100;
+  int64_t sp_pts = argc > 6 ? atol(argv[6]) : 2000;
 
   int64_t levels = (int64_t)std::log2(Nbody / leaf_size);
   int64_t Nleaf = (int64_t)1 << levels;

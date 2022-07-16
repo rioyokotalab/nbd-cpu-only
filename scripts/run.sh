@@ -8,19 +8,19 @@ SCRIPT=~/nbd/scripts
 
 rm -rf $LOGS && mkdir $LOGS
 echo Running serial tests..
-mpirun -n 1 $BIN 2048 2 >> $LOGS/serial.log
-mpirun -n 1 $BIN 4096 2 >> $LOGS/serial.log
-mpirun -n 1 $BIN 8192 2 >> $LOGS/serial.log
-mpirun -n 1 $BIN 16384 2 >> $LOGS/serial.log
-mpirun -n 1 $BIN 32768 2 >> $LOGS/serial.log
+mpirun -n 1 $BIN 2048 2 256 1.e-10 100 2000 >> $LOGS/serial.log
+mpirun -n 1 $BIN 4096 2 256 1.e-10 100 2000 >> $LOGS/serial.log
+mpirun -n 1 $BIN 8192 2 256 1.e-10 100 2000 >> $LOGS/serial.log
+mpirun -n 1 $BIN 16384 2 256 1.e-10 100 2000 >> $LOGS/serial.log
+mpirun -n 1 $BIN 32768 2 256 1.e-10 100 2000 >> $LOGS/serial.log
 echo Finish!
 
 echo Running strong scaling tests..
-mpirun -n 1 $BIN 16384 2 >> $LOGS/strong.log
-mpirun -n 2 $BIN 16384 2 >> $LOGS/strong.log
-mpirun -n 4 $BIN 16384 2 >> $LOGS/strong.log
-mpirun -n 8 $BIN 16384 2 >> $LOGS/strong.log
-mpirun -n 16 $BIN 16384 2 >> $LOGS/strong.log
+mpirun -n 1 $BIN 16384 2 256 1.e-10 100 2000 >> $LOGS/strong.log
+mpirun -n 2 $BIN 16384 2 256 1.e-10 100 2000 >> $LOGS/strong.log
+mpirun -n 4 $BIN 16384 2 256 1.e-10 100 2000 >> $LOGS/strong.log
+mpirun -n 8 $BIN 16384 2 256 1.e-10 100 2000 >> $LOGS/strong.log
+mpirun -n 16 $BIN 16384 2 256 1.e-10 100 2000 >> $LOGS/strong.log
 echo Finish!
 
 echo Processing logs file..
