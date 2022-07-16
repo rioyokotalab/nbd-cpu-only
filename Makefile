@@ -12,7 +12,8 @@ ifneq (${MKLROOT},)
 	CCFLAGS	+=  -I"${MKLROOT}/include"
 	LDFLAGS	+= -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core 
 else
-	LDFLAGS	+= -lblas -llapacke
+	CCFLAGS +=	-I"${BLAS_DIR}/include"
+	LDFLAGS	+= -L"${BLAS_DIR}/lib" -lblas -llapacke
 endif
 
 all:
