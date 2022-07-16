@@ -23,7 +23,8 @@ ax.plot(x, y, '^', label = "OUR CODE MPI", linestyle="-", color='blue')
 ax.plot(xref, yref, label = "Ideal Strong Scale", linestyle="--", color='black')
 
 ax.axis([1, 32, 0.01, 1000])
-ax.loglog(basex=2,basey=10)
+ax.set_xscale('log', base=2)
+ax.set_yscale('log', base=10)
 
 for axis in [ax.xaxis]:
     formatter = ScalarFormatter()

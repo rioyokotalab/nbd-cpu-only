@@ -2,15 +2,16 @@
 CC	= mpicc
 CXX	= mpicxx
 
-CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -I.
-CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -I.
+CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -I. -fopenmp 
+CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -I. -fopenmp 
 LDFLAGS	= -lpthread -lm -ldl
+PROF_FLAG = -D_PROF
 
 ifneq (${MKLROOT},)
 	MKLFLAG	= -DUSE_MKL
 	CCFLAGS	+=  -I"${MKLROOT}/include"
 	CXXFLAGS	+=  -I"${MKLROOT}/include"
-	LDFLAGS	+= -fopenmp -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core 
+	LDFLAGS	+= -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core 
 	MSG	= *** Successfully found and linking with Intel MKL! ***
 else
 	LDFLAGS	+= -lblas -llapacke
@@ -30,13 +31,16 @@ build_tree: build_tree.c
 	$(CC) $(CCFLAGS) -c build_tree.c
 
 basis: basis.c
-	$(CC) $(CCFLAGS) -c basis.c
+	$(CC) $(CCFLAGS) $(PROF_FLAG) -c basis.c
 
 umv: umv.c
-	$(CC) $(CCFLAGS) -c umv.c
+	$(CC) $(CCFLAGS) $(PROF_FLAG) -c umv.c
 
-lib: linalg kernel build_tree basis umv
-	ar rcs libnbd.a linalg.o kernel.o build_tree.o basis.o umv.o
+profile: profile.c
+	$(CC) $(CCFLAGS) $(PROF_FLAG) -c profile.c
+
+lib: linalg kernel build_tree basis umv profile
+	ar rcs libnbd.a linalg.o kernel.o build_tree.o basis.o umv.o profile.o
 
 lorasp: lorasp.cxx lib
 	$(CXX) $(CXXFLAGS) -o lorasp lorasp.cxx -L. -lnbd $(LDFLAGS)

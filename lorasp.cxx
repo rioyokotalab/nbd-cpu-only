@@ -1,5 +1,6 @@
 
 #include "nbd.h"
+#include "profile.h"
 
 #include <cstdio>
 #include <cmath>
@@ -7,26 +8,9 @@
 #include <algorithm>
 #include <vector>
 
-double tot_time = 0.;
-
-void startTimer(double* wtime, double* cmtime) {
-  MPI_Barrier(MPI_COMM_WORLD);
-  *wtime = MPI_Wtime();
-  *cmtime = tot_time;
-}
-
-void stopTimer(double* wtime, double* cmtime) {
-  MPI_Barrier(MPI_COMM_WORLD);
-  double stime = *wtime;
-  double scmtime = *cmtime;
-  double etime = MPI_Wtime();
-  *wtime = etime - stime;
-  *cmtime = tot_time - scmtime;
-}
-
-
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
+  double prog_time = MPI_Wtime();
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
   double theta = argc > 2 ? atof(argv[2]) : 1;
@@ -63,11 +47,10 @@ int main(int argc, char* argv[]) {
   std::vector<Base> basis(levels + 1);
   relations(&rels_near[0], ncells, cell.data(), &cellNear, levels);
   relations(&rels_far[0], ncells, cell.data(), &cellFar, levels);
-  allocBasis(&basis[0], levels, ncells, cell.data(), cell_comm.data());
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  evaluateBaseAll(ef, &basis[0], ncells, cell.data(), &rels_near[0], levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
+  buildBasis(ef, &basis[0], ncells, cell.data(), &rels_near[0], levels, cell_comm.data(), body.data(), Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
   
   std::vector<Node> nodes(levels + 1);
@@ -106,33 +89,38 @@ int main(int argc, char* argv[]) {
   int64_t mem_basis, mem_A, mem_X;
   basis_mem(&mem_basis, &basis[0], levels);
   node_mem(&mem_A, &nodes[0], levels);
-  RightHandSides_mem(&mem_X, &rhs[0], levels);
+  rightHandSides_mem(&mem_X, &rhs[0], levels);
 
   int mpi_rank, mpi_size;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
+  prog_time = MPI_Wtime() - prog_time;
+  double cm_time;
+  getCommTime(&cm_time);
+
   if (mpi_rank == 0) {
     std::cout << "LORASP: " << Nbody << "," << (int64_t)(Nbody / Nleaf) << "," << theta << "," << dim << "," << mpi_size << std::endl;
-    std::cout << "Construct: " << construct_time << " COMM: " << construct_comm_time << std::endl;
-    std::cout << "Factorize: " << factor_time << " COMM: " << factor_comm_time << std::endl;
-    std::cout << "Solution: " << solve_time << " COMM: " << solve_comm_time << std::endl;
+    std::cout << "Construct: " << construct_time << " s. COMM: " << construct_comm_time << " s." << std::endl;
+    std::cout << "Factorize: " << factor_time << " s. COMM: " << factor_comm_time << " s." << std::endl;
+    std::cout << "Solution: " << solve_time << " s. COMM: " << solve_comm_time << " s." << std::endl;
     std::cout << "Basis Memory: " << (double)mem_basis * 1.e-9 << " GiB." << std::endl;
     std::cout << "Matrix Memory: " << (double)mem_A * 1.e-9 << " GiB." << std::endl;
     std::cout << "Vector Memory: " << (double)mem_X * 1.e-9 << " GiB." << std::endl;
     std::cout << "Err: " << err << std::endl;
+    std::cout << "Program: " << prog_time << " s. COMM: " << cm_time << " s." << std::endl;
   }
 
-  deallocBasis(&basis[0], levels);
-  deallocNode(&nodes[0], levels);
   for (int64_t i = 0; i <= levels; i++) {
-    free(rels_far[i].ColIndex);
-    free(rels_near[i].ColIndex);
+    csc_free(&rels_far[i]);
+    csc_free(&rels_near[i]);
+    basis_free(&basis[i]);
+    node_free(&nodes[i]);
+    rightHandSides_free(&rhs[i]);
+    cellComm_free(&cell_comm[i]);
   }
-  deallocRightHandSides(&rhs[0], levels);
   free(cellFar.ColIndex);
   free(cellNear.ColIndex);
-  cellComm_free(cell_comm.data(), levels);
   
   MPI_Finalize();
   return 0;

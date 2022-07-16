@@ -1,5 +1,6 @@
 
 #include "nbd.h"
+#include "profile.h"
 
 #include "stdlib.h"
 #include "string.h"
@@ -71,31 +72,11 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
   }
 }
 
-void deallocNode(struct Node* node, int64_t levels) {
-  for (int64_t i = 0; i <= levels; i++) {
-    double* data = node[i].A[0].A;
-    if (data)
-      free(data);
-    free(node[i].A);
-  }
-}
-
-void node_mem(int64_t* bytes, const struct Node* node, int64_t levels) {
-  int64_t count = 0;
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nnz = node[i].lenA;
-    int64_t nnz_f = node[i].lenS;
-    int64_t bytes_a, bytes_cc, bytes_oc, bytes_oo, bytes_s;
-
-    matrix_mem(&bytes_a, &node[i].A[0], nnz);
-    matrix_mem(&bytes_cc, &node[i].A_cc[0], nnz);
-    matrix_mem(&bytes_oc, &node[i].A_oc[0], nnz);
-    matrix_mem(&bytes_oo, &node[i].A_oo[0], nnz);
-    matrix_mem(&bytes_s, &node[i].S[0], nnz_f);
-
-    count = count + bytes_a + bytes_cc + bytes_oc + bytes_oo + bytes_s;
-  }
-  *bytes = count;
+void node_free(struct Node* node) {
+  double* data = node->A[0].A;
+  if (data)
+    free(data);
+  free(node->A);
 }
 
 void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, const struct Matrix* A, const struct Matrix* Uc, const struct Matrix* Uo, const struct CSC* rels, const struct CellComm* comm) {
@@ -104,6 +85,7 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, c
   int64_t lbegin = ibegin;
   i_global(&lbegin, comm);
 
+#pragma omp parallel for
   for (int64_t x = 0; x < rels->N; x++) {
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
@@ -177,10 +159,17 @@ const struct CSC* rels_low_near, const struct CSC* rels_low_far, const struct Ce
 }
 
 void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
   if (comm->Comm_merge != MPI_COMM_NULL)
     MPI_Allreduce(MPI_IN_PLACE, arr, alen, MPI_DOUBLE, MPI_SUM, comm->Comm_merge);
   if (comm->Proc[1] - comm->Proc[0] > 1)
     MPI_Bcast(arr, alen, MPI_DOUBLE, 0, comm->Comm_share);
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
 }
 
 void factorA(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
@@ -231,27 +220,11 @@ void allocRightHandSides(struct RightHandSides rhs[], const struct Base base[], 
   }
 }
 
-void deallocRightHandSides(struct RightHandSides* rhs, int64_t levels) {
-  for (int i = 0; i <= levels; i++) {
-    double* data = rhs[i].X[0].A;
-    if (data)
-      free(data);
-    free(rhs[i].X);
-  }
-}
-
-void RightHandSides_mem(int64_t* bytes, const struct RightHandSides* rhs, int64_t levels) {
-  int64_t count = 0;
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t len = rhs[i].Xlen;
-    int64_t bytes_x, bytes_o, bytes_c;
-    matrix_mem(&bytes_x, &rhs[i].X[0], len);
-    matrix_mem(&bytes_o, &rhs[i].Xo[0], len);
-    matrix_mem(&bytes_c, &rhs[i].Xc[0], len);
-
-    count = count + bytes_x + bytes_o + bytes_c;
-  }
-  *bytes = count;
+void rightHandSides_free(struct RightHandSides* rhs) {
+  double* data = rhs->X[0].A;
+  if (data)
+    free(data);
+  free(rhs->X);
 }
 
 void svAccFw(struct Matrix* Xc, struct Matrix* Xo, const struct Matrix* X, const struct Matrix* Uc, const struct Matrix* Uo, const struct Matrix* A_cc, const struct Matrix* A_oc, const struct CSC* rels, const struct CellComm* comm) {
@@ -332,7 +305,9 @@ void dist_double_svfw(char fwbk, double* arr[], const struct CellComm* comm) {
   const int64_t* row = &comm->Comms.RowIndex[pbegin];
   double* data = arr[0];
   int is_all = fwbk == 'A' || fwbk == 'a';
-
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
   for (int64_t i = 0; i < plen; i++) {
     int64_t p = row[i];
     int is_fw = (fwbk == 'F' || fwbk == 'f') && p <= mpi_rank;
@@ -352,6 +327,10 @@ void dist_double_svfw(char fwbk, double* arr[], const struct CellComm* comm) {
   int64_t alen = arr[xlen] - data;
   if (comm->Proc[1] - comm->Proc[0] > 1)
     MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
 }
 
 void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
@@ -361,7 +340,9 @@ void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
   const int64_t* row = &comm->Comms.RowIndex[pbegin];
   double* data = arr[0];
   int is_all = fwbk == 'A' || fwbk == 'a';
-
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
   for (int64_t i = plen - 1; i >= 0; i--) {
     int64_t p = row[i];
     int is_fw = (fwbk == 'F' || fwbk == 'f') && p <= mpi_rank;
@@ -381,6 +362,10 @@ void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
   int64_t alen = arr[xlen] - data;
   if (comm->Proc[1] - comm->Proc[0] > 1)
     MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
 }
 
 void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels) {

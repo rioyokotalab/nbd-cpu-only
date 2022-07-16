@@ -26,7 +26,8 @@ ax.plot(x, y, '^', label = "OUR CODE serial", linestyle="-", color='blue')
 ax.plot(xref, yref, label = "Ideal Linear", linestyle="--", color='black')
 
 ax.axis([1024, 65536, 0.01, 1000])
-ax.loglog(basex=2,basey=10)
+ax.set_xscale('log', base=2)
+ax.set_yscale('log', base=10)
 
 for axis in [ax.xaxis]:
     formatter = ScalarFormatter()

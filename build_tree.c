@@ -157,6 +157,10 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
     rel_arr[i] = len;
 }
 
+void csc_free(struct CSC* csc) {
+  free(csc->ColIndex);
+}
+
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank) {
   int64_t low = *begin;
   int64_t high = *end;
@@ -339,19 +343,17 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
   free(ranks);
 }
 
-void cellComm_free(struct CellComm* comms, int64_t levels) {
-  int64_t mpi_size = comms->Comms.M;
-  for (int64_t i = 0; i <= levels; i++) {
-    for (int64_t j = 0; j < mpi_size; j++)
-      if (comms[i].Comm_box[j] != MPI_COMM_NULL)
-        MPI_Comm_free(&comms[i].Comm_box[j]);
-    if (comms[i].Comm_share != MPI_COMM_NULL)
-      MPI_Comm_free(&comms[i].Comm_share);
-    if (comms[i].Comm_merge != MPI_COMM_NULL)
-      MPI_Comm_free(&comms[i].Comm_merge);
-    free(comms[i].Comms.ColIndex);
-    free(comms[i].Comm_box);
-  }
+void cellComm_free(struct CellComm* comm) {
+  int64_t mpi_size = comm->Comms.M;
+  for (int64_t j = 0; j < mpi_size; j++)
+    if (comm->Comm_box[j] != MPI_COMM_NULL)
+      MPI_Comm_free(&comm->Comm_box[j]);
+  if (comm->Comm_share != MPI_COMM_NULL)
+    MPI_Comm_free(&comm->Comm_share);
+  if (comm->Comm_merge != MPI_COMM_NULL)
+    MPI_Comm_free(&comm->Comm_merge);
+  free(comm->Comms.ColIndex);
+  free(comm->Comm_box);
 }
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {

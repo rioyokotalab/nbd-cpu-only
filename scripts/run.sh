@@ -2,7 +2,7 @@
 set -x
 
 export OMP_NUM_THREADS=1
-BIN=~/nbd/lorasp
+BIN=~/nbd/build/lorasp
 LOGS=~/nbd/log
 SCRIPT=~/nbd/scripts
 

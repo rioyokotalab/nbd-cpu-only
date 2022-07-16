@@ -42,10 +42,6 @@ void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);
 
 void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies);
 
-void matrixCreate(struct Matrix* mat, int64_t m, int64_t n);
-
-void matrixDestroy(struct Matrix* mat);
-
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
 
 void qr_full(struct Matrix* Q, struct Matrix* R);
@@ -68,17 +64,17 @@ void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 
 void normalizeA(struct Matrix* A, const struct Matrix* B);
 
-void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA);
-
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
+
+void csc_free(struct CSC* csc);
 
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank);
 
 void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 
-void cellComm_free(struct CellComm* comms, int64_t levels);
+void cellComm_free(struct CellComm* comm);
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
 
@@ -98,29 +94,21 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
 
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
-void allocBasis(struct Base* basis, int64_t levels, int64_t ncells, const struct Cell* cells, const struct CellComm* comm);
+void buildBasis(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* rel_near, int64_t levels, const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
 
-void deallocBasis(struct Base* basis, int64_t levels);
-
-void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels);
-
-void evaluateBaseAll(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* rel_near, int64_t levels, const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
+void basis_free(struct Base* basis);
 
 void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm);
 
 void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
-void deallocNode(struct Node* node, int64_t levels);
-
-void node_mem(int64_t* bytes, const struct Node* node, int64_t levels);
+void node_free(struct Node* node);
 
 void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
 void allocRightHandSides(struct RightHandSides st[], const struct Base base[], int64_t levels);
 
-void deallocRightHandSides(struct RightHandSides* st, int64_t levels);
-
-void RightHandSides_mem(int64_t* bytes, const struct RightHandSides* st, int64_t levels);
+void rightHandSides_free(struct RightHandSides* rhs);
 
 void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels);
 

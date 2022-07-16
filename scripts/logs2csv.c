@@ -17,9 +17,9 @@ int main(int argc, char* argv[]) {
     double admis, ctime, ctime_comm, ftime, ftime_comm, stime, stime_comm, b_mem, m_mem, v_mem, err, ptime, ptime_comm;
 
     int ret = fscanf(log, "LORASP: %d,%d,%lf,%d,%d\n\
-      Construct: %lf COMM: %lf\n\
-      Factorize: %lf COMM: %lf\n\
-      Solution: %lf COMM: %lf\n\
+      Construct: %lf s. COMM: %lf s.\n\
+      Factorize: %lf s. COMM: %lf s.\n\
+      Solution: %lf s. COMM: %lf s.\n\
       Basis Memory: %lf GiB.\n\
       Matrix Memory: %lf GiB.\n\
       Vector Memory: %lf GiB.\n\

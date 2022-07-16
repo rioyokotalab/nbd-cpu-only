@@ -15,38 +15,15 @@
 #include "lapacke.h"
 #endif
 
-void matrixCreate(struct Matrix* mat, int64_t m, int64_t n) {
-  int64_t size = m * n;
-  if (size > 0) {
-    mat->A = (double*)malloc(sizeof(double) * size);
-    mat->M = m;
-    mat->N = n;
-  }
-  else {
-    mat->A = NULL;
-    mat->M = 0;
-    mat->N = 0;
-  }
-}
-
-void matrixDestroy(struct Matrix* mat) {
-  if (mat->A)
-    free(mat->A);
-  mat->A = NULL;
-  mat->M = 0;
-  mat->N = 0;
-}
-
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2) {
-  if (m > 0 && n > 0)
 #ifdef USE_MKL
-    mkl_domatcopy('C', 'N', m, n, 1., &(m1->A)[y1 + x1 * m1->M], m1->M, &(m2->A)[y2 + x2 * m2->M], m2->M);
+  mkl_domatcopy('C', 'N', m, n, 1., &(m1->A)[y1 + x1 * m1->M], m1->M, &(m2->A)[y2 + x2 * m2->M], m2->M);
 #else
-    for (int64_t j = 0; j < n; j++) {
-      int64_t j1 = y1 + (x1 + j) * m1->M;
-      int64_t j2 = y2 + (x2 + j) * m2->M;
-      memcpy(&(m2->A)[j2], &(m1->A)[j1], sizeof(double) * m);
-    }
+  for (int64_t j = 0; j < n; j++) {
+    int64_t j1 = y1 + (x1 + j) * m1->M;
+    int64_t j2 = y2 + (x2 + j) * m2->M;
+    memcpy(&(m2->A)[j2], &(m1->A)[j1], sizeof(double) * m);
+  }
 #endif
 }
 
@@ -97,21 +74,17 @@ void lraID(double epi, struct Matrix* A, struct Matrix* U, int32_t arows[], int6
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta) {
   int64_t k = (ta == 'N' || ta == 'n') ? A->N : A->M;
-  if (C->M > 0 && C->N > 0 && k > 0) {
-    CBLAS_TRANSPOSE tac = (ta == 'T' || ta == 't') ? CblasTrans : CblasNoTrans;
-    CBLAS_TRANSPOSE tbc = (tb == 'T' || tb == 't') ? CblasTrans : CblasNoTrans;
-    cblas_dgemm(CblasColMajor, tac, tbc, C->M, C->N, k, alpha, A->A, A->M, B->A, B->M, beta, C->A, C->M);
-  }
+  CBLAS_TRANSPOSE tac = (ta == 'T' || ta == 't') ? CblasTrans : CblasNoTrans;
+  CBLAS_TRANSPOSE tbc = (tb == 'T' || tb == 't') ? CblasTrans : CblasNoTrans;
+  cblas_dgemm(CblasColMajor, tac, tbc, C->M, C->N, k, alpha, A->A, A->M, B->A, B->M, beta, C->A, C->M);
 }
 
 void chol_decomp(struct Matrix* A) {
-  if (A->M > 0)
-    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A->M, A->A, A->M);
+  LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A->M, A->A, A->M);
 }
 
 void trsm_lowerA(struct Matrix* A, const struct Matrix* L) {
-  if (A->M > 0 && L->M > 0 && L->N > 0)
-    cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, A->M, A->N, 1., L->A, L->M, A->A, A->M);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, A->M, A->N, 1., L->A, L->M, A->A, A->M);
 }
 
 void utav(const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C) {
@@ -128,27 +101,17 @@ void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S) {
 }
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {
-  if (A->M > 0 && X->N > 0) {
-    if (type == 'F' || type == 'f' || type == 'A' || type == 'a')
-      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, X->M, X->N, 1., A->A, A->M, X->A, X->M);
-    if (type == 'B' || type == 'b' || type == 'A' || type == 'a')
-      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasTrans, CblasNonUnit, X->M, X->N, 1., A->A, A->M, X->A, X->M);
-  }
+  if (type == 'F' || type == 'f' || type == 'A' || type == 'a')
+    cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, X->M, X->N, 1., A->A, A->M, X->A, X->M);
+  if (type == 'B' || type == 'b' || type == 'A' || type == 'a')
+    cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasTrans, CblasNonUnit, X->M, X->N, 1., A->A, A->M, X->A, X->M);
 }
 
 void normalizeA(struct Matrix* A, const struct Matrix* B) {
   int64_t len_A = A->M * A->N;
   int64_t len_B = B->M * B->N;
-  if (len_A > 0 && len_B > 0) {
-    double nrm_A = cblas_dnrm2(len_A, A->A, 1);
-    double nrm_B = cblas_dnrm2(len_B, B->A, 1);
-    cblas_dscal(len_A, nrm_B / nrm_A, A->A, 1);
-  }
+  double nrm_A = cblas_dnrm2(len_A, A->A, 1);
+  double nrm_B = cblas_dnrm2(len_B, B->A, 1);
+  cblas_dscal(len_A, nrm_B / nrm_A, A->A, 1);
 }
 
-void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA) {
-  int64_t count = sizeof(struct Matrix) * lenA;
-  for (int64_t i = 0; i < lenA; i++)
-    count = count + sizeof(double) * A[i].M * A[i].N;
-  *bytes = count;
-}
