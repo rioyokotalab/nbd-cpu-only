@@ -218,28 +218,32 @@ void factorA(struct Node A[], const struct Base basis[], const struct CSC rels_n
   chol_decomp(&A[0].A[0]);
 }
 
-void allocRightHandSides(struct RightHandSides rhs[], const struct Base base[], int64_t levels) {
+void allocRightHandSides(char mvsv, struct RightHandSides rhs[], const struct Base base[], int64_t levels) {
+  int use_c = (mvsv == 'S') || (mvsv == 's');
   for (int64_t i = 0; i <= levels; i++) {
     int64_t len = base[i].Ulen;
-    int64_t len_arr = len * 3;
+    int64_t len_arr = len * 4;
     struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
     rhs[i].Xlen = len;
     rhs[i].X = arr_m;
-    rhs[i].Xc = &arr_m[len];
-    rhs[i].Xo = &arr_m[len * 2];
+    rhs[i].XcM = &arr_m[len];
+    rhs[i].XoL = &arr_m[len * 2];
+    rhs[i].B = &arr_m[len * 3];
 
     int64_t count = 0;
     for (int64_t j = 0; j < len; j++) {
       int64_t dim = base[i].Dims[j];
       int64_t diml = base[i].DimsLr[j];
-      int64_t dimc = dim - diml;
+      int64_t dimc = use_c ? dim - diml : diml;
       arr_m[j].M = dim; // X
       arr_m[j].N = 1;
       arr_m[j + len].M = dimc; // Xc
       arr_m[j + len].N = 1;
       arr_m[j + len * 2].M = diml; // Xo
       arr_m[j + len * 2].N = 1;
-      count = count + dim + dimc + diml;
+      arr_m[j + len * 3].M = dim; // B
+      arr_m[j + len * 3].N = 1;
+      count = count + dim * 2 + dimc + diml;
     }
 
     double* data = NULL;
@@ -405,50 +409,50 @@ void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
 void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, &comm[levels]);
-  double* xbegin = rhs[levels].X[ibegin].A;
-  int64_t lenX = (rhs[levels].X[iend - 1].A - xbegin) + rhs[levels].X[iend - 1].M;
-  memcpy(xbegin, X, lenX * sizeof(double));
+  int64_t lenX = (rhs[levels].X[iend - 1].A - rhs[levels].X[ibegin].A) + rhs[levels].X[iend - 1].M;
+  memcpy(rhs[levels].X[ibegin].A, X, lenX * sizeof(double));
 
   for (int64_t i = levels; i > 0; i--) {
     int64_t xlen = rhs[i].Xlen;
     double** arr_comm = (double**)malloc(sizeof(double*) * (xlen + 1));
     for (int64_t j = 0; j < xlen; j++)
-      arr_comm[j] = rhs[i].Xc[j].A;
-    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].Xc[xlen - 1].M;
+      arr_comm[j] = rhs[i].XcM[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XcM[xlen - 1].M;
     dist_double_svfw('F', arr_comm, &comm[i]);
 
-    svAccFw(rhs[i].Xc, rhs[i].Xo, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], &comm[i]);
+    svAccFw(rhs[i].XcM, rhs[i].XoL, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], &comm[i]);
     dist_double_svfw('B', arr_comm, &comm[i]);
 
     for (int64_t j = 0; j < xlen; j++)
-      arr_comm[j] = rhs[i].Xo[j].A;
-    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].Xo[xlen - 1].M;
+      arr_comm[j] = rhs[i].XoL[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XoL[xlen - 1].M;
     dist_double_svfw('A', arr_comm, &comm[i]);
 
     free(arr_comm);
-    permuteAndMerge('F', rhs[i].Xo, rhs[i - 1].X, basis[i - 1].Lchild, &comm[i - 1]);
+    permuteAndMerge('F', rhs[i].XoL, rhs[i - 1].X, basis[i - 1].Lchild, &comm[i - 1]);
   }
-  mat_solve('A', &rhs[0].X[0], &A[0].A[0]);
+  cpyMatToMat(rhs[0].X[0].M, 1, &rhs[0].X[0], &rhs[0].B[0], 0, 0, 0, 0);
+  mat_solve('A', &rhs[0].B[0], &A[0].A[0]);
   
   for (int64_t i = 1; i <= levels; i++) {
-    permuteAndMerge('B', rhs[i].Xo, rhs[i - 1].X, basis[i - 1].Lchild, &comm[i - 1]);
+    permuteAndMerge('B', rhs[i].XoL, rhs[i - 1].B, basis[i - 1].Lchild, &comm[i - 1]);
     int64_t xlen = rhs[i].Xlen;
     double** arr_comm = (double**)malloc(sizeof(double*) * (xlen + 1));
     for (int64_t j = 0; j < xlen; j++)
-      arr_comm[j] = rhs[i].Xo[j].A;
-    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].Xo[xlen - 1].M;
+      arr_comm[j] = rhs[i].XoL[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XoL[xlen - 1].M;
     dist_double_svbk('A', arr_comm, &comm[i]);
 
     for (int64_t j = 0; j < xlen; j++)
-      arr_comm[j] = rhs[i].Xc[j].A;
-    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].Xc[xlen - 1].M;
+      arr_comm[j] = rhs[i].XcM[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XcM[xlen - 1].M;
     dist_double_svbk('B', arr_comm, &comm[i]);
     
-    svAccBk(rhs[i].Xc, rhs[i].Xo, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], &comm[i]);
+    svAccBk(rhs[i].XcM, rhs[i].XoL, rhs[i].B, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], &comm[i]);
     dist_double_svbk('F', arr_comm, &comm[i]);
     free(arr_comm);
   }
-  memcpy(X, xbegin, lenX * sizeof(double));
+  memcpy(X, rhs[levels].B[ibegin].A, lenX * sizeof(double));
 }
 
 

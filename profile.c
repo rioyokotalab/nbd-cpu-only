@@ -44,9 +44,9 @@ void rightHandSides_mem(int64_t* bytes, const struct RightHandSides* rhs, int64_
     int64_t len = rhs[i].Xlen;
     int64_t bytes_x, bytes_o, bytes_c;
     matrix_mem(&bytes_x, &rhs[i].X[0], len);
-    matrix_mem(&bytes_o, &rhs[i].Xo[0], len);
-    matrix_mem(&bytes_c, &rhs[i].Xc[0], len);
-    count = count + bytes_x + bytes_o + bytes_c;
+    matrix_mem(&bytes_o, &rhs[i].XoL[0], len);
+    matrix_mem(&bytes_c, &rhs[i].XcM[0], len);
+    count = count + bytes_x * 2 + bytes_o + bytes_c;
   }
   *bytes = count;
 }

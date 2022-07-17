@@ -16,7 +16,7 @@ struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 struct CellComm { struct CSC Comms; int64_t Proc[3], *ProcRootI, *ProcBoxes, *ProcBoxesEnd; MPI_Comm Comm_share, Comm_merge, *Comm_box; };
 struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, *Offsets, *Multipoles; struct Matrix *Uo, *Uc, *R; };
 struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; };
-struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo; };
+struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
 
 void laplace3d(double* r2);
 
@@ -104,7 +104,7 @@ void node_free(struct Node* node);
 
 void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
-void allocRightHandSides(struct RightHandSides st[], const struct Base base[], int64_t levels);
+void allocRightHandSides(char mvsv, struct RightHandSides st[], const struct Base base[], int64_t levels);
 
 void rightHandSides_free(struct RightHandSides* rhs);
 

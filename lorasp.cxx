@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
   mat_vec_reference(ef, body_local[0], body_local[1], &B[0], Nbody, body.data());
 
   std::vector<RightHandSides> rhs(levels + 1);
-  allocRightHandSides(&rhs[0], &basis[0], levels);
+  allocRightHandSides('S', &rhs[0], &basis[0], levels);
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
