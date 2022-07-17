@@ -211,7 +211,7 @@ void factorA(struct Node A[], const struct Base basis[], const struct CSC rels_n
     int64_t inxt = i - 1;
     nextNode(A[inxt].A, &rels_near[inxt], A[i].A_oo, A[i].S, basis[inxt].Lchild, &rels_near[i], &rels_far[i], &comm[inxt], &comm[i]);
 
-    int64_t alst = rels_near[inxt].ColIndex[rels_near[inxt].N];
+    int64_t alst = rels_near[inxt].ColIndex[rels_near[inxt].N] - 1;
     int64_t alen = (int64_t)(A[inxt].A[alst].A - A[inxt].A[0].A) + A[inxt].A[alst].M * A[inxt].A[alst].N;
     merge_double(A[inxt].A[0].A, alen, &comm[inxt]);
   }

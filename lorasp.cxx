@@ -29,6 +29,7 @@ int main(int argc, char* argv[]) {
   std::vector<Body> body(Nbody);
   std::vector<int64_t> buckets(Nleaf);
   mesh_unit_sphere(body.data(), Nbody);
+  //mesh_unit_cube(body.data(), Nbody);
   //uniform_unit_cube(body.data(), Nbody, 3, 1234);
   body_neutral_charge(body.data(), Nbody, 1., 0);
 
