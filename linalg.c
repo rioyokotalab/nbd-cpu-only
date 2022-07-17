@@ -87,14 +87,6 @@ void trsm_lowerA(struct Matrix* A, const struct Matrix* L) {
   cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, A->M, A->N, 1., L->A, L->M, A->A, A->M);
 }
 
-void utav(const struct Matrix* U, const struct Matrix* A, const struct Matrix* VT, struct Matrix* C) {
-  double* work = (double*)malloc(sizeof(double) * C->M * A->N);
-  struct Matrix UA = { work, C->M, A->N };
-  mmult('T', 'N', U, A, &UA, 1., 0.);
-  mmult('N', 'N', &UA, VT, C, 1., 0.);
-  free(work);
-}
-
 void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S) {
   cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, R1->N, S->N, 1., R1->A, R1->M, S->A, S->M);
   cblas_dtrmm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, S->M, R2->N, 1., R2->A, R2->M, S->A, S->M);

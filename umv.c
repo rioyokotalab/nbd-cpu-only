@@ -46,7 +46,7 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
         arr_m[yx + nnz * 2].N = dimc_x;
         arr_m[yx + nnz * 3].M = diml_y; // A_oo
         arr_m[yx + nnz * 3].N = diml_x;
-        count += dim_y * dim_x + dimc_y * dimc_x + diml_y * dimc_x + diml_y * diml_x;
+        count += dim_y * dim_x;
       }
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
@@ -64,10 +64,22 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
     if (count > 0)
       data = (double*)calloc(count, sizeof(double));
     
-    for (int64_t j = 0; j < len_arr; j++) {
-      arr_m[j].A = data;
-      int64_t len = arr_m[j].M * arr_m[j].N;
-      data = data + len;
+    for (int64_t x = 0; x < nnz; x++) {
+      int64_t dim_y = arr_m[x].M;
+      int64_t dim_x = arr_m[x].N;
+      int64_t dimc_y = arr_m[x + nnz].M;
+      int64_t dimc_x = arr_m[x + nnz].N;
+      arr_m[x].A = data; // A
+      arr_m[x + nnz].A = data; // A_cc
+      arr_m[x + nnz * 2].A = data + dimc_y * dimc_x; // A_oc
+      arr_m[x + nnz * 3].A = data + dim_y * dimc_x; // A_oo
+      data = data + dim_y * dim_x;
+    }
+
+    for (int64_t x = 0; x < nnz_f; x++) {
+      int64_t y = x + nnz * 4;
+      arr_m[y].A = data;
+      data = data + arr_m[y].M * arr_m[y].N;
     }
   }
 }
@@ -80,6 +92,22 @@ void node_free(struct Node* node) {
 }
 
 void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, const struct Matrix* A, const struct Matrix* Uc, const struct Matrix* Uo, const struct CSC* rels, const struct CellComm* comm) {
+  int64_t nnz = rels->ColIndex[rels->N];
+  int64_t alen = (int64_t)(A[nnz - 1].A - A[0].A) + A[nnz - 1].M * A[nnz - 1].N;
+  double* data = (double*)malloc(sizeof(double) * alen);
+  struct Matrix* AV_c = (struct Matrix*)malloc(sizeof(struct Matrix) * nnz * 2);
+  struct Matrix* AV_o = &AV_c[nnz];
+
+  for (int64_t x = 0; x < nnz; x++) {
+    int64_t dim_y = A[x].M;
+    int64_t dim_x = A[x].N;
+    int64_t dimc_x = A_cc[x].N;
+    int64_t diml_x = dim_x - dimc_x;
+    AV_c[x] = (struct Matrix){ data, dim_y, dimc_x };
+    AV_o[x] = (struct Matrix){ &data[dim_y * dimc_x], dim_y, diml_x };
+    data = data + dim_y * dim_x;
+  }
+  
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
   int64_t lbegin = ibegin;
@@ -90,23 +118,28 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, c
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       i_local(&y, comm);
-      utav(&Uc[y], &A[yx], &Uc[x + ibegin], &A_cc[yx]);
-      utav(&Uo[y], &A[yx], &Uc[x + ibegin], &A_oc[yx]);
-      utav(&Uo[y], &A[yx], &Uo[x + ibegin], &A_oo[yx]);
-    }
+      mmult('N', 'N', &A[yx], &Uc[x + ibegin], &AV_c[yx], 1., 0.);
+      mmult('N', 'N', &A[yx], &Uo[x + ibegin], &AV_o[yx], 1., 0.);
+      mmult('T', 'N', &Uc[y], &AV_c[yx], &A_cc[yx], 1., 0.);
+      mmult('T', 'N', &Uo[y], &AV_c[yx], &A_oc[yx], 1., 0.);
+      mmult('T', 'N', &Uo[y], &AV_o[yx], &A_oo[yx], 1., 0.);
+    }  // Skeleton and Redundancy decomposition
 
     int64_t xx;
     lookupIJ(&xx, rels, x + lbegin, x);
-    chol_decomp(&A_cc[xx]);
+    chol_decomp(&A_cc[xx]); // Factorization
 
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       trsm_lowerA(&A_oc[yx], &A_cc[xx]);
       if (y > x + lbegin)
         trsm_lowerA(&A_cc[yx], &A_cc[xx]);
-    }
-    mmult('N', 'T', &A_oc[xx], &A_oc[xx], &A_oo[xx], -1., 1.);
+    } // Lower elimination
+    mmult('N', 'T', &A_oc[xx], &A_oc[xx], &A_oo[xx], -1., 1.); // Schur Complement
   }
+
+  free(AV_c[0].A);
+  free(AV_c);
 }
 
 void nextNode(struct Matrix* Mup, const struct CSC* rels_up, const struct Matrix* Mlow, const struct Matrix* Slow, const int64_t* lchild, 
@@ -175,11 +208,12 @@ void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
 void factorA(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
   for (int64_t i = levels; i > 0; i--) {
     factorNode(A[i].A_cc, A[i].A_oc, A[i].A_oo, A[i].A, basis[i].Uc, basis[i].Uo, &rels_near[i], &comm[i]);
-    nextNode(A[i - 1].A, &rels_near[i - 1], A[i].A_oo, A[i].S, basis[i - 1].Lchild, &rels_near[i], &rels_far[i], &comm[i - 1], &comm[i]);
+    int64_t inxt = i - 1;
+    nextNode(A[inxt].A, &rels_near[inxt], A[i].A_oo, A[i].S, basis[inxt].Lchild, &rels_near[i], &rels_far[i], &comm[inxt], &comm[i]);
 
-    double* abegin = A[i - 1].A[0].A;
-    int64_t alen = A[i - 1].A_cc[0].A - abegin;
-    merge_double(abegin, alen, &comm[i - 1]);
+    int64_t alst = rels_near[inxt].ColIndex[rels_near[inxt].N];
+    int64_t alen = (int64_t)(A[inxt].A[alst].A - A[inxt].A[0].A) + A[inxt].A[alst].M * A[inxt].A[alst].N;
+    merge_double(A[inxt].A[0].A, alen, &comm[inxt]);
   }
   chol_decomp(&A[0].A[0]);
 }
@@ -205,7 +239,7 @@ void allocRightHandSides(struct RightHandSides rhs[], const struct Base base[], 
       arr_m[j + len].N = 1;
       arr_m[j + len * 2].M = diml; // Xo
       arr_m[j + len * 2].N = 1;
-      count += dim + dimc + diml;
+      count = count + dim + dimc + diml;
     }
 
     double* data = NULL;
@@ -214,7 +248,7 @@ void allocRightHandSides(struct RightHandSides rhs[], const struct Base base[], 
     
     for (int64_t j = 0; j < len_arr; j++) {
       arr_m[j].A = data;
-      int64_t len = arr_m[j].M * arr_m[j].N;
+      int64_t len = arr_m[j].M;
       data = data + len;
     }
   }

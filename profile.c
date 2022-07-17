@@ -12,7 +12,7 @@ void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA) {
 }
 
 void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels) {
-  int64_t count = 0;
+  int64_t count = sizeof(struct Base) * levels;
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nodes = basis[i].Ulen;
     int64_t bytes_o, bytes_c, bytes_r;
@@ -26,32 +26,26 @@ void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels) {
 }
 
 void node_mem(int64_t* bytes, const struct Node* node, int64_t levels) {
-  int64_t count = 0;
+  int64_t count = sizeof(struct Node) * levels;
   for (int64_t i = 0; i <= levels; i++) {
     int64_t nnz = node[i].lenA;
     int64_t nnz_f = node[i].lenS;
-    int64_t bytes_a, bytes_cc, bytes_oc, bytes_oo, bytes_s;
-
+    int64_t bytes_a, bytes_s;
     matrix_mem(&bytes_a, &node[i].A[0], nnz);
-    matrix_mem(&bytes_cc, &node[i].A_cc[0], nnz);
-    matrix_mem(&bytes_oc, &node[i].A_oc[0], nnz);
-    matrix_mem(&bytes_oo, &node[i].A_oo[0], nnz);
     matrix_mem(&bytes_s, &node[i].S[0], nnz_f);
-
-    count = count + bytes_a + bytes_cc + bytes_oc + bytes_oo + bytes_s;
+    count = count + bytes_a + bytes_s;
   }
   *bytes = count;
 }
 
 void rightHandSides_mem(int64_t* bytes, const struct RightHandSides* rhs, int64_t levels) {
-  int64_t count = 0;
+  int64_t count = sizeof(struct RightHandSides) * levels;
   for (int64_t i = 0; i <= levels; i++) {
     int64_t len = rhs[i].Xlen;
     int64_t bytes_x, bytes_o, bytes_c;
     matrix_mem(&bytes_x, &rhs[i].X[0], len);
     matrix_mem(&bytes_o, &rhs[i].Xo[0], len);
     matrix_mem(&bytes_c, &rhs[i].Xc[0], len);
-
     count = count + bytes_x + bytes_o + bytes_c;
   }
   *bytes = count;
