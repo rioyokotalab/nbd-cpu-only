@@ -110,6 +110,8 @@ void rightHandSides_free(struct RightHandSides* rhs);
 
 void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels);
 
+void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], double* X, const struct CellComm comm[], int64_t levels);
+
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 
 #ifdef __cplusplus

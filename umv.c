@@ -455,6 +455,58 @@ void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Bas
   memcpy(X, rhs[levels].B[ibegin].A, lenX * sizeof(double));
 }
 
+void horizontalPass(struct Matrix* B, const struct Matrix* X, const struct Matrix* A, const struct CSC* rels, const struct CellComm* comm) {
+  int64_t ibegin = 0, iend = 0;
+  self_local_range(&ibegin, &iend, comm);
+  for (int64_t y = 0; y < rels->N; y++)
+    for (int64_t xy = rels->ColIndex[y]; xy < rels->ColIndex[y + 1]; xy++) {
+      int64_t x = rels->RowIndex[xy];
+      i_local(&x, comm);
+      mmult('T', 'N', &A[xy], &X[x], &B[y + ibegin], 1., 1.);
+    }
+}
+
+void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], double* X, const struct CellComm comm[], int64_t levels) {
+  int64_t ibegin = 0, iend = 0;
+  self_local_range(&ibegin, &iend, &comm[levels]);
+  int64_t lenX = (rhs[levels].X[iend - 1].A - rhs[levels].X[ibegin].A) + rhs[levels].X[iend - 1].M;
+  memcpy(rhs[levels].X[ibegin].A, X, lenX * sizeof(double));
+
+  int64_t xlen = rhs[levels].Xlen;
+  double** arr_comm = (double**)malloc(sizeof(double*) * (xlen + 1));
+  for (int64_t j = 0; j < xlen; j++)
+    arr_comm[j] = rhs[levels].X[j].A;
+  arr_comm[xlen] = arr_comm[xlen - 1] + rhs[levels].X[xlen - 1].M;
+  dist_double_svbk('A', arr_comm, &comm[levels]);
+  free(arr_comm);
+
+  for (int64_t i = levels; i > 0; i--) {
+    self_local_range(&ibegin, &iend, &comm[i]);
+    int64_t iboxes = iend - ibegin;
+    for (int64_t j = 0; j < iboxes; j++)
+      mmult('T', 'N', &basis[i].Uo[j + ibegin], &rhs[i].X[j + ibegin], &rhs[i].XcM[j + ibegin], 1., 0.);
+    xlen = rhs[i].Xlen;
+    arr_comm = (double**)malloc(sizeof(double*) * (xlen + 1));
+    for (int64_t j = 0; j < xlen; j++)
+      arr_comm[j] = rhs[i].XcM[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XcM[xlen - 1].M;
+    dist_double_svbk('A', arr_comm, &comm[i]);
+    free(arr_comm);
+    permuteAndMerge('F', rhs[i].XcM, rhs[i - 1].X, basis[i - 1].Lchild, &comm[i - 1]);
+  }
+  
+  for (int64_t i = 1; i <= levels; i++) {
+    permuteAndMerge('B', rhs[i].XoL, rhs[i - 1].B, basis[i - 1].Lchild, &comm[i - 1]);
+    horizontalPass(rhs[i].XoL, rhs[i].XcM, A[i].S, &rels_far[i], &comm[i]);
+    self_local_range(&ibegin, &iend, &comm[i]);
+    int64_t iboxes = iend - ibegin;
+    for (int64_t j = 0; j < iboxes; j++)
+      mmult('N', 'N', &basis[i].Uo[j + ibegin], &rhs[i].XoL[j + ibegin], &rhs[i].B[j + ibegin], 1., 0.);
+  }
+  horizontalPass(rhs[levels].B, rhs[levels].X, A[levels].A, &rels_near[levels], &comm[levels]);
+  memcpy(X, rhs[levels].B[ibegin].A, lenX * sizeof(double));
+}
+
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX) {
   double err[2] = { 0., 0. };

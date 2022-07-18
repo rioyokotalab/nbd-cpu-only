@@ -61,29 +61,38 @@ int main(int argc, char* argv[]) {
   for (int64_t i = 0; i <= levels; i++)
     evalS(ef, nodes[i].S, &basis[i], body.data(), &rels_far[i], &cell_comm[i]);
 
+  int64_t body_local[2];
+  local_bodies(body_local, ncells, cell.data(), levels);
+  std::vector<double> X1(body_local[1] - body_local[0]);
+  if (Nbody > 10000) {
+    loadX(X1.data(), body_local, body.data());
+    std::vector<RightHandSides> mv(levels + 1);
+    allocRightHandSides('M', &mv[0], &basis[0], levels);
+    matVecA(&mv[0], &nodes[0], &basis[0], &rels_near[0], &rels_far[0], &X1[0], cell_comm.data(), levels);
+    for (int64_t i = 0; i <= levels; i++)
+      rightHandSides_free(&mv[i]);
+  }
+  else 
+    mat_vec_reference(ef, body_local[0], body_local[1], &X1[0], Nbody, body.data());
+  
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
   factorA(&nodes[0], &basis[0], &rels_near[0], &rels_far[0], cell_comm.data(), levels);
   stopTimer(&factor_time, &factor_comm_time);
 
-  int64_t body_local[2];
-  local_bodies(body_local, ncells, cell.data(), levels);
-  std::vector<double> X(body_local[1] - body_local[0]);
-  loadX(X.data(), body_local, body.data());
-
-  std::vector<double> B(body_local[1] - body_local[0]);
-  mat_vec_reference(ef, body_local[0], body_local[1], &B[0], Nbody, body.data());
+  std::vector<double> X2(body_local[1] - body_local[0]);
+  loadX(X2.data(), body_local, body.data());
 
   std::vector<RightHandSides> rhs(levels + 1);
   allocRightHandSides('S', &rhs[0], &basis[0], levels);
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
-  solveA(&rhs[0], &nodes[0], &basis[0], &rels_near[0], &B[0], cell_comm.data(), levels);
+  solveA(&rhs[0], &nodes[0], &basis[0], &rels_near[0], &X1[0], cell_comm.data(), levels);
   stopTimer(&solve_time, &solve_comm_time);
 
   double err;
-  solveRelErr(&err, B.data(), X.data(), X.size());
+  solveRelErr(&err, X1.data(), X2.data(), X2.size());
 
   int64_t dim = 3;
 
