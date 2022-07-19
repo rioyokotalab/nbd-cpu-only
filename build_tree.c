@@ -73,6 +73,56 @@ void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t
   *ncells = len;
 }
 
+void buildTreeBuckets(struct Cell* cells, const struct Body* bodies, const int64_t buckets[], int64_t levels) {
+  int64_t nleaf = (int64_t)1 << levels;
+  int64_t count = 0;
+  for (int64_t i = 0; i < nleaf; i++) {
+    int64_t ci = i + nleaf - 1;
+    cells[ci].Child = -1;
+    cells[ci].Body[0] = count;
+    cells[ci].Body[1] = count + buckets[i];
+    cells[ci].Level = levels;
+    get_bounds(&bodies[count], buckets[i], cells[ci].R, cells[ci].C);
+    count = count + buckets[i];
+  }
+
+  for (int64_t i = nleaf - 2; i >= 0; i--) {
+    int64_t c0 = (i << 1) + 1;
+    int64_t c1 = (i << 1) + 2;
+    int64_t begin = cells[c0].Body[0];
+    int64_t len = cells[c1].Body[1] - begin;
+    cells[i].Child = c0;
+    cells[i].Body[0] = begin;
+    cells[i].Body[1] = begin + len;
+    cells[i].Level = cells[c0].Level - 1;
+    get_bounds(&bodies[begin], len, cells[i].R, cells[i].C);
+  }
+
+  int __mpi_size = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
+  int64_t mpi_size = __mpi_size;
+  cells[0].Procs[0] = 0;
+  cells[0].Procs[1] = mpi_size;
+
+  for (int64_t i = 0; i < nleaf - 1; i++) {
+    struct Cell* ci = &cells[i];
+    struct Cell* c0 = &cells[ci->Child];
+    struct Cell* c1 = c0 + 1;
+    int64_t divp = (ci->Procs[1] - ci->Procs[0]) / 2;
+    if (divp >= 1) {
+      int64_t p = divp + ci->Procs[0];
+      c0->Procs[1] = p;
+      c1->Procs[0] = p;
+    }
+    else {
+      c0->Procs[1] = ci->Procs[1];
+      c1->Procs[0] = ci->Procs[0];
+    }
+    c0->Procs[0] = ci->Procs[0];
+    c1->Procs[1] = ci->Procs[1];
+  }
+}
+
 int admis_check(double theta, const double C1[], const double C2[], const double R1[], const double R2[]) {
   double dCi[3];
   dCi[0] = C1[0] - C2[0];

@@ -40,6 +40,8 @@ void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C
 
 void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);
 
+void read_sorted_bodies(int64_t nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname);
+
 void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies);
 
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
@@ -63,6 +65,8 @@ void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 void normalizeA(struct Matrix* A, const struct Matrix* B);
 
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
+
+void buildTreeBuckets(struct Cell* cells, const struct Body* bodies, const int64_t buckets[], int64_t levels);
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
 

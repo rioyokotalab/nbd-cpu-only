@@ -20,23 +20,32 @@ int main(int argc, char* argv[]) {
   int64_t rank_max = argc > 5 ? atol(argv[5]) : 100;
   int64_t sp_pts = argc > 6 ? atol(argv[6]) : 2000;
 
+  const char* fname = argc > 7 ? argv[7] : NULL;
+
   int64_t levels = (int64_t)std::log2(Nbody / leaf_size);
   int64_t Nleaf = (int64_t)1 << levels;
   
-  auto ef = laplace3d;
+  auto ef = yukawa3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
   
   std::vector<Body> body(Nbody);
-  std::vector<int64_t> buckets(Nleaf);
-  mesh_unit_sphere(body.data(), Nbody);
-  //mesh_unit_cube(body.data(), Nbody);
-  //uniform_unit_cube(body.data(), Nbody, 3, 1234);
-  body_neutral_charge(body.data(), Nbody, 1., 0);
-
   int64_t ncells = Nleaf + Nleaf - 1;
   std::vector<Cell> cell(ncells);
+
+  if (fname == NULL) {
+    mesh_unit_sphere(body.data(), Nbody);
+    //mesh_unit_cube(body.data(), Nbody);
+    //uniform_unit_cube(body.data(), Nbody, 3, 1234);
+    buildTree(&ncells, cell.data(), body.data(), Nbody, levels);
+  }
+  else {
+    std::vector<int64_t> buckets(Nleaf);
+    read_sorted_bodies(Nbody, Nleaf, &body[0], &buckets[0], fname);
+    buildTreeBuckets(&cell[0], &body[0], &buckets[0], levels);
+  }
+  body_neutral_charge(body.data(), Nbody, 1., 0);
+
   CSC cellNear, cellFar;
-  buildTree(&ncells, cell.data(), body.data(), Nbody, levels);
   traverse('N', &cellNear, cell.size(), cell.data(), theta);
   traverse('F', &cellFar, cell.size(), cell.data(), theta);
 

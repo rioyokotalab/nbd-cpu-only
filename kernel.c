@@ -272,6 +272,31 @@ void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim) {
     qsort(bodies, nbodies, size, comp_bodies_s2);
 }
 
+void read_sorted_bodies(int64_t nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname) {
+  FILE* file = fopen(fname, "r");
+  int64_t curr = 1;
+  int64_t cbegin = 0;
+  for (int64_t i = 0; i < nbodies; i++) {
+    int b; double x, y, z;
+    int ret = fscanf(file, "%lf %lf %lf %d", &x, &y, &z, &b);
+    bodies[i].X[0] = x;
+    bodies[i].X[1] = y;
+    bodies[i].X[2] = z;
+    while (curr < b && curr <= lbuckets) {
+      buckets[curr - 1] = i - cbegin;
+      cbegin = i;
+      curr++;
+    }
+    if (ret == EOF)
+      break;
+  }
+  while (curr <= lbuckets) {
+    buckets[curr - 1] = nbodies - cbegin;
+    cbegin = nbodies;
+    curr++;
+  }
+}
+
 void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies) {
   int64_t m = end - begin;
   int64_t n = nbodies;
