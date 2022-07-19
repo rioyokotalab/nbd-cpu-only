@@ -61,11 +61,13 @@ void startTimer(double* wtime, double* cmtime) {
 
 void stopTimer(double* wtime, double* cmtime) {
   MPI_Barrier(MPI_COMM_WORLD);
-  double stime = *wtime;
-  double scmtime = *cmtime;
   double etime = MPI_Wtime();
-  *wtime = etime - stime;
-  *cmtime = tot_cm_time - scmtime;
+  double time[2] = { etime - *wtime, tot_cm_time - *cmtime };
+  MPI_Allreduce(MPI_IN_PLACE, time, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  int mpi_size = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+  *wtime = time[0] / mpi_size;
+  *cmtime = time[1] / mpi_size;
 }
 
 void recordCommTime(double cmtime) {

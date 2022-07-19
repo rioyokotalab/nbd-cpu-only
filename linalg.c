@@ -27,49 +27,33 @@ void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m
 #endif
 }
 
-void qr_full(struct Matrix* Q, struct Matrix* R) {
-  int64_t m = Q->M;
-  int64_t n = R->N;
-  double* tau = (double*)calloc(n, sizeof(double));
-  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, Q->A, m, tau);
-  cpyMatToMat(n, n, Q, R, 0, 0, 0, 0);
-  LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, m, n, Q->A, m, tau);
-  free(tau);
+void qr_full(struct Matrix* Q, struct Matrix* R, double* tau) {
+  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, R->N, Q->A, Q->M, tau);
+  cpyMatToMat(R->M, R->N, Q, R, 0, 0, 0, 0);
+  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, R->N, Q->A, Q->M, tau);
 }
 
 void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* R2) {
-  int64_t m1 = R1->N;
-  int64_t m2 = R2->N;
-  int64_t n = U->N;
-  cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, m1, n, 1., R1->A, R1->M, U->A, U->M);
-  cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, m2, n, 1., R2->A, R2->M, &U->A[m1], U->M);
+  cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, R1->N, U->N, 1., R1->A, R1->M, U->A, U->M);
+  cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, R2->N, U->N, 1., R2->A, R2->M, &U->A[R1->N], U->M);
 }
 
-void lraID(double epi, struct Matrix* A, struct Matrix* U, int32_t arows[], int64_t* rnk_out) {
+void svd_U(struct Matrix* A, struct Matrix* U, double* S) {
   int64_t rank_a = A->M < A->N ? A->M : A->N;
-  int64_t rank = rank_a;
-  if (*rnk_out > 0)
-    rank = *rnk_out < rank ? *rnk_out : rank;
+  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', A->M, A->N, A->A, A->M, S, U->A, A->M, NULL, A->N, &S[rank_a]);
+}
 
-  double* work = (double*)malloc(sizeof(double) * (rank_a + rank_a + 1));
-  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', A->M, A->N, A->A, A->M, work, U->A, A->M, NULL, A->N, &work[rank_a]);
-  if (epi > 0.) {
-    int64_t r = 0;
-    double sepi = work[0] * epi;
-    while(r < rank && work[r] > sepi)
-      r += 1;
-    rank = r;
-  }
+void mul_AS(struct Matrix* A, double* S) {
+  for (int64_t i = 0; i < A->N; i++)
+    cblas_dscal(A->M, S[i], &(A->A)[i * A->M], 1);
+}
 
-  for (int64_t i = 0; i < rank; i++)
-    cblas_dscal(A->M, work[i], &(U->A)[i * A->M], 1);
-  memcpy(A->A, U->A, sizeof(double) * A->M * rank);
-
-  LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, rank, A->A, A->M, arows);
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, rank, 1., A->A, A->M, U->A, A->M);
-  free(work);
-  *rnk_out = rank;
+void id_row(struct Matrix* U, int32_t arows[], double* work) {
+  struct Matrix A = (struct Matrix){ work, U->M, U->N };
+  cblas_dcopy(A.M * A.N, U->A, 1, A.A, 1);
+  LAPACKE_dgetrf(LAPACK_COL_MAJOR, A.M, A.N, A.A, A.M, arows);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A.M, A.N, 1., A.A, A.M, U->A, A.M);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A.M, A.N, 1., A.A, A.M, U->A, A.M);
 }
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta) {
@@ -99,11 +83,13 @@ void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {
     cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasTrans, CblasNonUnit, X->M, X->N, 1., A->A, A->M, X->A, X->M);
 }
 
-void normalizeA(struct Matrix* A, const struct Matrix* B) {
+void nrm2_A(struct Matrix* A, double* nrm) {
   int64_t len_A = A->M * A->N;
-  int64_t len_B = B->M * B->N;
   double nrm_A = cblas_dnrm2(len_A, A->A, 1);
-  double nrm_B = cblas_dnrm2(len_B, B->A, 1);
-  cblas_dscal(len_A, nrm_B / nrm_A, A->A, 1);
+  *nrm = nrm_A;
 }
 
+void scal_A(struct Matrix* A, double alpha) {
+  int64_t len_A = A->M * A->N;
+  cblas_dscal(len_A, alpha, A->A, 1);
+}

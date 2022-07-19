@@ -288,7 +288,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       int64_t len_m = samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i];
       basis[l].Dims[i + ibegin] = ske_len;
       count = count + ske_len;
-      count_m = count_m + ske_len * (ske_len * 2 + len_m);
+      count_m = count_m + ske_len * (ske_len * 2 + len_m + 2);
     }
 
     int32_t* ipiv_data = (int32_t*)malloc(sizeof(int32_t) * count);
@@ -304,7 +304,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       ipiv_ptrs[i] = &ipiv_data[count];
       matrix_ptrs[i + ibegin] = &matrix_data[count_m];
       count = count + ske_len;
-      count_m = count_m + ske_len * (ske_len * 2 + len_m);
+      count_m = count_m + ske_len * (ske_len * 2 + len_m + 2);
     }
 
 #pragma omp parallel for
@@ -312,37 +312,53 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       int64_t ske_len = samples.SkeLens[i];
       int64_t len_s = samples.FarLens[i] + (samples.CloseLens[i] > 0 ? ske_len : 0);
       double* mat = matrix_ptrs[i + ibegin];
-      int32_t* pa = ipiv_ptrs[i];
       struct Matrix S = (struct Matrix){ &mat[ske_len * ske_len], ske_len, len_s };
 
       if (len_s > 0) {
         struct Matrix S_dn = (struct Matrix){ &mat[ske_len * ske_len], ske_len, ske_len };
+        double nrm_dn = 0.;
+        double nrm_lr = 0.;
         if (samples.CloseLens[i] > 0) {
           struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.CloseLens[i] };;
           gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, samples.Skeletons[i], samples.CloseBodies[i]);
           mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
+          nrm2_A(&S_dn, &nrm_dn);
         }
 
         if (samples.FarLens[i] > 0) {
           struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.FarLens[i] };
           gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, samples.Skeletons[i], samples.FarBodies[i]);
+          nrm2_A(&S_lr, &nrm_lr);
           if (samples.CloseLens[i] > 0)
-            normalizeA(&S_dn, &S_lr);
+            scal_A(&S_dn, nrm_lr / nrm_dn);
         }
       }
 
       int64_t rank = ske_len < len_s ? ske_len : len_s;
       rank = mrank > 0 ? (mrank < rank ? mrank : rank) : rank;
-      struct Matrix Q = { mat, ske_len, ske_len };
       if (rank > 0) {
-        lraID(epi, &S, &Q, pa, &rank);
-        struct Matrix Qo = { mat, ske_len, rank };
-        struct Matrix R = { &mat[ske_len * ske_len], rank, rank };
+        struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
+        double* Svec = &mat[ske_len * (ske_len + len_s)];
+        int32_t* pa = ipiv_ptrs[i];
+        svd_U(&S, &Q, Svec);
+
+        if (epi > 0.) {
+          int64_t r = 0;
+          double sepi = Svec[0] * epi;
+          while(r < rank && Svec[r] > sepi)
+            r += 1;
+          rank = r;
+        }
+
+        struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
+        struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
+        mul_AS(&Qo, Svec);
+        id_row(&Qo, pa, S.A);
 
         int64_t lc = basis[l].Lchild[i + ibegin];
         if (lc >= 0)
           updateSubU(&Qo, &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
-        qr_full(&Q, &R);
+        qr_full(&Q, &R, Svec);
 
         for (int64_t j = 0; j < rank; j++) {
           int64_t piv = (int64_t)pa[j] - 1;
@@ -353,6 +369,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
           }
         }
       }
+
       basis[l].DimsLr[i + ibegin] = rank;
     }
     dist_int_64_xlen(basis[l].Dims, &comm[l]);
@@ -379,22 +396,22 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     }
     dist_int_64(basis[l].Multipoles, basis[l].Offsets, &comm[l]);
 
-    double* mat_iter = NULL;
+    double* data_basis = NULL;
     if (count_m > 0)
-      mat_iter = (double*)malloc(sizeof(int64_t) * count_m);
+      data_basis = (double*)malloc(sizeof(int64_t) * count_m);
     for (int64_t i = 0; i < xlen; i++) {
       int64_t m = basis[l].Dims[i];
       int64_t n = basis[l].DimsLr[i];
       int64_t size = m * m + n * n;
       if (ibegin <= i && i < iend && size > 0)
-        memcpy(mat_iter, matrix_ptrs[i], sizeof(double) * size);
-      basis[l].Uo[i] = (struct Matrix) { mat_iter, m, n };
-      basis[l].Uc[i] = (struct Matrix) { &mat_iter[m * n], m, m - n };
-      basis[l].R[i] = (struct Matrix) { &mat_iter[m * m], n, n };
-      matrix_ptrs[i] = mat_iter;
-      mat_iter = &mat_iter[size];
+        memcpy(data_basis, matrix_ptrs[i], sizeof(double) * size);
+      basis[l].Uo[i] = (struct Matrix){ data_basis, m, n };
+      basis[l].Uc[i] = (struct Matrix){ &data_basis[m * n], m, m - n };
+      basis[l].R[i] = (struct Matrix){ &data_basis[m * m], n, n };
+      matrix_ptrs[i] = data_basis;
+      data_basis = &data_basis[size];
     }
-    matrix_ptrs[xlen] = mat_iter;
+    matrix_ptrs[xlen] = data_basis;
     dist_double(matrix_ptrs, &comm[l]);
 
     free(ipiv_data);

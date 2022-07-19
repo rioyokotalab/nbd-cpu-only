@@ -16,15 +16,15 @@ int main(int argc, char* argv[]) {
     int N, leaf, dim, procs;
     double admis, ctime, ctime_comm, ftime, ftime_comm, stime, stime_comm, b_mem, m_mem, v_mem, err, ptime, ptime_comm;
 
-    int ret = fscanf(log, "LORASP: %d,%d,%lf,%d,%d\n\
-      Construct: %lf s. COMM: %lf s.\n\
-      Factorize: %lf s. COMM: %lf s.\n\
-      Solution: %lf s. COMM: %lf s.\n\
-      Basis Memory: %lf GiB.\n\
-      Matrix Memory: %lf GiB.\n\
-      Vector Memory: %lf GiB.\n\
-      Err: %lf\n\
-      Program: %lf s. COMM: %lf s.\n", 
+    int ret = fscanf(log, "LORASP: %d,%d,%lf,%d,%d\n"
+      "Construct: %lf s. COMM: %lf s.\n"
+      "Factorize: %lf s. COMM: %lf s.\n"
+      "Solution: %lf s. COMM: %lf s.\n"
+      "Basis Memory: %lf GiB.\n"
+      "Matrix Memory: %lf GiB.\n"
+      "Vector Memory: %lf GiB.\n"
+      "Err: %lf\n"
+      "Program: %lf s. COMM: %lf s.\n", 
       &N, &leaf, &admis, &dim, &procs, &ctime, &ctime_comm, &ftime, &ftime_comm, &stime, &stime_comm, &b_mem, &m_mem, &v_mem, &err, &ptime, &ptime_comm);
     
     if (ret != EOF) {

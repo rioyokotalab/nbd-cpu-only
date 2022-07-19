@@ -46,11 +46,15 @@ void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[
 
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
 
-void qr_full(struct Matrix* Q, struct Matrix* R);
+void qr_full(struct Matrix* Q, struct Matrix* R, double* tau);
 
 void updateSubU(struct Matrix* U, const struct Matrix* R1, const struct Matrix* R2);
 
-void lraID(double epi, struct Matrix* A, struct Matrix* U, int32_t arows[], int64_t* rnk_out);
+void svd_U(struct Matrix* A, struct Matrix* U, double* S);
+
+void mul_AS(struct Matrix* A, double* S);
+
+void id_row(struct Matrix* U, int32_t arows[], double* work);
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 
@@ -62,7 +66,9 @@ void rsr(const struct Matrix* R1, const struct Matrix* R2, struct Matrix* S);
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 
-void normalizeA(struct Matrix* A, const struct Matrix* B);
+void nrm2_A(struct Matrix* A, double* nrm);
+
+void scal_A(struct Matrix* A, double alpha);
 
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
 
