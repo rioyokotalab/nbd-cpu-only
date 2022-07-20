@@ -272,28 +272,36 @@ void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim) {
     qsort(bodies, nbodies, size, comp_bodies_s2);
 }
 
-void read_sorted_bodies(int64_t nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname) {
+void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname) {
   FILE* file = fopen(fname, "r");
-  int64_t curr = 1;
-  int64_t cbegin = 0;
-  for (int64_t i = 0; i < nbodies; i++) {
-    int b; double x, y, z;
-    int ret = fscanf(file, "%lf %lf %lf %d", &x, &y, &z, &b);
-    bodies[i].X[0] = x;
-    bodies[i].X[1] = y;
-    bodies[i].X[2] = z;
-    while (curr < b && curr <= lbuckets) {
-      buckets[curr - 1] = i - cbegin;
-      cbegin = i;
+  if (file != NULL) {
+    int64_t curr = 1, cbegin = 0, iter = 0, len = *nbodies;
+    int ret = !EOF;
+    while (iter < len && ret != EOF) {
+      int64_t b = 0;
+      double x = 0., y = 0., z = 0.;
+      ret = fscanf(file, "%lf %lf %lf %" PRId64 "\n", &x, &y, &z, &b);
+      if (lbuckets < b)
+        len = iter;
+      else if (ret != EOF) {
+        bodies[iter].X[0] = x;
+        bodies[iter].X[1] = y;
+        bodies[iter].X[2] = z;
+        while (curr < b && curr <= lbuckets) {
+          buckets[curr - 1] = iter - cbegin;
+          cbegin = iter;
+          curr++;
+        }
+        iter++;
+      }
+    }
+    while (curr <= lbuckets) {
+      buckets[curr - 1] = iter - cbegin;
+      cbegin = iter;
       curr++;
     }
-    if (ret == EOF)
-      break;
-  }
-  while (curr <= lbuckets) {
-    buckets[curr - 1] = nbodies - cbegin;
-    cbegin = nbodies;
-    curr++;
+    *nbodies = iter;
+    fclose(file);
   }
 }
 

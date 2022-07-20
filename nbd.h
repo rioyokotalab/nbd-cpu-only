@@ -40,7 +40,7 @@ void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C
 
 void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);
 
-void read_sorted_bodies(int64_t nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname);
+void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname);
 
 void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies);
 
