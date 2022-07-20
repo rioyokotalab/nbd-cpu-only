@@ -256,6 +256,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     basis[l].Dims = &arr_i[xlen];
     basis[l].DimsLr = &arr_i[xlen * 2];
     basis[l].Offsets = &arr_i[xlen * 3];
+    basis[l].Multipoles = NULL;
     int64_t jbegin = 0, jend = ncells;
     get_level(&jbegin, &jend, cells, l, -1);
     for (int64_t j = 0; j < xlen; j++) {

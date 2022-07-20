@@ -1,9 +1,6 @@
 
 CC	= mpicc
-CXX	= mpicxx
-
 CCFLAGS	= -std=c99 -O3 -m64 -Wall -Wextra -I. -fopenmp 
-CXXFLAGS	= -std=c++11 -O3 -m64 -Wall -Wextra -I. -fopenmp 
 LDFLAGS	= -lpthread -lm -ldl
 PROF_FLAG = -D_PROF
 
@@ -27,7 +24,7 @@ all:
 	$(CC) $(CCFLAGS) $(PROF_FLAG) -c umv.c -o build/umv.o
 	$(CC) $(CCFLAGS) $(PROF_FLAG) -c profile.c -o build/profile.o
 	ar rcs build/libnbd.a build/linalg.o build/kernel.o build/build_tree.o build/basis.o build/umv.o build/profile.o
-	$(CXX) $(CXXFLAGS) lorasp.cxx -L./build -lnbd $(LDFLAGS) -o build/lorasp
+	$(CC) $(CCFLAGS) lorasp.c -L./build -lnbd $(LDFLAGS) -o build/lorasp
 
 clean:
 	rm -rf build
