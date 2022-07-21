@@ -31,22 +31,22 @@ void set_kernel_constants(double singularity, double alpha) {
 }
 
 void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
-  for (int64_t i = 0; i < m * n; i++) {
+  int64_t len = m * n;
+  for (int64_t i = 0; i < len; i++) {
     int64_t x = i / m;
     int64_t bx = sel_j == NULL ? x : sel_j[x];
     int64_t y = i - x * m;
     int64_t by = sel_i == NULL ? y : sel_i[y];
 
-    const struct Body* bii = bi + by;
-    const struct Body* bjj = bj + bx;
-
-    double dX = bii->X[0] - bjj->X[0];
-    double dY = bii->X[1] - bjj->X[1];
-    double dZ = bii->X[2] - bjj->X[2];
+    const double* bii = bi[by].X;
+    const double* bjj = bj[bx].X;
+    double dX = bii[0] - bjj[0];
+    double dY = bii[1] - bjj[1];
+    double dZ = bii[2] - bjj[2];
 
     double r2 = dX * dX + dY * dY + dZ * dZ;
     ef(&r2);
-    Aij[x * m + y] = r2;
+    Aij[i] = r2;
   }
 }
 
@@ -310,17 +310,16 @@ void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[
   int64_t n = nbodies;
   for (int64_t i = 0; i < m; i++) {
     int64_t y = begin + i;
-    const struct Body* bi = bodies + y;
+    const double* bi = bodies[y].X;
     double s = 0.;
     for (int64_t j = 0; j < n; j++) {
-      const struct Body* bj = bodies + j;
-      double dX = bi->X[0] - bj->X[0];
-      double dY = bi->X[1] - bj->X[1];
-      double dZ = bi->X[2] - bj->X[2];
-
+      const double* bj = bodies[j].X;
+      double dX = bi[0] - bj[0];
+      double dY = bi[1] - bj[1];
+      double dZ = bi[2] - bj[2];
       double r2 = dX * dX + dY * dY + dZ * dZ;
       ef(&r2);
-      s = s + r2 * bj->B;
+      s = s + r2 * bodies[j].B;
     }
     B[i] = s;
   }

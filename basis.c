@@ -320,7 +320,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
         double nrm_dn = 0.;
         double nrm_lr = 0.;
         if (samples.CloseLens[i] > 0) {
-          struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.CloseLens[i] };;
+          struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.CloseLens[i] };
           gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, samples.Skeletons[i], samples.CloseBodies[i]);
           mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
           nrm2_A(&S_dn, &nrm_dn);

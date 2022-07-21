@@ -458,6 +458,7 @@ void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Bas
 void horizontalPass(struct Matrix* B, const struct Matrix* X, const struct Matrix* A, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
+#pragma omp parallel for
   for (int64_t y = 0; y < rels->N; y++)
     for (int64_t xy = rels->ColIndex[y]; xy < rels->ColIndex[y + 1]; xy++) {
       int64_t x = rels->RowIndex[xy];

@@ -17,12 +17,14 @@
 
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2) {
 #ifdef USE_MKL
-  mkl_domatcopy('C', 'N', m, n, 1., &(m1->A)[y1 + x1 * m1->M], m1->M, &(m2->A)[y2 + x2 * m2->M], m2->M);
+  mkl_domatcopy('C', 'N', m, n, 1., &m1->A[y1 + x1 * m1->M], m1->M, &m2->A[y2 + x2 * m2->M], m2->M);
 #else
-  for (int64_t j = 0; j < n; j++) {
+  if (m == m1->M && m == m2->M)
+    memcpy(&m2->A[y1 + x1 * m], &m1->A[y2 + x2 * m], sizeof(double) * m * n);
+  else for (int64_t j = 0; j < n; j++) {
     int64_t j1 = y1 + (x1 + j) * m1->M;
     int64_t j2 = y2 + (x2 + j) * m2->M;
-    memcpy(&(m2->A)[j2], &(m1->A)[j1], sizeof(double) * m);
+    memcpy(&m2->A[j2], &m1->A[j1], sizeof(double) * m);
   }
 #endif
 }
