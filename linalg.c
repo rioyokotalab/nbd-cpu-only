@@ -16,22 +16,12 @@
 #endif
 
 void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2) {
-#ifdef USE_MKL
-  mkl_domatcopy('C', 'N', m, n, 1., &m1->A[y1 + x1 * m1->M], m1->M, &m2->A[y2 + x2 * m2->M], m2->M);
-#else
-  if (m == m1->M && m == m2->M)
-    memcpy(&m2->A[y1 + x1 * m], &m1->A[y2 + x2 * m], sizeof(double) * m * n);
-  else for (int64_t j = 0; j < n; j++) {
-    int64_t j1 = y1 + (x1 + j) * m1->M;
-    int64_t j2 = y2 + (x2 + j) * m2->M;
-    memcpy(&m2->A[j2], &m1->A[j1], sizeof(double) * m);
-  }
-#endif
+  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', m, n, &m1->A[y1 + x1 * m1->M], m1->M, &m2->A[y2 + x2 * m2->M], m2->M);
 }
 
 void qr_full(struct Matrix* Q, struct Matrix* R, double* tau) {
   LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, R->N, Q->A, Q->M, tau);
-  cpyMatToMat(R->M, R->N, Q, R, 0, 0, 0, 0);
+  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'U', R->M, R->N, Q->A, Q->M, R->A, R->M);
   LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, R->N, Q->A, Q->M, tau);
 }
 

@@ -31,23 +31,23 @@ void set_kernel_constants(double singularity, double alpha) {
 }
 
 void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
-  int64_t len = m * n;
-  for (int64_t i = 0; i < len; i++) {
-    int64_t x = i / m;
+  for (int64_t x = 0; x < n; x++) {
     int64_t bx = sel_j == NULL ? x : sel_j[x];
-    int64_t y = i - x * m;
-    int64_t by = sel_i == NULL ? y : sel_i[y];
-
-    const double* bii = bi[by].X;
     const double* bjj = bj[bx].X;
-    double dX = bii[0] - bjj[0];
-    double dY = bii[1] - bjj[1];
-    double dZ = bii[2] - bjj[2];
-
-    double r2 = dX * dX + dY * dY + dZ * dZ;
-    ef(&r2);
-    Aij[i] = r2;
+    for (int64_t y = 0; y < m; y++) {
+      int64_t by = sel_i == NULL ? y : sel_i[y];
+      const double* bii = bi[by].X;
+      double dX = bii[0] - bjj[0];
+      double dY = bii[1] - bjj[1];
+      double dZ = bii[2] - bjj[2];
+      double r2 = dX * dX + dY * dY + dZ * dZ;
+      Aij[y + x * m] = r2;
+    }
   }
+
+  int64_t len = m * n;
+  for (int64_t i = 0; i < len; i++)
+    ef(&Aij[i]);
 }
 
 void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsigned int seed) {
