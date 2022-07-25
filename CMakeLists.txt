@@ -17,13 +17,7 @@ find_package(MKL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
-add_library(nbd_obj OBJECT nbd.h profile.h kernel.c linalg.c basis.c build_tree.c umv.c profile.c)
-target_include_directories(nbd_obj PRIVATE "./")
-target_compile_options(nbd_obj PRIVATE -DUSE_MKL -D_PROF)
-target_link_libraries(nbd_obj MKL::MKL MPI::MPI_C OpenMP::OpenMP_C)
-
-add_executable(lorasp lorasp.c)
+add_executable(lorasp lorasp.c kernel.c linalg.c basis.c build_tree.c umv.c profile.c)
 target_include_directories(lorasp PRIVATE "./")
-target_compile_options(lorasp PRIVATE)
-target_link_libraries(lorasp nbd_obj)
-
+target_compile_options(lorasp PRIVATE -D_PROF)
+target_link_libraries(lorasp MKL::MKL MPI::MPI_C OpenMP::OpenMP_C)

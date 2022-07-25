@@ -26,9 +26,9 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
   sample->LTlen = nodes;
   sample->FarLens = arr_ctrl;
   sample->CloseLens = &arr_ctrl[nodes];
-  sample->FarAvails = &arr_ctrl[nodes * 2];
-  sample->CloseAvails = &arr_ctrl[nodes * 3];
-  sample->SkeLens = &arr_ctrl[nodes * 4];
+  sample->SkeLens = &arr_ctrl[nodes * 2];
+  sample->FarAvails = &arr_ctrl[nodes * 3];
+  sample->CloseAvails = &arr_ctrl[nodes * 4];
   sample->FarBodies = arr_list;
   sample->CloseBodies = &arr_list[nodes];
   sample->Skeletons = &arr_list[nodes * 2];
@@ -63,9 +63,9 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
     int64_t close_len = sp_max_near < close_avail ? sp_max_near : close_avail;
     arr_ctrl[i] = far_len;
     arr_ctrl[i + nodes] = close_len;
-    arr_ctrl[i + nodes * 2] = far_avail;
-    arr_ctrl[i + nodes * 3] = close_avail;
-    arr_ctrl[i + nodes * 4] = ske_len;
+    arr_ctrl[i + nodes * 2] = ske_len;
+    arr_ctrl[i + nodes * 3] = far_avail;
+    arr_ctrl[i + nodes * 4] = close_avail;
     count_f = count_f + far_len;
     count_c = count_c + close_len;
     count_s = count_s + ske_len;
@@ -74,29 +74,44 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
   int64_t* arr_bodies = NULL;
   if ((count_f + count_c + count_s) > 0)
     arr_bodies = (int64_t*)malloc(sizeof(int64_t) * (count_f + count_c + count_s));
-  const struct Cell* leaves = &cells[jbegin];
   count_s = count_f + count_c;
   count_c = count_f;
   count_f = 0;
   for (int64_t i = 0; i < nodes; i++) {
-    int64_t nbegin = rels->ColIndex[i];
-    int64_t nlen = rels->ColIndex[i + 1] - nbegin;
-    const int64_t* ngbs = &rels->RowIndex[nbegin];
-
     int64_t* remote = &arr_bodies[count_f];
     int64_t* close = &arr_bodies[count_c];
     int64_t* skeleton = &arr_bodies[count_s];
     int64_t far_len = arr_ctrl[i];
     int64_t close_len = arr_ctrl[i + nodes];
-    int64_t far_avail = arr_ctrl[i + nodes * 2];
-    int64_t close_avail = arr_ctrl[i + nodes * 3];
-    int64_t ske_len = arr_ctrl[i + nodes * 4];
+    int64_t ske_len = arr_ctrl[i + nodes * 2];
+    arr_list[i] = remote;
+    arr_list[i + nodes] = close;
+    arr_list[i + nodes * 2] = skeleton;
+    count_f = count_f + far_len;
+    count_c = count_c + close_len;
+    count_s = count_s + ske_len;
+  }
+
+#pragma omp parallel for
+  for (int64_t i = 0; i < nodes; i++) {
+    int64_t nbegin = rels->ColIndex[i];
+    int64_t nlen = rels->ColIndex[i + 1] - nbegin;
+    const int64_t* ngbs = &rels->RowIndex[nbegin];
+
+    int64_t* remote = arr_list[i];
+    int64_t* close = arr_list[i + nodes];
+    int64_t* skeleton = arr_list[i + nodes * 2];
+    int64_t far_len = arr_ctrl[i];
+    int64_t close_len = arr_ctrl[i + nodes];
+    int64_t ske_len = arr_ctrl[i + nodes * 2];
+    int64_t far_avail = arr_ctrl[i + nodes * 3];
+    int64_t close_avail = arr_ctrl[i + nodes * 4];
 
     int64_t box_i = 0;
     int64_t s_lens = 0;
-    int64_t ic = ngbs[box_i];
-    int64_t offset_i = leaves[ic].Body[0];
-    int64_t len_i = leaves[ic].Body[1] - offset_i;
+    int64_t ic = jbegin + ngbs[box_i];
+    int64_t offset_i = cells[ic].Body[0];
+    int64_t len_i = cells[ic].Body[1] - offset_i;
 
     int64_t li = i + ibegin - jbegin;
     int64_t cpos = 0;
@@ -108,18 +123,18 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
       while (box_i < nlen && loc + s_lens >= offset_i) {
         s_lens = s_lens + len_i;
         box_i = box_i + 1;
-        ic = box_i < nlen ? ngbs[box_i] : ic;
-        offset_i = leaves[ic].Body[0];
-        len_i = leaves[ic].Body[1] - offset_i;
+        ic = box_i < nlen ? (jbegin + ngbs[box_i]) : ic;
+        offset_i = cells[ic].Body[0];
+        len_i = cells[ic].Body[1] - offset_i;
       }
       remote[j] = loc + s_lens;
     }
 
     box_i = (int64_t)(cpos == 0);
     s_lens = 0;
-    ic = box_i < nlen ? ngbs[box_i] : ic;
-    offset_i = leaves[ic].Body[0];
-    len_i = leaves[ic].Body[1] - offset_i;
+    ic = box_i < nlen ? (jbegin + ngbs[box_i]) : ic;
+    offset_i = cells[ic].Body[0];
+    len_i = cells[ic].Body[1] - offset_i;
 
     for (int64_t j = 0; j < close_len; j++) {
       int64_t loc = (int64_t)((double)(close_avail * j) / close_len);
@@ -127,9 +142,9 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
         s_lens = s_lens + len_i;
         box_i = box_i + 1;
         box_i = box_i + (int64_t)(box_i == cpos);
-        ic = ngbs[box_i];
-        offset_i = leaves[ic].Body[0];
-        len_i = leaves[ic].Body[1] - offset_i;
+        ic = jbegin + ngbs[box_i];
+        offset_i = cells[ic].Body[0];
+        len_i = cells[ic].Body[1] - offset_i;
       }
       close[j] = loc + offset_i - s_lens;
     }
@@ -141,13 +156,6 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
     else
       for (int64_t j = 0; j < ske_len; j++)
         skeleton[j] = j + sbegin;
-
-    arr_list[i] = remote;
-    arr_list[i + nodes] = close;
-    arr_list[i + nodes * 2] = skeleton;
-    count_f = count_f + far_len;
-    count_c = count_c + close_len;
-    count_s = count_s + ske_len;
   }
 }
 
@@ -315,63 +323,63 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       double* mat = matrix_ptrs[i + ibegin];
       struct Matrix S = (struct Matrix){ &mat[ske_len * ske_len], ske_len, len_s };
 
-      if (len_s > 0) {
-        struct Matrix S_dn = (struct Matrix){ &mat[ske_len * ske_len], ske_len, ske_len };
-        double nrm_dn = 0.;
-        double nrm_lr = 0.;
-        if (samples.CloseLens[i] > 0) {
-          struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.CloseLens[i] };
-          gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, samples.Skeletons[i], samples.CloseBodies[i]);
-          mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
-          nrm2_A(&S_dn, &nrm_dn);
-        }
+      struct Matrix S_dn = (struct Matrix){ &mat[ske_len * ske_len], ske_len, ske_len };
+      double nrm_dn = 0.;
+      double nrm_lr = 0.;
+      struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.CloseLens[i] };
+      gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, samples.Skeletons[i], samples.CloseBodies[i]);
+      mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
+      nrm2_A(&S_dn, &nrm_dn);
 
-        if (samples.FarLens[i] > 0) {
-          struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.FarLens[i] };
-          gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, samples.Skeletons[i], samples.FarBodies[i]);
-          nrm2_A(&S_lr, &nrm_lr);
-          if (samples.CloseLens[i] > 0)
-            scal_A(&S_dn, nrm_lr / nrm_dn);
-        }
-      }
+      struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.FarLens[i] };
+      gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, samples.Skeletons[i], samples.FarBodies[i]);
+      nrm2_A(&S_lr, &nrm_lr);
+      double scale = (nrm_dn == 0. || nrm_lr == 0.) ? 1. : nrm_lr / nrm_dn;
+      scal_A(&S_dn, scale);
 
       int64_t rank = ske_len < len_s ? ske_len : len_s;
       rank = mrank > 0 ? (mrank < rank ? mrank : rank) : rank;
-      if (rank > 0) {
-        struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
-        double* Svec = &mat[ske_len * (ske_len + len_s)];
-        int32_t* pa = ipiv_ptrs[i];
-        svd_U(&S, &Q, Svec);
+      struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
+      double* Svec = &mat[ske_len * (ske_len + len_s)];
+      int32_t* pa = ipiv_ptrs[i];
+      svd_U(&S, &Q, Svec);
 
-        if (epi > 0.) {
-          int64_t r = 0;
-          double sepi = Svec[0] * epi;
-          while(r < rank && Svec[r] > sepi)
-            r += 1;
-          rank = r;
-        }
-
-        struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
-        struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
-        mul_AS(&Qo, Svec);
-        id_row(&Qo, pa, S.A);
-
-        int64_t lc = basis[l].Lchild[i + ibegin];
-        if (lc >= 0)
-          updateSubU(&Qo, &(basis[l + 1].R)[lc], &(basis[l + 1].R)[lc + 1]);
-        qr_full(&Q, &R, Svec);
-
-        for (int64_t j = 0; j < rank; j++) {
-          int64_t piv = (int64_t)pa[j] - 1;
-          if (piv != j) { 
-            int64_t c = samples.Skeletons[i][piv];
-            samples.Skeletons[i][piv] = samples.Skeletons[i][j];
-            samples.Skeletons[i][j] = c;
-          }
-        }
+      if (epi > 0.) {
+        int64_t r = 0;
+        double sepi = Svec[0] * epi;
+        while(r < rank && Svec[r] > sepi)
+          r += 1;
+        rank = r;
       }
 
+      struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
+      struct Matrix Qa = (struct Matrix){ &mat[ske_len * rank], ske_len, rank };
+      struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
+      mul_AS(&Qa, &Qo, Svec);
+      id_row(&Qa, &Qo, pa);
+
       basis[l].DimsLr[i + ibegin] = rank;
+      int64_t lc = basis[l].Lchild[i + ibegin];
+      if (lc >= 0) {
+        memset(S_dn.A, 0, sizeof(double) * ske_len * ske_len);
+        int64_t off = 0;
+        for (int64_t j = 0; j < 2; j++) {
+          int64_t diml = basis[l + 1].DimsLr[lc + j];
+          cpyMatToMat(diml, diml, &(basis[l + 1].R)[lc + j], &S_dn, 0, 0, off, off);
+          off = off + diml;
+        }
+        upper_tri_reflec_mult('L', &S_dn, &Qo);
+      }
+      qr_full(&Q, &R, Svec);
+
+      for (int64_t j = 0; j < rank; j++) {
+        int64_t piv = (int64_t)pa[j] - 1;
+        if (piv != j) { 
+          int64_t c = samples.Skeletons[i][piv];
+          samples.Skeletons[i][piv] = samples.Skeletons[i][j];
+          samples.Skeletons[i][j] = c;
+        }
+      }
     }
     dist_int_64_xlen(basis[l].Dims, &comm[l]);
     dist_int_64_xlen(basis[l].DimsLr, &comm[l]);
@@ -450,7 +458,8 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
       int64_t off_y = basis->Offsets[box_y];
       int64_t off_x = basis->Offsets[x + ibegin];
       gen_matrix(ef, m, n, bodies, bodies, S[yx].A, &multipoles[off_y], &multipoles[off_x]);
-      rsr(&basis->R[box_y], &basis->R[x + ibegin], &S[yx]);
+      upper_tri_reflec_mult('L', &basis->R[box_y], &S[yx]);
+      upper_tri_reflec_mult('R', &basis->R[x + ibegin], &S[yx]);
     }
   }
 }

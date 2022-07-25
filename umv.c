@@ -91,7 +91,7 @@ void node_free(struct Node* node) {
   free(node->A);
 }
 
-void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, const struct Matrix* A, const struct Matrix* Uc, const struct Matrix* Uo, const struct CSC* rels, const struct CellComm* comm) {
+void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, struct Matrix* A, const struct Matrix* Uc, const struct Matrix* Uo, const struct CSC* rels, const struct CellComm* comm) {
   int64_t nnz = rels->ColIndex[rels->N];
   int64_t alen = (int64_t)(A[nnz - 1].A - A[0].A) + A[nnz - 1].M * A[nnz - 1].N;
   double* data = (double*)malloc(sizeof(double) * alen);
@@ -142,8 +142,7 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, c
   free(AV_c);
 }
 
-void nextNode(struct Matrix* Mup, const struct CSC* rels_up, const struct Matrix* Mlow, const struct Matrix* Slow, const int64_t* lchild, 
-const struct CSC* rels_low_near, const struct CSC* rels_low_far, const struct CellComm* comm_up, const struct CellComm* comm_low) {
+void nextNode(struct Matrix* Mup, const struct Matrix* Mlow, const int64_t* lchild, const struct CSC* rels_up, const struct CSC* rels_low, const struct CellComm* comm_up, const struct CellComm* comm_low) {
   int64_t nloc = 0, nend = 0, ploc = 0, pend = 0;
   self_local_range(&nloc, &nend, comm_up);
   self_local_range(&ploc, &pend, comm_low);
@@ -160,10 +159,10 @@ const struct CSC* rels_low_near, const struct CSC* rels_low_far, const struct Ce
       int64_t ci1 = ci0 + 1;
 
       int64_t i00, i01, i10, i11;
-      lookupIJ(&i00, rels_low_near, ci0, cj0);
-      lookupIJ(&i01, rels_low_near, ci0, cj1);
-      lookupIJ(&i10, rels_low_near, ci1, cj0);
-      lookupIJ(&i11, rels_low_near, ci1, cj1);
+      lookupIJ(&i00, rels_low, ci0, cj0);
+      lookupIJ(&i01, rels_low, ci0, cj1);
+      lookupIJ(&i10, rels_low, ci1, cj0);
+      lookupIJ(&i11, rels_low, ci1, cj1);
 
       if (i00 >= 0)
         cpyMatToMat(Mlow[i00].M, Mlow[i00].N, &Mlow[i00], &Mup[ij], 0, 0, 0, 0);
@@ -173,20 +172,6 @@ const struct CSC* rels_low_near, const struct CSC* rels_low_far, const struct Ce
         cpyMatToMat(Mlow[i10].M, Mlow[i10].N, &Mlow[i10], &Mup[ij], 0, 0, Mup[ij].M - Mlow[i10].M, 0);
       if (i11 >= 0)
         cpyMatToMat(Mlow[i11].M, Mlow[i11].N, &Mlow[i11], &Mup[ij], 0, 0, Mup[ij].M - Mlow[i11].M, Mup[ij].N - Mlow[i11].N);
-
-      lookupIJ(&i00, rels_low_far, ci0, cj0);
-      lookupIJ(&i01, rels_low_far, ci0, cj1);
-      lookupIJ(&i10, rels_low_far, ci1, cj0);
-      lookupIJ(&i11, rels_low_far, ci1, cj1);
-
-      if (i00 >= 0)
-        cpyMatToMat(Slow[i00].M, Slow[i00].N, &Slow[i00], &Mup[ij], 0, 0, 0, 0);
-      if (i01 >= 0)
-        cpyMatToMat(Slow[i01].M, Slow[i01].N, &Slow[i01], &Mup[ij], 0, 0, 0, Mup[ij].N - Slow[i01].N);
-      if (i10 >= 0)
-        cpyMatToMat(Slow[i10].M, Slow[i10].N, &Slow[i10], &Mup[ij], 0, 0, Mup[ij].M - Slow[i10].M, 0);
-      if (i11 >= 0)
-        cpyMatToMat(Slow[i11].M, Slow[i11].N, &Slow[i11], &Mup[ij], 0, 0, Mup[ij].M - Slow[i11].M, Mup[ij].N - Slow[i11].N);
     }
   }
 }
@@ -206,10 +191,13 @@ void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
 }
 
 void factorA(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
+  for (int64_t i = 1; i <= levels; i++)
+    nextNode(A[i - 1].A, A[i].S, basis[i - 1].Lchild, &rels_near[i - 1], &rels_far[i], &comm[i - 1], &comm[i]);
+
   for (int64_t i = levels; i > 0; i--) {
     factorNode(A[i].A_cc, A[i].A_oc, A[i].A_oo, A[i].A, basis[i].Uc, basis[i].Uo, &rels_near[i], &comm[i]);
     int64_t inxt = i - 1;
-    nextNode(A[inxt].A, &rels_near[inxt], A[i].A_oo, A[i].S, basis[inxt].Lchild, &rels_near[i], &rels_far[i], &comm[inxt], &comm[i]);
+    nextNode(A[inxt].A,A[i].A_oo, basis[inxt].Lchild, &rels_near[inxt], &rels_near[i], &comm[inxt], &comm[i]);
 
     int64_t alst = rels_near[inxt].ColIndex[rels_near[inxt].N] - 1;
     int64_t alen = (int64_t)(A[inxt].A[alst].A - A[inxt].A[0].A) + A[inxt].A[alst].M * A[inxt].A[alst].N;
