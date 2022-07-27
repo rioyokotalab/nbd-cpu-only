@@ -3,7 +3,7 @@
 
 #include "mkl.h"
 
-#define BATCH_LEN 8192
+#define BATCH_LEN 12000
 
 struct MatrixCopyBatch {
   size_t rows_array[BATCH_LEN];
@@ -40,85 +40,6 @@ void mat_cpy_flush() {
   MKL_Domatcopy_batch('C', trans_array, copy_batch.rows_array, copy_batch.cols_array, alpha_array,
     copy_batch.A_array, copy_batch.lda_array, copy_batch.B_array, copy_batch.ldb_array, copy_batch_count, group_size);
   copy_batch_count = 0;
-}
-
-void qr_full(struct Matrix* Q, struct Matrix* R, double* tau) {
-  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, R->N, Q->A, Q->M, tau);
-  MKL_Domatcopy('C', 'N', R->M, R->N, 1., Q->A, Q->M, R->A, R->M);
-  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, R->N, Q->A, Q->M, tau);
-}
-
-void svd_U(struct Matrix* A, struct Matrix* U, double* S) {
-  int64_t rank_a = A->M < A->N ? A->M : A->N;
-  int64_t lda = 1 < A->M ? A->M : 1;
-  int64_t ldu = 1 < U->M ? U->M : 1;
-  int64_t ldv = 1 < A->N ? A->N : 1;
-  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', A->M, A->N, A->A, lda, S, U->A, ldu, NULL, ldv, &S[rank_a]);
-}
-
-struct IdRowBatch {
-  int32_t rows_array[BATCH_LEN];
-  int32_t cols_array[BATCH_LEN];
-  double* A_array[BATCH_LEN];
-  int32_t lda_array[BATCH_LEN];
-  int32_t* piv_array[BATCH_LEN];
-  double* work_array[BATCH_LEN];
-} idrow_batch;
-int32_t idrow_batch_count = 0;
-
-void id_row_batch(struct Matrix* A, int32_t arows[], double* work) {
-  if (idrow_batch_count == BATCH_LEN)
-    id_row_flush();
-  int32_t i = idrow_batch_count;
-  idrow_batch.rows_array[i] = A->M;
-  idrow_batch.cols_array[i] = A->N;
-  idrow_batch.A_array[i] = A->A;
-  idrow_batch.lda_array[i] = 1 < A->M ? A->M : 1;
-  idrow_batch.piv_array[i] = arows;
-  idrow_batch.work_array[i] = work;
-  idrow_batch_count = i + (int)(A->M > 0 && A->N > 0);
-}
-
-void id_row_flush() {
-  char R_array[BATCH_LEN];
-  char N_array[BATCH_LEN];
-  char L_array[BATCH_LEN];
-  char U_array[BATCH_LEN];
-  double alpha_array[BATCH_LEN];
-  int32_t one_array[BATCH_LEN];
-  int32_t info_array[BATCH_LEN];
-
-  size_t rows_ui64[BATCH_LEN];
-  size_t cols_ui64[BATCH_LEN];
-  size_t lda_ui64[BATCH_LEN];
-  size_t group_size[BATCH_LEN];
-
-  for (int32_t i = 0; i < idrow_batch_count; i++) {
-    R_array[i] = 'R';
-    N_array[i] = 'N';
-    L_array[i] = 'L';
-    U_array[i] = 'U';
-    alpha_array[i] = 1.;
-    one_array[i] = 1;
-    rows_ui64[i] = idrow_batch.rows_array[i];
-    cols_ui64[i] = idrow_batch.cols_array[i];
-    lda_ui64[i] = idrow_batch.lda_array[i];
-    group_size[i] = 1;
-  }
-  
-  MKL_Domatcopy_batch('C', N_array, rows_ui64, cols_ui64, alpha_array,
-    (const double**)idrow_batch.A_array, lda_ui64, idrow_batch.work_array, lda_ui64, idrow_batch_count, group_size);
-  
-  dgetrf_batch(idrow_batch.rows_array, idrow_batch.cols_array, idrow_batch.work_array, idrow_batch.lda_array,
-    idrow_batch.piv_array, &idrow_batch_count, one_array, info_array);
-
-  dtrsm_batch(R_array, U_array, N_array, N_array, idrow_batch.rows_array, idrow_batch.cols_array, alpha_array,
-    (const double**)idrow_batch.work_array, idrow_batch.lda_array, idrow_batch.A_array, idrow_batch.lda_array, &idrow_batch_count, one_array);
-
-  dtrsm_batch(R_array, L_array, N_array, U_array, idrow_batch.rows_array, idrow_batch.cols_array, alpha_array,
-    (const double**)idrow_batch.work_array, idrow_batch.lda_array, idrow_batch.A_array, idrow_batch.lda_array, &idrow_batch_count, one_array);
-
-  idrow_batch_count = 0;
 }
 
 struct MMultBatch {
@@ -289,6 +210,79 @@ void trsm_lowerA_flush() {
   trsml_batch_count = 0;
 }
 
+void svd_U(struct Matrix* A, struct Matrix* U, double* S) {
+  int64_t rank_a = A->M < A->N ? A->M : A->N;
+  int64_t lda = 1 < A->M ? A->M : 1;
+  int64_t ldu = 1 < U->M ? U->M : 1;
+  int64_t ldv = 1 < A->N ? A->N : 1;
+  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'N', A->M, A->N, A->A, lda, S, U->A, ldu, NULL, ldv, &S[rank_a]);
+}
+
+struct IdRowBatch {
+  int32_t rows_array[BATCH_LEN];
+  int32_t cols_array[BATCH_LEN];
+  double* A_array[BATCH_LEN];
+  int32_t lda_array[BATCH_LEN];
+  int32_t* piv_array[BATCH_LEN];
+  double* work_array[BATCH_LEN];
+} idrow_batch;
+int32_t idrow_batch_count = 0;
+
+void id_row_batch(struct Matrix* A, int32_t arows[], double* work) {
+  if (idrow_batch_count == BATCH_LEN)
+    id_row_flush();
+  int32_t i = idrow_batch_count;
+  idrow_batch.rows_array[i] = A->M;
+  idrow_batch.cols_array[i] = A->N;
+  idrow_batch.A_array[i] = A->A;
+  idrow_batch.lda_array[i] = 1 < A->M ? A->M : 1;
+  idrow_batch.piv_array[i] = arows;
+  idrow_batch.work_array[i] = work;
+  idrow_batch_count = i + (int)(A->M > 0 && A->N > 0);
+}
+
+void id_row_flush() {
+  char R_array[BATCH_LEN];
+  char N_array[BATCH_LEN];
+  char L_array[BATCH_LEN];
+  char U_array[BATCH_LEN];
+  double alpha_array[BATCH_LEN];
+  int32_t one_array[BATCH_LEN];
+  int32_t info_array[BATCH_LEN];
+
+  size_t rows_ui64[BATCH_LEN];
+  size_t cols_ui64[BATCH_LEN];
+  size_t lda_ui64[BATCH_LEN];
+  size_t group_size[BATCH_LEN];
+
+  for (int32_t i = 0; i < idrow_batch_count; i++) {
+    R_array[i] = 'R';
+    N_array[i] = 'N';
+    L_array[i] = 'L';
+    U_array[i] = 'U';
+    alpha_array[i] = 1.;
+    one_array[i] = 1;
+    rows_ui64[i] = idrow_batch.rows_array[i];
+    cols_ui64[i] = idrow_batch.cols_array[i];
+    lda_ui64[i] = idrow_batch.lda_array[i];
+    group_size[i] = 1;
+  }
+  
+  MKL_Domatcopy_batch('C', N_array, rows_ui64, cols_ui64, alpha_array,
+    (const double**)idrow_batch.A_array, lda_ui64, idrow_batch.work_array, lda_ui64, idrow_batch_count, group_size);
+  
+  dgetrf_batch(idrow_batch.rows_array, idrow_batch.cols_array, idrow_batch.work_array, idrow_batch.lda_array,
+    idrow_batch.piv_array, &idrow_batch_count, one_array, info_array);
+
+  dtrsm_batch(R_array, U_array, N_array, N_array, idrow_batch.rows_array, idrow_batch.cols_array, alpha_array,
+    (const double**)idrow_batch.work_array, idrow_batch.lda_array, idrow_batch.A_array, idrow_batch.lda_array, &idrow_batch_count, one_array);
+
+  dtrsm_batch(R_array, L_array, N_array, U_array, idrow_batch.rows_array, idrow_batch.cols_array, alpha_array,
+    (const double**)idrow_batch.work_array, idrow_batch.lda_array, idrow_batch.A_array, idrow_batch.lda_array, &idrow_batch_count, one_array);
+
+  idrow_batch_count = 0;
+}
+
 void upper_tri_reflec_mult(char side, const struct Matrix* R, struct Matrix* A) {
   int64_t ldr = 1 < R->M ? R->M : 1;
   int64_t lda = 1 < A->M ? A->M : 1;
@@ -296,6 +290,12 @@ void upper_tri_reflec_mult(char side, const struct Matrix* R, struct Matrix* A) 
     cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, A->N, 1., R->A, ldr, A->A, lda);
   else if (side == 'R' || side == 'r')
     cblas_dtrmm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, A->M, A->N, 1., R->A, ldr, A->A, lda);
+}
+
+void qr_full(struct Matrix* Q, struct Matrix* R, double* tau) {
+  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, R->N, Q->A, Q->M, tau);
+  MKL_Domatcopy('C', 'N', R->M, R->N, 1., Q->A, Q->M, R->A, R->M);
+  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, R->N, Q->A, Q->M, tau);
 }
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {

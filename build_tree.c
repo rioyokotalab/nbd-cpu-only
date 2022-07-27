@@ -562,6 +562,7 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
   get_level(&ibegin, &iend, cells, level, mpi_rank);
   int64_t nodes = iend - ibegin;
 
+#pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
     int64_t lc = ibegin + i;
     const struct Cell* ci = &cells[lc];

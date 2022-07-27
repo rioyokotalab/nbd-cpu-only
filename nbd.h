@@ -9,8 +9,36 @@
 extern "C" {
 #endif
 
-struct Body { double X[3], B; };
 struct Matrix { double* A; int64_t M, N; };
+
+void mat_cpy_batch(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
+void mat_cpy_flush();
+
+void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
+void mmult_batch(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
+void mmult_flush();
+
+void chol_decomp(struct Matrix* A);
+void icmp_chol_decomp_batch(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo);
+void icmp_chol_decomp_flush();
+
+void trsm_lowerA_batch(struct Matrix* A, const struct Matrix* L);
+void trsm_lowerA_flush();
+
+void svd_U(struct Matrix* A, struct Matrix* U, double* S);
+
+void id_row_batch(struct Matrix* A, int32_t arows[], double* work);
+void id_row_flush();
+
+void upper_tri_reflec_mult(char side, const struct Matrix* R, struct Matrix* A);
+void qr_full(struct Matrix* Q, struct Matrix* R, double* tau);
+
+void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
+
+void nrm2_A(struct Matrix* A, double* nrm);
+void scal_A(struct Matrix* A, double alpha);
+
+struct Body { double X[3], B; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 struct CellComm { struct CSC Comms; int64_t Proc[3], *ProcRootI, *ProcBoxes, *ProcBoxesEnd; MPI_Comm Comm_share, Comm_merge, *Comm_box; };
@@ -43,35 +71,6 @@ void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);
 void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname);
 
 void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies);
-
-void mat_cpy_batch(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
-void mat_cpy_flush();
-
-void qr_full(struct Matrix* Q, struct Matrix* R, double* tau);
-
-void svd_U(struct Matrix* A, struct Matrix* U, double* S);
-
-void id_row_batch(struct Matrix* A, int32_t arows[], double* work);
-void id_row_flush();
-
-void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
-void mmult_batch(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
-void mmult_flush();
-
-void chol_decomp(struct Matrix* A);
-void icmp_chol_decomp_batch(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo);
-void icmp_chol_decomp_flush();
-
-void trsm_lowerA_batch(struct Matrix* A, const struct Matrix* L);
-void trsm_lowerA_flush();
-
-void upper_tri_reflec_mult(char side, const struct Matrix* R, struct Matrix* A);
-
-void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
-
-void nrm2_A(struct Matrix* A, double* nrm);
-
-void scal_A(struct Matrix* A, double alpha);
 
 void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
 
