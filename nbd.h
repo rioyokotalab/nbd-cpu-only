@@ -44,21 +44,26 @@ void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, struct Body* bodies,
 
 void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies);
 
-void cpyMatToMat(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
+void mat_cpy_batch(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
+void mat_cpy_flush();
 
 void qr_full(struct Matrix* Q, struct Matrix* R, double* tau);
 
 void svd_U(struct Matrix* A, struct Matrix* U, double* S);
 
-void mul_AS(struct Matrix* C, const struct Matrix* A, const double S[]);
-
-void id_row(struct Matrix* A, struct Matrix* U, int32_t arows[]);
+void id_row_batch(struct Matrix* A, int32_t arows[], double* work);
+void id_row_flush();
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
+void mmult_batch(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
+void mmult_flush();
 
 void chol_decomp(struct Matrix* A);
+void icmp_chol_decomp_batch(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo);
+void icmp_chol_decomp_flush();
 
-void trsm_lowerA(struct Matrix* A, const struct Matrix* L);
+void trsm_lowerA_batch(struct Matrix* A, const struct Matrix* L);
+void trsm_lowerA_flush();
 
 void upper_tri_reflec_mult(char side, const struct Matrix* R, struct Matrix* A);
 

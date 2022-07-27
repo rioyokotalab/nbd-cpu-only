@@ -341,7 +341,6 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       rank = mrank > 0 ? (mrank < rank ? mrank : rank) : rank;
       struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
       double* Svec = &mat[ske_len * (ske_len + len_s)];
-      int32_t* pa = ipiv_ptrs[i];
       svd_U(&S, &Q, Svec);
 
       if (epi > 0.) {
@@ -351,27 +350,31 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
           r += 1;
         rank = r;
       }
-
-      struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
-      struct Matrix Qa = (struct Matrix){ &mat[ske_len * rank], ske_len, rank };
-      struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
-      mul_AS(&Qa, &Qo, Svec);
-      id_row(&Qa, &Qo, pa);
-
       basis[l].DimsLr[i + ibegin] = rank;
-      int64_t lc = basis[l].Lchild[i + ibegin];
-      if (lc >= 0) {
-        memset(S_dn.A, 0, sizeof(double) * ske_len * ske_len);
-        int64_t off = 0;
-        for (int64_t j = 0; j < 2; j++) {
-          int64_t diml = basis[l + 1].DimsLr[lc + j];
-          cpyMatToMat(diml, diml, &(basis[l + 1].R)[lc + j], &S_dn, 0, 0, off, off);
-          off = off + diml;
-        }
-        upper_tri_reflec_mult('L', &S_dn, &Qo);
-      }
-      qr_full(&Q, &R, Svec);
+    }
 
+    for (int64_t i = 0; i < nodes; i++) {
+      int64_t ske_len = samples.SkeLens[i];
+      int64_t rank = basis[l].DimsLr[i + ibegin];
+      double* mat = matrix_ptrs[i + ibegin];
+      int32_t* pa = ipiv_ptrs[i];
+      struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
+      id_row_batch(&Qo, pa, &mat[ske_len * rank]);
+    }
+    id_row_flush();
+
+    for (int64_t i = 0; i < nodes; i++) {
+      int64_t ske_len = samples.SkeLens[i];
+      int64_t rank = basis[l].DimsLr[i + ibegin];
+      double* mat = matrix_ptrs[i + ibegin];
+      int32_t* pa = ipiv_ptrs[i];
+
+      struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
+      struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
+      struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
+      struct Matrix Rc = (struct Matrix){ &mat[ske_len * ske_len], ske_len, ske_len };
+      double* Svec = &mat[ske_len * ske_len + rank * rank];
+      
       for (int64_t j = 0; j < rank; j++) {
         int64_t piv = (int64_t)pa[j] - 1;
         if (piv != j) { 
@@ -380,7 +383,23 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
           samples.Skeletons[i][j] = c;
         }
       }
+
+      memset(Rc.A, 0, sizeof(double) * ske_len * ske_len);
+      for (int64_t j = 0; j < ske_len; j++)
+        Rc.A[j + j * ske_len] = 1.;
+      
+      int64_t lc = basis[l].Lchild[i + ibegin];
+      if (lc >= 0)
+        for (int64_t j = 0; j < 2; j++) {
+          int64_t diml = basis[l + 1].DimsLr[lc + j];
+          int64_t off = basis[l + 1].Offsets[lc + j] - basis[l + 1].Offsets[lc];
+          mat_cpy_batch(diml, diml, &(basis[l + 1].R)[lc + j], &Rc, 0, 0, off, off);
+        }
+      mat_cpy_flush();
+      upper_tri_reflec_mult('L', &Rc, &Qo);
+      qr_full(&Q, &R, Svec);
     }
+
     dist_int_64_xlen(basis[l].Dims, &comm[l]);
     dist_int_64_xlen(basis[l].DimsLr, &comm[l]);
 
