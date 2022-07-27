@@ -294,12 +294,11 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     int64_t count_m = 0;
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ske_len = samples.SkeLens[i];
-      int64_t len_m = samples.FarLens[i];
-      len_m = len_m < samples.CloseLens[i] ? samples.CloseLens[i] : len_m;
+      int64_t len_m = 2 + (samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i]);
       len_m = len_m < ske_len ? ske_len : len_m;
       basis[l].Dims[i + ibegin] = ske_len;
       count = count + ske_len;
-      count_m = count_m + ske_len * (ske_len * 2 + len_m + 2);
+      count_m = count_m + ske_len * (ske_len * 2 + len_m);
     }
 
     int32_t* ipiv_data = (int32_t*)malloc(sizeof(int32_t) * count);
@@ -311,13 +310,12 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     count_m = 0;
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ske_len = samples.SkeLens[i];
-      int64_t len_m = samples.FarLens[i];
-      len_m = len_m < samples.CloseLens[i] ? samples.CloseLens[i] : len_m;
+      int64_t len_m = 2 + (samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i]);
       len_m = len_m < ske_len ? ske_len : len_m;
       ipiv_ptrs[i] = &ipiv_data[count];
       matrix_ptrs[i + ibegin] = &matrix_data[count_m];
       count = count + ske_len;
-      count_m = count_m + ske_len * (ske_len * 2 + len_m + 2);
+      count_m = count_m + ske_len * (ske_len * 2 + len_m);
     }
 
 #pragma omp parallel for

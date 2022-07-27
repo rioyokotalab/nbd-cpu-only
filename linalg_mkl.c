@@ -3,7 +3,9 @@
 
 #include "mkl.h"
 
+#ifndef BATCH_LEN
 #define BATCH_LEN 12000
+#endif
 
 struct MatrixCopyBatch {
   size_t rows_array[BATCH_LEN];

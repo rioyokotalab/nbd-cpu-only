@@ -122,9 +122,9 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       i_local(&y, comm);
-      mmult('T', 'N', &Uc[y], &AV_c[yx], &A_cc[yx], 1., 0.);
-      mmult('T', 'N', &Uo[y], &AV_c[yx], &A_oc[yx], 1., 0.);
-      mmult('T', 'N', &Uo[y], &AV_o[yx], &A_oo[yx], 1., 0.);
+      mmult_batch('T', 'N', &Uc[y], &AV_c[yx], &A_cc[yx], 1., 0.);
+      mmult_batch('T', 'N', &Uo[y], &AV_c[yx], &A_oc[yx], 1., 0.);
+      mmult_batch('T', 'N', &Uo[y], &AV_o[yx], &A_oo[yx], 1., 0.);
     }
   mmult_flush();
 
@@ -139,10 +139,9 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
     int64_t xx;
     lookupIJ(&xx, rels, x + lbegin, x);
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      int64_t y = rels->RowIndex[yx];
-      if (y != x + lbegin)
+      if (yx != xx)
         trsm_lowerA_batch(&A_oc[yx], &A_cc[xx]);
-      if (y > x + lbegin)
+      if (yx > xx)
         trsm_lowerA_batch(&A_cc[yx], &A_cc[xx]);
     } // Lower elimination
   }
