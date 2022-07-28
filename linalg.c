@@ -1,19 +1,21 @@
 
 #include "nbd.h"
 
+#if defined(_MKL) || defined(_MKL_BATCH)
 #include "mkl.h"
+#else
+#include "cblas.h"
+#include "lapacke.h"
+#endif
 
 #ifndef BATCH_LEN
 #define BATCH_LEN 12000
 #endif
 
 struct MatrixCopyBatch {
-  size_t rows_array[BATCH_LEN];
-  size_t cols_array[BATCH_LEN];
+  int32_t rows_array[BATCH_LEN], cols_array[BATCH_LEN], lda_array[BATCH_LEN], ldb_array[BATCH_LEN];
   const double* A_array[BATCH_LEN];
-  size_t lda_array[BATCH_LEN];
   double* B_array[BATCH_LEN];
-  size_t ldb_array[BATCH_LEN];
 } copy_batch;
 int32_t copy_batch_count = 0;
 
@@ -31,40 +33,44 @@ void mat_cpy_batch(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix*
 }
 
 void mat_cpy_flush() {
+#ifdef _MKL_BATCH
   char trans_array[BATCH_LEN];
   double alpha_array[BATCH_LEN];
-  size_t group_size[BATCH_LEN];
+  size_t rows_ui64[BATCH_LEN], cols_ui64[BATCH_LEN], lda_ui64[BATCH_LEN], ldb_ui64[BATCH_LEN], group_size[BATCH_LEN];
+#pragma omp parallel for
   for (int32_t i = 0; i < copy_batch_count; i++) {
     trans_array[i] = 'N';
     alpha_array[i] = 1.;
+    rows_ui64[i] = copy_batch.rows_array[i];
+    cols_ui64[i] = copy_batch.cols_array[i];
+    lda_ui64[i] = copy_batch.lda_array[i];
+    ldb_ui64[i] = copy_batch.ldb_array[i];
     group_size[i] = 1;
   }
-  MKL_Domatcopy_batch('C', trans_array, copy_batch.rows_array, copy_batch.cols_array, alpha_array,
-    copy_batch.A_array, copy_batch.lda_array, copy_batch.B_array, copy_batch.ldb_array, copy_batch_count, group_size);
+  MKL_Domatcopy_batch('C', trans_array, rows_ui64, cols_ui64, alpha_array,
+    copy_batch.A_array, lda_ui64, copy_batch.B_array, ldb_ui64, copy_batch_count, group_size);
+#else
+#pragma omp parallel for
+  for (int32_t i = 0; i < copy_batch_count; i++)
+    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', copy_batch.rows_array[i], copy_batch.cols_array[i],
+      copy_batch.A_array[i], copy_batch.lda_array[i], copy_batch.B_array[i], copy_batch.ldb_array[i]);
+#endif
   copy_batch_count = 0;
 }
 
 struct MMultBatch {
-  char transa_array[BATCH_LEN];
-  char transb_array[BATCH_LEN];
-  int32_t m_array[BATCH_LEN];
-  int32_t n_array[BATCH_LEN];
-  int32_t k_array[BATCH_LEN];
-  double alpha_array[BATCH_LEN];
-  const double* A_array[BATCH_LEN];
-  int32_t lda_array[BATCH_LEN];
-  const double* B_array[BATCH_LEN];
-  int32_t ldb_array[BATCH_LEN];
-  double beta_array[BATCH_LEN];
-  double* C_array[BATCH_LEN];
-  int32_t ldc_array[BATCH_LEN];
+  char transa_array[BATCH_LEN], transb_array[BATCH_LEN];
+  int32_t m_array[BATCH_LEN], n_array[BATCH_LEN], k_array[BATCH_LEN];
+  const double* A_array[BATCH_LEN], *B_array[BATCH_LEN];
+  int32_t lda_array[BATCH_LEN], ldb_array[BATCH_LEN], ldc_array[BATCH_LEN];
+  double* C_array[BATCH_LEN], alpha_array[BATCH_LEN], beta_array[BATCH_LEN];
 } mm_batch;
 int32_t mm_batch_count = 0;
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta) {
-  int64_t k = (ta == 'N' || ta == 'n') ? A->N : A->M;
-  CBLAS_TRANSPOSE tac = (ta == 'T' || ta == 't') ? CblasTrans : CblasNoTrans;
-  CBLAS_TRANSPOSE tbc = (tb == 'T' || tb == 't') ? CblasTrans : CblasNoTrans;
+  int64_t k = ta == 'N' ? A->N : A->M;
+  CBLAS_TRANSPOSE tac = ta == 'N' ? CblasNoTrans : CblasTrans;
+  CBLAS_TRANSPOSE tbc = tb == 'N' ? CblasNoTrans : CblasTrans;
   int64_t lda = 1 < A->M ? A->M : 1;
   int64_t ldb = 1 < B->M ? B->M : 1;
   int64_t ldc = 1 < C->M ? C->M : 1;
@@ -92,25 +98,36 @@ void mmult_batch(char ta, char tb, const struct Matrix* A, const struct Matrix* 
 }
 
 void mmult_flush() {
+#ifdef _MKL_BATCH
   int32_t one_array[BATCH_LEN];
+#pragma omp parallel for
   for (int32_t i = 0; i < mm_batch_count; i++)
     one_array[i] = 1;
   
   dgemm_batch(mm_batch.transa_array, mm_batch.transb_array, mm_batch.m_array, mm_batch.n_array, mm_batch.k_array,
     mm_batch.alpha_array, mm_batch.A_array, mm_batch.lda_array, mm_batch.B_array, mm_batch.ldb_array,
     mm_batch.beta_array, mm_batch.C_array, mm_batch.ldc_array, &mm_batch_count, one_array);
+#else
+#pragma omp parallel for
+  for (int32_t i = 0; i < mm_batch_count; i++) {
+    CBLAS_TRANSPOSE tac = mm_batch.transa_array[i] == 'N' ? CblasNoTrans : CblasTrans;
+    CBLAS_TRANSPOSE tbc = mm_batch.transb_array[i] == 'N' ? CblasNoTrans : CblasTrans;
+    cblas_dgemm(CblasColMajor, tac, tbc, mm_batch.m_array[i], mm_batch.n_array[i], mm_batch.k_array[i], mm_batch.alpha_array[i],
+      mm_batch.A_array[i], mm_batch.lda_array[i], mm_batch.B_array[i], mm_batch.ldb_array[i], mm_batch.beta_array[i], mm_batch.C_array[i], mm_batch.ldc_array[i]);
+  }
+#endif
   mm_batch_count = 0;
 }
 
 struct ICholBatch {
   int32_t lc_array[BATCH_LEN];
   int32_t lo_array[BATCH_LEN];
-  double* A_cc_array[BATCH_LEN];
-  int32_t ldacc_array[BATCH_LEN];
-  double* A_oc_array[BATCH_LEN];
-  int32_t ldaoc_array[BATCH_LEN];
-  double* A_oo_array[BATCH_LEN];
-  int32_t ldaoo_array[BATCH_LEN];
+  double* A_array[BATCH_LEN];
+  int32_t lda_array[BATCH_LEN];
+  double* B_array[BATCH_LEN];
+  int32_t ldb_array[BATCH_LEN];
+  double* C_array[BATCH_LEN];
+  int32_t ldc_array[BATCH_LEN];
 } ichol_batch;
 int32_t ichol_batch_count = 0;
 
@@ -125,16 +142,17 @@ void icmp_chol_decomp_batch(struct Matrix* A_cc, struct Matrix* A_oc, struct Mat
   int32_t i = ichol_batch_count;
   ichol_batch.lc_array[i] = A_cc->M;
   ichol_batch.lo_array[i] = A_oo->M;
-  ichol_batch.A_cc_array[i] = A_cc->A;
-  ichol_batch.ldacc_array[i] = 1 < A_cc->M ? A_cc->M : 1;
-  ichol_batch.A_oc_array[i] = A_oc->A;
-  ichol_batch.ldaoc_array[i] = 1 < A_oc->M ? A_oc->M : 1;
-  ichol_batch.A_oo_array[i] = A_oo->A;
-  ichol_batch.ldaoo_array[i] = 1 < A_oo->M ? A_oo->M : 1;
+  ichol_batch.A_array[i] = A_cc->A;
+  ichol_batch.lda_array[i] = 1 < A_cc->M ? A_cc->M : 1;
+  ichol_batch.B_array[i] = A_oc->A;
+  ichol_batch.ldb_array[i] = 1 < A_oc->M ? A_oc->M : 1;
+  ichol_batch.C_array[i] = A_oo->A;
+  ichol_batch.ldc_array[i] = 1 < A_oo->M ? A_oo->M : 1;
   ichol_batch_count = i + (int)(A_cc->M > 0);
 }
 
 void icmp_chol_decomp_flush() {
+#ifdef _MKL_BATCH
   char L_array[BATCH_LEN];
   char R_array[BATCH_LEN];
   char T_array[BATCH_LEN];
@@ -143,6 +161,7 @@ void icmp_chol_decomp_flush() {
   double beta_array[BATCH_LEN];
   int32_t one_array[BATCH_LEN];
   int32_t info_array[BATCH_LEN];
+#pragma omp parallel for
   for (int32_t i = 0; i < ichol_batch_count; i++) {
     L_array[i] = 'L';
     R_array[i] = 'R';
@@ -155,15 +174,24 @@ void icmp_chol_decomp_flush() {
 
 #pragma omp parallel for
   for (int32_t i = 0; i < ichol_batch_count; i++)
-    dpotrf(&L_array[i], &ichol_batch.lc_array[i], ichol_batch.A_cc_array[i], &ichol_batch.ldacc_array[i], &info_array[i]);
+    dpotrf(&L_array[i], &ichol_batch.lc_array[i], ichol_batch.A_array[i], &ichol_batch.lda_array[i], &info_array[i]);
   
   dtrsm_batch(R_array, L_array, T_array, N_array, ichol_batch.lo_array, ichol_batch.lc_array, alpha_array,
-    (const double**)ichol_batch.A_cc_array, ichol_batch.ldacc_array, ichol_batch.A_oc_array, ichol_batch.ldaoc_array, &ichol_batch_count, one_array);
+    (const double**)ichol_batch.A_array, ichol_batch.lda_array, ichol_batch.B_array, ichol_batch.ldb_array, &ichol_batch_count, one_array);
 
   dgemm_batch(N_array, T_array, ichol_batch.lo_array, ichol_batch.lo_array, ichol_batch.lc_array, beta_array,
-    (const double**)ichol_batch.A_oc_array, ichol_batch.ldaoc_array, (const double**)ichol_batch.A_oc_array, ichol_batch.ldaoc_array, alpha_array,
-    ichol_batch.A_oo_array, ichol_batch.ldaoo_array, &ichol_batch_count, one_array);
-  
+    (const double**)ichol_batch.B_array, ichol_batch.ldb_array, (const double**)ichol_batch.B_array, ichol_batch.ldb_array, alpha_array,
+    ichol_batch.C_array, ichol_batch.ldc_array, &ichol_batch_count, one_array);
+#else
+#pragma omp parallel for
+  for (int32_t i = 0; i < ichol_batch_count; i++) {
+    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', ichol_batch.lc_array[i], ichol_batch.A_array[i], ichol_batch.lda_array[i]);
+    cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, ichol_batch.lo_array[i], ichol_batch.lc_array[i], 1.,
+      ichol_batch.A_array[i], ichol_batch.lda_array[i], ichol_batch.B_array[i], ichol_batch.ldb_array[i]);
+    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, ichol_batch.lo_array[i], ichol_batch.lo_array[i], ichol_batch.lc_array[i], -1.,
+      ichol_batch.B_array[i], ichol_batch.ldb_array[i], ichol_batch.B_array[i], ichol_batch.ldb_array[i], 1., ichol_batch.C_array[i], ichol_batch.ldc_array[i]);
+  }
+#endif
   ichol_batch_count = 0;
 }
 
@@ -191,13 +219,14 @@ void trsm_lowerA_batch(struct Matrix* A, const struct Matrix* L) {
 }
 
 void trsm_lowerA_flush() {
+#ifdef _MKL_BATCH
   char L_array[BATCH_LEN];
   char R_array[BATCH_LEN];
   char T_array[BATCH_LEN];
   char N_array[BATCH_LEN];
   double alpha_array[BATCH_LEN];
   int32_t one_array[BATCH_LEN];
-
+#pragma omp parallel for
   for (int32_t i = 0; i < trsml_batch_count; i++) {
     L_array[i] = 'L';
     R_array[i] = 'R';
@@ -209,6 +238,12 @@ void trsm_lowerA_flush() {
 
   dtrsm_batch(R_array, L_array, T_array, N_array, trsml_batch.m_array, trsml_batch.n_array, alpha_array,
     trsml_batch.L_array, trsml_batch.ldl_array, trsml_batch.A_array, trsml_batch.lda_array, &trsml_batch_count, one_array);
+#else
+#pragma omp parallel for
+  for (int32_t i = 0; i < trsml_batch_count; i++)
+    cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit, trsml_batch.m_array[i], trsml_batch.n_array[i], 1.,
+      trsml_batch.L_array[i], trsml_batch.ldl_array[i], trsml_batch.A_array[i], trsml_batch.lda_array[i]);
+#endif
   trsml_batch_count = 0;
 }
 
@@ -244,6 +279,7 @@ void id_row_batch(struct Matrix* A, int32_t arows[], double* work) {
 }
 
 void id_row_flush() {
+#ifdef _MKL_BATCH
   char R_array[BATCH_LEN];
   char N_array[BATCH_LEN];
   char L_array[BATCH_LEN];
@@ -256,7 +292,7 @@ void id_row_flush() {
   size_t cols_ui64[BATCH_LEN];
   size_t lda_ui64[BATCH_LEN];
   size_t group_size[BATCH_LEN];
-
+#pragma omp parallel for
   for (int32_t i = 0; i < idrow_batch_count; i++) {
     R_array[i] = 'R';
     N_array[i] = 'N';
@@ -281,7 +317,19 @@ void id_row_flush() {
 
   dtrsm_batch(R_array, L_array, N_array, U_array, idrow_batch.rows_array, idrow_batch.cols_array, alpha_array,
     (const double**)idrow_batch.work_array, idrow_batch.lda_array, idrow_batch.A_array, idrow_batch.lda_array, &idrow_batch_count, one_array);
-
+#else
+#pragma omp parallel for
+  for (int32_t i = 0; i < idrow_batch_count; i++) {
+    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', idrow_batch.rows_array[i], idrow_batch.cols_array[i], 
+      idrow_batch.A_array[i], idrow_batch.lda_array[i], idrow_batch.work_array[i], idrow_batch.lda_array[i]);
+    LAPACKE_dgetrf(LAPACK_COL_MAJOR, idrow_batch.rows_array[i], idrow_batch.cols_array[i],
+      idrow_batch.work_array[i], idrow_batch.lda_array[i], idrow_batch.piv_array[i]);
+    cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, idrow_batch.rows_array[i], idrow_batch.cols_array[i], 1.,
+      idrow_batch.work_array[i], idrow_batch.lda_array[i], idrow_batch.A_array[i], idrow_batch.lda_array[i]);
+    cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, idrow_batch.rows_array[i], idrow_batch.cols_array[i], 1.,
+      idrow_batch.work_array[i], idrow_batch.lda_array[i], idrow_batch.A_array[i], idrow_batch.lda_array[i]);
+  }
+#endif
   idrow_batch_count = 0;
 }
 
