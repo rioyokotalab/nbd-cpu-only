@@ -1,8 +1,7 @@
-FROM debian
+FROM ubuntu
 
 RUN apt update &&\
-  apt upgrade -y &&\
-  apt install -y wget git gcc g++ make cmake libopenmpi-dev python3 python3-matplotlib &&\
+  DEBIAN_FRONTEND=noninteractive apt install -y wget gnupg git gcc g++ make cmake libopenmpi-dev python3 python3-matplotlib &&\
   rm -rf /var/lib/apt/lists/*
 
 RUN cd /root &&\
@@ -10,6 +9,9 @@ RUN cd /root &&\
   tar -xzf OpenBLAS-0.3.20.tar.gz &&\
   make -j -C OpenBLAS-0.3.20 all install NUM_THREADS=16 DYNAMIC_ARCH=1 PREFIX=/opt/OpenBLAS &&\
   rm -rf OpenBLAS-0.3.20 OpenBLAS-0.3.20.tar.gz
+
+ENV OPENBLAS_DIR /opt/OpenBLAS
+ENV CMAKE_PREFIX_PATH /opt/OpenBLAS
 
 RUN cd /root &&\
   git clone https://github.com/rioyokotalab/nbd.git &&\
@@ -22,5 +24,4 @@ ENV OMPI_ALLOW_RUN_AS_ROOT 1
 ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM 1
 ENV OMPI_MCA_btl_vader_single_copy_mechanism none
 ENV OPENBLAS_NUM_THREADS 1
-ENV OPENBLAS_DIR /opt/OpenBLAS
 ENV LD_LIBRARY_PATH /opt/OpenBLAS/lib
