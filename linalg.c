@@ -343,9 +343,11 @@ void upper_tri_reflec_mult(char side, const struct Matrix* R, struct Matrix* A) 
 }
 
 void qr_full(struct Matrix* Q, struct Matrix* R, double* tau) {
-  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, R->N, Q->A, Q->M, tau);
-  MKL_Domatcopy('C', 'N', R->M, R->N, 1., Q->A, Q->M, R->A, R->M);
-  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, R->N, Q->A, Q->M, tau);
+  int64_t ldq = 1 < Q->M ? Q->M : 1;
+  int64_t ldr = 1 < R->M ? R->M : 1;
+  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, R->N, Q->A, ldq, tau);
+  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', R->M, R->N, Q->A, ldq, R->A, ldr);
+  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, R->N, Q->A, ldq, tau);
 }
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {
