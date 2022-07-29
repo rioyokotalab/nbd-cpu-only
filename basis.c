@@ -395,12 +395,14 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
         }
       }
 
-      struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
-      struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
-      struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
-      struct Matrix Rc = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, ske_len };      
-      upper_tri_reflec_mult('L', &Rc, &Qo);
-      qr_full(&Q, &R, Rc.A);
+      if (rank > 0) {
+        struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
+        struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
+        struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
+        struct Matrix Rc = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, ske_len };
+        upper_tri_reflec_mult('L', &Rc, &Qo);
+        qr_full(&Q, &R, Rc.A);
+      }
     }
 
     dist_int_64_xlen(basis[l].Dims, &comm[l]);
