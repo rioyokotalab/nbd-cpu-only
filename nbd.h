@@ -38,6 +38,15 @@ void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 void nrm2_A(struct Matrix* A, double* nrm);
 void scal_A(struct Matrix* A, double alpha);
 
+void alloc_matrices_aligned(double** A_ptr, int* M_align, int M, int N, int count);
+void free_matrices(double* A_ptr);
+void copy_basis(const double* Ur_in, const double* Us_in, double* U_out, int IR_dim, int IS_dim, int OR_dim, int OS_dim, int ldu_in, int ldu_out);
+void copy_mat(const double* A_in, double* A_out, int M_in, int N_in, int lda_in, int M_out, int N_out, int lda_out);
+void compute_rs_splits_left(const double* U_ptr, const double* A_ptr, double* out_ptr, const int* row_A, int N, int N_align, int A_count);
+void compute_rs_splits_right(const double* V_ptr, const double* A_ptr, double* out_ptr, const int* col_A, int N, int N_align, int A_count);
+void factor_diag(int N_diag, double* A_ptr, double* U_ptr, int R_dim, int S_dim, int N_align);
+void schur_diag(int N_diag, double* A_ptr, const int* diag_idx, int R_dim, int S_dim, int N_align);
+
 struct Body { double X[3], B; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
