@@ -131,7 +131,7 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       i_local(&y, comm);
-      copy_mat(A[yx].A, A1_data + yx * ld_batch_mat, A[yx].M, A[yx].N, A[yx].M, dim_batch, dim_batch, ld_batch);
+      copy_mat('S', A[yx].A, A1_data + yx * ld_batch_mat, A[yx].M, A[yx].N, A[yx].M, dim_batch, dim_batch, ld_batch);
       row_A[yx] = y;
     }
     int64_t xx;
@@ -139,15 +139,15 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
     int64_t dim_x = A[xx].N;
     int64_t dimc_x = A_cc[xx].N;
     int64_t dimr_x = dim_x - dimc_x;
-    copy_mat(A[xx].A, D_data + x * ld_batch_mat, A[xx].M, A[xx].N, A[xx].M, dim_batch, dim_batch, ld_batch);
-    copy_basis(Uc[x + ibegin].A, Uo[x + ibegin].A, U1_data + x * ld_batch_mat, dimc_x, dimr_x, dimc_max, dimr_max, dim_x, ld_batch);
+    copy_mat('S', A[xx].A, D_data + x * ld_batch_mat, A[xx].M, A[xx].N, A[xx].M, dim_batch, dim_batch, ld_batch);
+    copy_basis('S', Uc[x + ibegin].A, Uo[x + ibegin].A, U1_data + x * ld_batch_mat, dimc_x, dimr_x, dimc_max, dimr_max, dim_x, ld_batch);
     col_A[x] = rels->ColIndex[x];
     diag_idx[x] = xx;
   }
   col_A[rels->N] = nnz;
 
   for (int64_t i = 0; i < llen; i++)
-    copy_basis(Uc[i].A, Uo[i].A, U2_data + i * ld_batch_mat, Uc[i].N, Uo[i].N, dimc_max, dimr_max, Uc[i].M, ld_batch);
+    copy_basis('S', Uc[i].A, Uo[i].A, U2_data + i * ld_batch_mat, Uc[i].N, Uo[i].N, dimc_max, dimr_max, Uc[i].M, ld_batch);
 
   factor_diag(rels->N, D_data, U1_data, dimc_max, dimr_max, ld_batch);
   compute_rs_splits_right(U1_data, A1_data, A2_data, col_A, dim_batch, ld_batch, nnz);
@@ -157,11 +157,12 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
   for (int64_t x = 0; x < rels->N; x++)
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       double* A_ptr = A1_data + yx * ld_batch_mat;
-      copy_mat(A_ptr, A_cc[yx].A, dimc_max, dimc_max, ld_batch, A_cc[yx].M, A_cc[yx].N, A_cc[yx].M);
-      copy_mat(A_ptr + dimc_max, A_oc[yx].A, dimr_max, dimc_max, ld_batch, A_oc[yx].M, A_oc[yx].N, A_oc[yx].M);
-      copy_mat(A_ptr + ld_batch * dimc_max + dimc_max, A_oo[yx].A, dimr_max, dimr_max, ld_batch, A_oo[yx].M, A_oo[yx].N, A_oo[yx].M);
+      copy_mat('G', A_ptr, A_cc[yx].A, dimc_max, dimc_max, ld_batch, A_cc[yx].M, A_cc[yx].N, A_cc[yx].M);
+      copy_mat('G', A_ptr + dimc_max, A_oc[yx].A, dimr_max, dimc_max, ld_batch, A_oc[yx].M, A_oc[yx].N, A_oc[yx].M);
+      copy_mat('G', A_ptr + ld_batch * dimc_max + dimc_max, A_oo[yx].A, dimr_max, dimr_max, ld_batch, A_oo[yx].M, A_oo[yx].N, A_oo[yx].M);
     }
 
+  sync_batch_lib();
   free_matrices(A1_data);
   free_matrices(A2_data);
   free_matrices(D_data);

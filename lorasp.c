@@ -8,6 +8,8 @@
 
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);
+  init_batch_lib();
+
   double prog_time = MPI_Wtime();
 
   int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
@@ -146,6 +148,8 @@ int main(int argc, char* argv[]) {
   free(rhs);
   free(X1);
   free(X2);
+
+  finalize_batch_lib();
   MPI_Finalize();
   return 0;
 }

@@ -1,12 +1,7 @@
 
 #include "nbd.h"
 
-#if defined(_MKL) || defined(_MKL_BATCH)
 #include "mkl.h"
-#else
-#include "cblas.h"
-#include "lapacke.h"
-#endif
 
 #ifndef BATCH_LEN
 #define BATCH_LEN 12000

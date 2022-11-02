@@ -5,6 +5,12 @@
 
 #define ALIGN 32
 
+void init_batch_lib() { }
+
+void finalize_batch_lib() { }
+
+void sync_batch_lib() { }
+
 void alloc_matrices_aligned(double** A_ptr, int* M_align, int M, int N, int count) {
   int rem = M & (ALIGN - 1);
   *M_align = (rem ? ALIGN : 0) + M - rem;
@@ -16,33 +22,41 @@ void free_matrices(double* A_ptr) {
   MKL_free(A_ptr);
 }
 
-void copy_basis(const double* Ur_in, const double* Us_in, double* U_out, int IR_dim, int IS_dim, int OR_dim, int OS_dim, int ldu_in, int ldu_out) {
-  IR_dim = IR_dim < OR_dim ? IR_dim : OR_dim;
-  IS_dim = IS_dim < OS_dim ? IS_dim : OS_dim;
-  int n_in = IR_dim + IS_dim;
-  MKL_Domatcopy('C', 'N', n_in, IR_dim, 1., Ur_in, ldu_in, U_out, ldu_out);
-  MKL_Domatcopy('C', 'N', n_in, IS_dim, 1., Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out);
+void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int IR_dim, int IS_dim, int OR_dim, int OS_dim, int ldu_in, int ldu_out) {
+  if (dir == 'G' || dir == 'S') {
+    IR_dim = IR_dim < OR_dim ? IR_dim : OR_dim;
+    IS_dim = IS_dim < OS_dim ? IS_dim : OS_dim;
+    int n_in = IR_dim + IS_dim;
+    MKL_Domatcopy('C', 'N', n_in, IR_dim, 1., Ur_in, ldu_in, U_out, ldu_out);
+    MKL_Domatcopy('C', 'N', n_in, IS_dim, 1., Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out);
 
-  int diff_r = OR_dim - IR_dim;
-  int diff_s = OS_dim - IS_dim;
-  double one = 1.;
-  if (diff_r > 0)
-    cblas_dcopy(diff_r, &one, 0, U_out + ((size_t)ldu_out * IR_dim + n_in), ldu_out + 1);
-  if (diff_s > 0)
-    cblas_dcopy(diff_s, &one, 0, U_out + (((size_t)ldu_out + 1) * ((size_t)OR_dim + IS_dim)), ldu_out + 1);
+    if (dir == 'S') {
+      int diff_r = OR_dim - IR_dim;
+      int diff_s = OS_dim - IS_dim;
+      double one = 1.;
+      if (diff_r > 0)
+        cblas_dcopy(diff_r, &one, 0, U_out + ((size_t)ldu_out * IR_dim + n_in), ldu_out + 1);
+      if (diff_s > 0)
+        cblas_dcopy(diff_s, &one, 0, U_out + (((size_t)ldu_out + 1) * ((size_t)OR_dim + IS_dim)), ldu_out + 1);
+    }
+  }
 }
 
-void copy_mat(const double* A_in, double* A_out, int M_in, int N_in, int lda_in, int M_out, int N_out, int lda_out) {
-  M_in = M_in < M_out ? M_in : M_out;
-  N_in = N_in < N_out ? N_in : N_out;
-  MKL_Domatcopy('C', 'N', M_in, N_in, 1., A_in, lda_in, A_out, lda_out);
+void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, int lda_in, int M_out, int N_out, int lda_out) {
+  if (dir == 'G' || dir == 'S') {
+    M_in = M_in < M_out ? M_in : M_out;
+    N_in = N_in < N_out ? N_in : N_out;
+    MKL_Domatcopy('C', 'N', M_in, N_in, 1., A_in, lda_in, A_out, lda_out);
 
-  int diff_m = M_out - M_in;
-  int diff_n = N_out - N_in;
-  int len_i = diff_m < diff_n ? diff_m : diff_n;
-  double one = 1.;
-  if (len_i > 0)
-    cblas_dcopy(len_i, &one, 0, A_out + ((size_t)lda_out * N_in + M_in), lda_out + 1);
+    if (dir == 'S') {
+      int diff_m = M_out - M_in;
+      int diff_n = N_out - N_in;
+      int len_i = diff_m < diff_n ? diff_m : diff_n;
+      double one = 1.;
+      if (len_i > 0)
+        cblas_dcopy(len_i, &one, 0, A_out + ((size_t)lda_out * N_in + M_in), lda_out + 1);
+    }
+  }
 }
 
 void compute_rs_splits_left(const double* U_ptr, const double* A_ptr, double* out_ptr, const int* row_A, int N, int N_align, int A_count) {
