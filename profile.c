@@ -52,6 +52,24 @@ void rightHandSides_mem(int64_t* bytes, const struct RightHandSides* rhs, int64_
   *bytes = count;
 }
 
+int64_t factor_flops = 0;
+
+void record_factor_flops(int64_t dimr, int64_t dims, int64_t nnz, int64_t ndiag) {
+  int64_t dimn = dimr + dims;
+  int64_t fgemm = 2 * dimn * dimn * dimn * nnz;
+  int64_t fsplit = 2 * dimn * dimr * (dimn + dimr) * ndiag;
+  int64_t fchol = dimr * dimr * dimr * ndiag / 3;
+  int64_t ftrsm = dimn * dimr * dimr * ndiag / 2;
+  int64_t fschur = 2 * dims * dims * dimr * ndiag;
+  factor_flops = factor_flops + fgemm + fsplit + fchol + ftrsm + fschur;
+}
+
+void get_factor_flops(int64_t* flops) {
+  *flops = factor_flops;
+  MPI_Allreduce(MPI_IN_PLACE, flops, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  factor_flops = 0;
+}
+
 double tot_cm_time = 0.;
 
 void startTimer(double* wtime, double* cmtime) {

@@ -90,6 +90,9 @@ int main(int argc, char* argv[]) {
   factorA(nodes, basis, rels_near, rels_far, cell_comm, levels);
   stopTimer(&factor_time, &factor_comm_time);
 
+  int64_t factor_flops;
+  get_factor_flops(&factor_flops);
+
   allocRightHandSides('S', rhs, basis, levels);
 
   double solve_time, solve_comm_time;
@@ -118,13 +121,14 @@ int main(int argc, char* argv[]) {
     printf("LORASP: %d,%d,%lf,%d,%d\nConstruct: %lf s. COMM: %lf s.\n"
       "Factorize: %lf s. COMM: %lf s.\n"
       "Solution: %lf s. COMM: %lf s.\n"
+      "Factorization GFLOPS: %lf GFLOPS/s.\n"
       "Basis Memory: %lf GiB.\n"
       "Matrix Memory: %lf GiB.\n"
       "Vector Memory: %lf GiB.\n"
       "Err: %e\n"
       "Program: %lf s. COMM: %lf s.\n",
       (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size,
-      construct_time, construct_comm_time, factor_time, factor_comm_time, solve_time, solve_comm_time, 
+      construct_time, construct_comm_time, factor_time, factor_comm_time, solve_time, solve_comm_time, (double)factor_flops * 1.e-9 / factor_time,
       (double)mem_basis * 1.e-9, (double)mem_A * 1.e-9, (double)mem_X * 1.e-9, err, prog_time, cm_time);
 
   for (int64_t i = 0; i <= levels; i++) {

@@ -168,6 +168,9 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
   free_matrices(D_data);
   free_matrices(U1_data);
   free_matrices(U2_data);
+#ifdef _PROF
+  record_factor_flops(dimc_max, dimr_max, nnz, rels->N);
+#endif
 }
 
 void nextNode(struct Matrix* Mup, const struct Matrix* Mlow, const struct Base* basis_up, const struct CSC* rels_up, const struct CSC* rels_low, const struct CellComm* comm_up) {

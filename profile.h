@@ -22,6 +22,10 @@ void node_mem(int64_t* bytes, const struct Node* node, int64_t levels);
 
 void rightHandSides_mem(int64_t* bytes, const struct RightHandSides* st, int64_t levels);
 
+void record_factor_flops(int64_t dimr, int64_t dims, int64_t nnz, int64_t ndiag);
+
+void get_factor_flops(int64_t* flops);
+
 void startTimer(double* wtime, double* cmtime);
 
 void stopTimer(double* wtime, double* cmtime);
