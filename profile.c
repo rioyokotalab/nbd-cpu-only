@@ -56,7 +56,7 @@ int64_t factor_flops = 0;
 
 void record_factor_flops(int64_t dimr, int64_t dims, int64_t nnz, int64_t ndiag) {
   int64_t dimn = dimr + dims;
-  int64_t fgemm = 2 * dimn * dimn * dimn * nnz;
+  int64_t fgemm = 4 * dimn * dimn * dimn * nnz;
   int64_t fsplit = 2 * dimn * dimr * (dimn + dimr) * ndiag;
   int64_t fchol = dimr * dimr * dimr * ndiag / 3;
   int64_t ftrsm = dimn * dimr * dimr * ndiag / 2;

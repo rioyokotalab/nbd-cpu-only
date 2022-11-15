@@ -11,11 +11,9 @@ void finalize_batch_lib() { }
 
 void sync_batch_lib() { }
 
-void alloc_matrices_aligned(double** A_ptr, int* M_align, int M, int N, int count) {
-  int rem = M & (ALIGN - 1);
-  *M_align = (rem ? ALIGN : 0) + M - rem;
-  size_t A_stride_mat = (size_t)(*M_align) * N;
-  *A_ptr = (double*)MKL_calloc(count * A_stride_mat, sizeof(double), ALIGN);
+void alloc_matrices_aligned(double** A_ptr, int M, int N, int count) {
+  size_t stride = (size_t)M * N;
+  *A_ptr = (double*)MKL_calloc(count * stride, sizeof(double), ALIGN);
 }
 
 void free_matrices(double* A_ptr) {
@@ -59,68 +57,45 @@ void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, i
   }
 }
 
-void compute_rs_splits_left(const double* U_ptr, const double* A_ptr, double* out_ptr, const int* row_A, int N, int N_align, int A_count) {
-  const double** U_lis = (const double**)MKL_malloc(sizeof(double*) * A_count, ALIGN);
-  const double** A_lis = (const double**)MKL_malloc(sizeof(double*) * A_count, ALIGN);
-  double** O_lis = (double**)MKL_malloc(sizeof(double*) * A_count, ALIGN);
-
-  size_t A_stride_mat = (size_t)N_align * N;
-  for (int i = 0; i < A_count; i++) {
-    int row = row_A[i];
-    U_lis[i] = U_ptr + A_stride_mat * row;
-    A_lis[i] = A_ptr + A_stride_mat * i;
-    O_lis[i] = out_ptr + A_stride_mat * i;
-  }
-
-  CBLAS_TRANSPOSE trans = CblasConjTrans;
-  CBLAS_TRANSPOSE no_trans = CblasNoTrans;
-  double one = 1.;
-  double zero = 0.;
-  cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &N, &N, &N, &one, U_lis, &N_align, A_lis, &N_align, &zero, O_lis, &N_align, 1, &A_count);
-  
-  MKL_free(U_lis);
-  MKL_free(A_lis);
-  MKL_free(O_lis);
-}
-
-void compute_rs_splits_right(const double* V_ptr, const double* A_ptr, double* out_ptr, const int* col_A, int N, int N_align, int A_count) {
-  const double** V_lis = (const double**)MKL_malloc(sizeof(double*) * A_count, ALIGN);
-  const double** A_lis = (const double**)MKL_malloc(sizeof(double*) * A_count, ALIGN);
-  double** O_lis = (double**)MKL_malloc(sizeof(double*) * A_count, ALIGN);
-
-  size_t A_stride_mat = (size_t)N_align * N;
-  int col = 0;
-  for (int i = 0; i < A_count; i++) {
-    while (col_A[col + 1] <= i)
-      col = col + 1;
-    V_lis[i] = V_ptr + A_stride_mat * col;
-    A_lis[i] = A_ptr + A_stride_mat * i;
-    O_lis[i] = out_ptr + A_stride_mat * i;
-  }
-
-  CBLAS_TRANSPOSE no_trans = CblasNoTrans;
-  double one = 1.;
-  double zero = 0.;
-  cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N, &N, &N, &one, A_lis, &N_align, V_lis, &N_align, &zero, O_lis, &N_align, 1, &A_count);
-  
-  MKL_free(V_lis);
-  MKL_free(A_lis);
-  MKL_free(O_lis);
-}
-
-void factor_diag(int N_diag, double* D_ptr, double* U_ptr, int R_dim, int S_dim, int N_align) {
+void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_ptr, int N_cols, int col_offset, const int row_A[], const int col_A[]) {
   int N_dim = R_dim + S_dim;
-  size_t A_stride_mat = (size_t)N_align * N_dim;
-  size_t UD_stride = (size_t)N_align * R_dim;
-  double** D_lis = (double**)MKL_malloc(sizeof(double*) * N_diag, ALIGN);
-  double** U_lis = (double**)MKL_malloc(sizeof(double*) * N_diag, ALIGN);
-  double** UD_lis = (double**)MKL_malloc(sizeof(double*) * N_diag, ALIGN);
-  double* UD_data = (double*)MKL_malloc(sizeof(double) * N_diag * UD_stride, ALIGN);
+  int NNZ = col_A[N_cols] - col_A[0];
+  size_t stride = (size_t)N_dim * N_dim;
 
-  for (int i = 0; i < N_diag; i++) {
-    D_lis[i] = D_ptr + A_stride_mat * i;
-    U_lis[i] = U_ptr + A_stride_mat * i;
-    UD_lis[i] = UD_data + UD_stride * i;
+  const double** A_lis_diag = (const double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
+  const double** U_lis_diag = (const double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
+  const double** U_lis = (const double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
+  const double** V_lis = (const double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
+  const double** ARS_lis = (const double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
+
+  double** D_lis = (double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
+  double** UD_lis = (double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
+  double** A_lis = (double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
+  double** B_lis = (double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
+  double** ASS_lis = (double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
+
+  double* D_data = (double*)MKL_malloc(sizeof(double) * N_cols * stride, ALIGN);
+  double* UD_data = (double*)MKL_malloc(sizeof(double) * N_cols * stride, ALIGN);
+  double* B_data = (double*)MKL_malloc(sizeof(double) * NNZ * stride, ALIGN);
+
+  for (int x = 0; x < N_cols; x++) {
+    int diag_id = 0;
+    for (int yx = col_A[x]; yx < col_A[x + 1]; yx++) {
+      int y = row_A[yx];
+      if (x + col_offset == y)
+        diag_id = yx;
+      U_lis[yx] = U_ptr + stride * y;
+      V_lis[yx] = UD_data + stride * x;
+      A_lis[yx] = A_ptr + stride * yx;
+      B_lis[yx] = B_data + stride * yx;
+    }
+
+    A_lis_diag[x] = A_ptr + stride * diag_id;
+    U_lis_diag[x] = U_ptr + stride * row_A[diag_id];
+    ARS_lis[x] = A_ptr + stride * diag_id + R_dim;
+    D_lis[x] = D_data + stride * x;
+    UD_lis[x] = UD_data + stride * x;
+    ASS_lis[x] = A_ptr + stride * diag_id + (size_t)(N_dim + 1) * R_dim;
   }
 
   CBLAS_SIDE right = CblasRight;
@@ -130,40 +105,41 @@ void factor_diag(int N_diag, double* D_ptr, double* U_ptr, int R_dim, int S_dim,
   CBLAS_DIAG non_unit = CblasNonUnit;
   double one = 1.;
   double zero = 0.;
-  cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N_dim, &R_dim, &N_dim, &one, 
-    (const double**)D_lis, &N_align, (const double**)U_lis, &N_align, &zero, UD_lis, &N_align, 1, &N_diag);
-  cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &R_dim, &R_dim, &N_dim, &one, 
-    (const double**)U_lis, &N_align, (const double**)UD_lis, &N_align, &zero, D_lis, &N_align, 1, &N_diag);
+  double minus_one = -1.;
 
-  for (int i = 0; i < N_diag; i++)
-    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_align);
-  cblas_dtrsm_batch(CblasColMajor, &right, &lower, &trans, &non_unit, &N_dim, &R_dim, &one, (const double**)D_lis, &N_align, U_lis, &N_align, 1, &N_diag);
+  cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N_dim, &R_dim, &N_dim, &one, 
+    A_lis_diag, &N_dim, U_lis_diag, &N_dim, &zero, UD_lis, &N_dim, 1, &N_cols);
+  cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &R_dim, &R_dim, &N_dim, &one, 
+    U_lis_diag, &N_dim, (const double**)UD_lis, &N_dim, &zero, D_lis, &N_dim, 1, &N_cols);
+  for (int i = 0; i < N_cols; i++)
+    cblas_dcopy(stride, U_lis_diag[i], 1, UD_lis[i], 1);
+
+  for (int i = 0; i < N_cols; i++)
+    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_dim);
+  cblas_dtrsm_batch(CblasColMajor, &right, &lower, &trans, &non_unit, &N_dim, &R_dim, &one, 
+    (const double**)D_lis, &N_dim, UD_lis, &N_dim, 1, &N_cols);
+
+  cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &N_dim, &N_dim, &N_dim, &one, 
+    U_lis, &N_dim, (const double**)A_lis, &N_dim, &zero, B_lis, &N_dim, 1, &NNZ);
+  cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N_dim, &N_dim, &N_dim, &one, 
+    (const double**)B_lis, &N_dim, V_lis, &N_dim, &zero, A_lis, &N_dim, 1, &NNZ);
+  cblas_dgemm_batch(CblasColMajor, &no_trans, &trans, &S_dim, &S_dim, &R_dim, &minus_one, 
+    ARS_lis, &N_dim, ARS_lis, &N_dim, &one, ASS_lis, &N_dim, 1, &N_cols);
+
+  MKL_free(A_lis_diag);
+  MKL_free(U_lis_diag);
+  MKL_free(U_lis);
+  MKL_free(V_lis);
+  MKL_free(ARS_lis);
 
   MKL_free(D_lis);
-  MKL_free(U_lis);
   MKL_free(UD_lis);
-  MKL_free(UD_data);
-}
-
-void schur_diag(int N_diag, double* A_ptr, const int* diag_idx, int R_dim, int S_dim, int N_align) {
-  int N_dim = R_dim + S_dim;
-  size_t A_stride_mat = (size_t)N_align * N_dim;
-  const double** ARS_lis = (const double**)MKL_malloc(sizeof(double*) * N_diag, ALIGN);
-  double** ASS_lis = (double**)MKL_malloc(sizeof(double*) * N_diag, ALIGN);
-
-  for (int i = 0; i < N_diag; i++) {
-    int diag = diag_idx[i];
-    ARS_lis[i] = A_ptr + A_stride_mat * diag + R_dim;
-    ASS_lis[i] = A_ptr + A_stride_mat * diag + ((size_t)N_align * R_dim + R_dim);
-  }
-
-  CBLAS_TRANSPOSE trans = CblasTrans;
-  CBLAS_TRANSPOSE no_trans = CblasNoTrans;
-  double one = 1.;
-  double minus_one = -1.;
-  cblas_dgemm_batch(CblasColMajor, &no_trans, &trans, &S_dim, &S_dim, &R_dim, &minus_one, ARS_lis, &N_align, ARS_lis, &N_align, &one, ASS_lis, &N_align, 1, &N_diag);
-
-  MKL_free(ARS_lis);
+  MKL_free(A_lis);
+  MKL_free(B_lis);
   MKL_free(ASS_lis);
+
+  MKL_free(D_data);
+  MKL_free(UD_data);
+  MKL_free(B_data);
 }
 

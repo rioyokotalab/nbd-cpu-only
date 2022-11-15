@@ -25,12 +25,10 @@ void sync_batch_lib() {
   magma_queue_sync(queue);
 }
 
-void alloc_matrices_aligned(double** A_ptr, int* M_align, int M, int N, int count) {
-  int rem = M & (ALIGN - 1);
-  *M_align = (rem ? ALIGN : 0) + M - rem;
-  size_t A_stride_mat = (size_t)(*M_align) * N;
-  magma_dmalloc(A_ptr, count * A_stride_mat);
-  magma_memset(*A_ptr, 0, count * A_stride_mat * sizeof(double));
+void alloc_matrices_aligned(double** A_ptr, int M, int N, int count) {
+  size_t stride = (size_t)M * N;
+  magma_dmalloc(A_ptr, count * stride);
+  magma_memset(*A_ptr, 0, count * stride * sizeof(double));
 }
 
 void free_matrices(double* A_ptr) {
@@ -83,126 +81,122 @@ void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, i
   }
 }
 
-void compute_rs_splits_left(const double* U_ptr, const double* A_ptr, double* out_ptr, const int* row_A, int N, int N_align, int A_count) {
-  const double** U_lis = (const double**)malloc(sizeof(double*) * A_count), **U_lis_dev;
-  const double** A_lis = (const double**)malloc(sizeof(double*) * A_count), **A_lis_dev;
-  double** O_lis = (double**)malloc(sizeof(double*) * A_count), **O_lis_dev;
-  magma_malloc((void**)&U_lis_dev, sizeof(double*) * A_count);
-  magma_malloc((void**)&A_lis_dev, sizeof(double*) * A_count);
-  magma_malloc((void**)&O_lis_dev, sizeof(double*) * A_count);
-
-  size_t A_stride_mat = (size_t)N_align * N;
-  for (int i = 0; i < A_count; i++) {
-    int row = row_A[i];
-    U_lis[i] = U_ptr + A_stride_mat * row;
-    A_lis[i] = A_ptr + A_stride_mat * i;
-    O_lis[i] = out_ptr + A_stride_mat * i;
-  }
-  magma_setvector_async(A_count, sizeof(double*), U_lis, 1, U_lis_dev, 1, queue);
-  magma_setvector_async(A_count, sizeof(double*), A_lis, 1, A_lis_dev, 1, queue);
-  magma_setvector_async(A_count, sizeof(double*), O_lis, 1, O_lis_dev, 1, queue);
-  magmablas_dgemm_batched(MagmaTrans, MagmaNoTrans, N, N, N, 1., U_lis_dev, N_align, A_lis_dev, N_align, 0., O_lis_dev, N_align, A_count, queue);
-  
-  magma_free(U_lis_dev);
-  magma_free(A_lis_dev);
-  magma_free(O_lis_dev);
-  free(U_lis);
-  free(A_lis);
-  free(O_lis);
-}
-
-void compute_rs_splits_right(const double* V_ptr, const double* A_ptr, double* out_ptr, const int* col_A, int N, int N_align, int A_count) {
-  const double** V_lis = (const double**)malloc(sizeof(double*) * A_count), **V_lis_dev;
-  const double** A_lis = (const double**)malloc(sizeof(double*) * A_count), **A_lis_dev;
-  double** O_lis = (double**)malloc(sizeof(double*) * A_count), **O_lis_dev;
-  magma_malloc((void**)&V_lis_dev, sizeof(double*) * A_count);
-  magma_malloc((void**)&A_lis_dev, sizeof(double*) * A_count);
-  magma_malloc((void**)&O_lis_dev, sizeof(double*) * A_count);
-
-  size_t A_stride_mat = (size_t)N_align * N;
-  int col = 0;
-  for (int i = 0; i < A_count; i++) {
-    while (col_A[col + 1] <= i)
-      col = col + 1;
-    V_lis[i] = V_ptr + A_stride_mat * col;
-    A_lis[i] = A_ptr + A_stride_mat * i;
-    O_lis[i] = out_ptr + A_stride_mat * i;
-  }
-  magma_setvector_async(A_count, sizeof(double*), V_lis, 1, V_lis_dev, 1, queue);
-  magma_setvector_async(A_count, sizeof(double*), A_lis, 1, A_lis_dev, 1, queue);
-  magma_setvector_async(A_count, sizeof(double*), O_lis, 1, O_lis_dev, 1, queue);
-  magmablas_dgemm_batched(MagmaNoTrans, MagmaNoTrans, N, N, N, 1., A_lis_dev, N_align, V_lis_dev, N_align, 0., O_lis_dev, N_align, A_count, queue);
-
-  magma_free(V_lis_dev);
-  magma_free(A_lis_dev);
-  magma_free(O_lis_dev);
-  free(V_lis);
-  free(A_lis);
-  free(O_lis);
-}
-
-void factor_diag(int N_diag, double* D_ptr, double* U_ptr, int R_dim, int S_dim, int N_align) {
+void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_ptr, int N_cols, int col_offset, const int row_A[], const int col_A[]) {
   int N_dim = R_dim + S_dim;
-  size_t A_stride_mat = (size_t)N_align * N_dim;
-  size_t UD_stride = (size_t)N_align * R_dim;
-  double** D_lis = (double**)malloc(sizeof(double*) * N_diag), **D_lis_dev;
-  double** U_lis = (double**)malloc(sizeof(double*) * N_diag), **U_lis_dev;
-  double** UD_lis = (double**)malloc(sizeof(double*) * N_diag), **UD_lis_dev;
-  double* UD_data_dev;
-  int* info_array;
-  magma_malloc((void**)&D_lis_dev, sizeof(double*) * N_diag);
-  magma_malloc((void**)&U_lis_dev, sizeof(double*) * N_diag);
-  magma_malloc((void**)&UD_lis_dev, sizeof(double*) * N_diag);
-  magma_dmalloc(&UD_data_dev, N_diag * UD_stride);
-  magma_imalloc(&info_array, N_diag);
+  int NNZ = col_A[N_cols] - col_A[0];
+  size_t stride = (size_t)N_dim * N_dim;
 
-  for (int i = 0; i < N_diag; i++) {
-    D_lis[i] = D_ptr + A_stride_mat * i;
-    U_lis[i] = U_ptr + A_stride_mat * i;
-    UD_lis[i] = UD_data_dev + UD_stride * i;
+  const double** A_lis_diag = (const double**)malloc(sizeof(double*) * N_cols);
+  const double** U_lis_diag = (const double**)malloc(sizeof(double*) * N_cols);
+  const double** U_lis = (const double**)malloc(sizeof(double*) * NNZ);
+  const double** V_lis = (const double**)malloc(sizeof(double*) * NNZ);
+  const double** ARS_lis = (const double**)malloc(sizeof(double*) * N_cols);
+  const double** A_lis_diag_dev, **U_lis_diag_dev, **U_lis_dev, **V_lis_dev, **ARS_lis_dev;
+
+  magma_malloc((void**)&A_lis_diag_dev, sizeof(double*) * N_cols);
+  magma_malloc((void**)&U_lis_diag_dev, sizeof(double*) * N_cols);
+  magma_malloc((void**)&U_lis_dev, sizeof(double*) * NNZ);
+  magma_malloc((void**)&V_lis_dev, sizeof(double*) * NNZ);
+  magma_malloc((void**)&ARS_lis_dev, sizeof(double*) * N_cols);
+
+  double** D_lis = (double**)malloc(sizeof(double*) * N_cols);
+  double** UD_lis = (double**)malloc(sizeof(double*) * N_cols);
+  double** A_lis = (double**)malloc(sizeof(double*) * NNZ);
+  double** B_lis = (double**)malloc(sizeof(double*) * NNZ);
+  double** ASS_lis = (double**)malloc(sizeof(double*) * N_cols);
+  double** D_lis_dev, **UD_lis_dev, **A_lis_dev, **B_lis_dev, **ASS_lis_dev;
+
+  magma_malloc((void**)&D_lis_dev, sizeof(double*) * N_cols);
+  magma_malloc((void**)&UD_lis_dev, sizeof(double*) * N_cols);
+  magma_malloc((void**)&A_lis_dev, sizeof(double*) * NNZ);
+  magma_malloc((void**)&B_lis_dev, sizeof(double*) * NNZ);
+  magma_malloc((void**)&ASS_lis_dev, sizeof(double*) * N_cols);
+
+  double* D_data, *UD_data, *B_data;
+  magma_dmalloc(&D_data, N_cols * stride);
+  magma_dmalloc(&UD_data, N_cols * stride);
+  magma_dmalloc(&B_data, NNZ * stride);
+
+  int* info_array;
+  magma_imalloc(&info_array, N_cols);
+
+  for (int x = 0; x < N_cols; x++) {
+    int diag_id = 0;
+    for (int yx = col_A[x]; yx < col_A[x + 1]; yx++) {
+      int y = row_A[yx];
+      if (x + col_offset == y)
+        diag_id = yx;
+      U_lis[yx] = U_ptr + stride * y;
+      V_lis[yx] = UD_data + stride * x;
+      A_lis[yx] = A_ptr + stride * yx;
+      B_lis[yx] = B_data + stride * yx;
+    }
+
+    A_lis_diag[x] = A_ptr + stride * diag_id;
+    U_lis_diag[x] = U_ptr + stride * row_A[diag_id];
+    ARS_lis[x] = A_ptr + stride * diag_id + R_dim;
+    D_lis[x] = D_data + stride * x;
+    UD_lis[x] = UD_data + stride * x;
+    ASS_lis[x] = A_ptr + stride * diag_id + (size_t)(N_dim + 1) * R_dim;
   }
 
-  magma_setvector_async(N_diag, sizeof(double*), D_lis, 1, D_lis_dev, 1, queue);
-  magma_setvector_async(N_diag, sizeof(double*), U_lis, 1, U_lis_dev, 1, queue);
-  magma_setvector_async(N_diag, sizeof(double*), UD_lis, 1, UD_lis_dev, 1, queue);
+  magma_setvector_async(N_cols, sizeof(double*), A_lis_diag, 1, A_lis_diag_dev, 1, queue);
+  magma_setvector_async(N_cols, sizeof(double*), U_lis_diag, 1, U_lis_diag_dev, 1, queue);
+  magma_setvector_async(NNZ, sizeof(double*), U_lis, 1, U_lis_dev, 1, queue);
+  magma_setvector_async(NNZ, sizeof(double*), V_lis, 1, V_lis_dev, 1, queue);
+  magma_setvector_async(N_cols, sizeof(double*), ARS_lis, 1, ARS_lis_dev, 1, queue);
+
+  magma_setvector_async(N_cols, sizeof(double*), D_lis, 1, D_lis_dev, 1, queue);
+  magma_setvector_async(N_cols, sizeof(double*), UD_lis, 1, UD_lis_dev, 1, queue);
+  magma_setvector_async(NNZ, sizeof(double*), A_lis, 1, A_lis_dev, 1, queue);
+  magma_setvector_async(NNZ, sizeof(double*), B_lis, 1, B_lis_dev, 1, queue);
+  magma_setvector_async(N_cols, sizeof(double*), ASS_lis, 1, ASS_lis_dev, 1, queue);
 
   magmablas_dgemm_batched(MagmaNoTrans, MagmaNoTrans, N_dim, R_dim, N_dim, 1., 
-    (const double**)D_lis_dev, N_align, (const double**)U_lis_dev, N_align, 0., UD_lis_dev, N_align, N_diag, queue);
+    A_lis_diag_dev, N_dim, U_lis_diag_dev, N_dim, 0., UD_lis_dev, N_dim, N_cols, queue);
   magmablas_dgemm_batched(MagmaTrans, MagmaNoTrans, R_dim, R_dim, N_dim, 1., 
-    (const double**)U_lis_dev, N_align, (const double**)UD_lis_dev, N_align, 0., D_lis_dev, N_align, N_diag, queue);
-  magma_dpotrf_batched(MagmaLower, R_dim, D_lis_dev, N_align, info_array, N_diag, queue);
-  magmablas_dtrsm_batched(MagmaRight, MagmaLower, MagmaTrans, MagmaNonUnit, N_dim, R_dim, 1., D_lis_dev, N_align, U_lis_dev, N_align, N_diag, queue);
+    U_lis_diag_dev, N_dim, (const double**)UD_lis_dev, N_dim, 0., D_lis_dev, N_dim, N_cols, queue);
+  magmablas_dlacpy_batched(MagmaFull, N_dim, N_dim, U_lis_diag_dev, N_dim, UD_lis_dev, N_dim, N_cols, queue);
+
+  magma_dpotrf_batched(MagmaLower, R_dim, D_lis_dev, N_dim, info_array, N_cols, queue);
+  magmablas_dtrsm_batched(MagmaRight, MagmaLower, MagmaTrans, MagmaNonUnit, N_dim, R_dim, 1., 
+    D_lis_dev, N_dim, UD_lis_dev, N_dim, N_cols, queue);
+
+  magmablas_dgemm_batched(MagmaTrans, MagmaNoTrans, N_dim, N_dim, N_dim, 1., 
+    U_lis_dev, N_dim, (const double**)A_lis_dev, N_dim, 0., B_lis_dev, N_dim, NNZ, queue);
+  magmablas_dgemm_batched(MagmaNoTrans, MagmaNoTrans, N_dim, N_dim, N_dim, 1., 
+    (const double**)B_lis_dev, N_dim, V_lis_dev, N_dim, 0., A_lis_dev, N_dim, NNZ, queue);
+  magmablas_dgemm_batched(MagmaNoTrans, MagmaTrans, S_dim, S_dim, R_dim, -1., 
+    ARS_lis_dev, N_dim, ARS_lis_dev, N_dim, 1., ASS_lis_dev, N_dim, N_cols, queue);
+
+  magma_free(A_lis_diag_dev);
+  magma_free(U_lis_diag_dev);
+  magma_free(U_lis_dev);
+  magma_free(V_lis_dev);
+  magma_free(ARS_lis_dev);
 
   magma_free(D_lis_dev);
-  magma_free(U_lis_dev);
   magma_free(UD_lis_dev);
-  magma_free(UD_data_dev);
-  magma_free(info_array);
-  free(D_lis);
-  free(U_lis);
-  free(UD_lis);
-}
-
-void schur_diag(int N_diag, double* A_ptr, const int* diag_idx, int R_dim, int S_dim, int N_align) {
-  int N_dim = R_dim + S_dim;
-  size_t A_stride_mat = (size_t)N_align * N_dim;
-  const double** ARS_lis = (const double**)malloc(sizeof(double*) * N_diag), **ARS_lis_dev;
-  double** ASS_lis = (double**)malloc(sizeof(double*) * N_diag), **ASS_lis_dev;
-  magma_malloc((void**)&ARS_lis_dev, sizeof(double*) * N_diag);
-  magma_malloc((void**)&ASS_lis_dev, sizeof(double*) * N_diag);
-
-  for (int i = 0; i < N_diag; i++) {
-    int diag = diag_idx[i];
-    ARS_lis[i] = A_ptr + A_stride_mat * diag + R_dim;
-    ASS_lis[i] = A_ptr + A_stride_mat * diag + ((size_t)N_align * R_dim + R_dim);
-  }
-  magma_setvector_async(N_diag, sizeof(double*), ARS_lis, 1, ARS_lis_dev, 1, queue);
-  magma_setvector_async(N_diag, sizeof(double*), ASS_lis, 1, ASS_lis_dev, 1, queue);
-  magmablas_dgemm_batched(MagmaNoTrans, MagmaTrans, S_dim, S_dim, R_dim, -1., ARS_lis_dev, N_align, ARS_lis_dev, N_align, 1., ASS_lis_dev, N_align, N_diag, queue);
-
-  magma_free(ARS_lis_dev);
+  magma_free(A_lis_dev);
+  magma_free(B_lis_dev);
   magma_free(ASS_lis_dev);
+
+  magma_free(D_data);
+  magma_free(UD_data);
+  magma_free(B_data);
+  magma_free(info_array);
+
+  free(A_lis_diag);
+  free(U_lis_diag);
+  free(U_lis);
+  free(V_lis);
   free(ARS_lis);
+
+  free(D_lis);
+  free(UD_lis);
+  free(A_lis);
+  free(B_lis);
   free(ASS_lis);
 }
+
 

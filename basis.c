@@ -400,7 +400,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
         struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
         struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
         struct Matrix Rc = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, ske_len };
-        upper_tri_reflec_mult('L', &Rc, &Qo);
+        upper_tri_reflec_mult('L', 1, &Rc, &Qo);
         qr_full(&Q, &R, Rc.A);
       }
     }
@@ -483,9 +483,8 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
       int64_t off_y = basis->Offsets[box_y];
       int64_t off_x = basis->Offsets[x + ibegin];
       gen_matrix(ef, m, n, bodies, bodies, S[yx].A, &multipoles[off_y], &multipoles[off_x]);
-      upper_tri_reflec_mult('L', &basis->R[box_y], &S[yx]);
-      upper_tri_reflec_mult('R', &basis->R[x + ibegin], &S[yx]);
+      upper_tri_reflec_mult('L', 1, &basis->R[box_y], &S[yx]);
+      upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
     }
   }
 }
-

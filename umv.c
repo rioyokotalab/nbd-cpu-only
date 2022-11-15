@@ -117,57 +117,43 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
   }
 
   int64_t dim_batch = dimc_max + dimr_max;
-  int ld_batch;
-  double* A1_data, *A2_data, *D_data, *U1_data, *U2_data;
-  alloc_matrices_aligned(&A1_data, &ld_batch, dim_batch, dim_batch, nnz);
-  alloc_matrices_aligned(&A2_data, &ld_batch, dim_batch, dim_batch, nnz);
-  alloc_matrices_aligned(&D_data, &ld_batch, dim_batch, dim_batch, rels->N);
-  alloc_matrices_aligned(&U1_data, &ld_batch, dim_batch, dim_batch, rels->N);
-  alloc_matrices_aligned(&U2_data, &ld_batch, dim_batch, dim_batch, llen);
+  double* A_data, *U_data;
+  alloc_matrices_aligned(&A_data, dim_batch, dim_batch, nnz);
+  alloc_matrices_aligned(&U_data, dim_batch, dim_batch, llen);
 
-  int64_t ld_batch_mat = ld_batch * dim_batch;
-  int col_A[rels->N + 1], row_A[nnz], diag_idx[rels->N];
+  int64_t ld_batch_mat = dim_batch * dim_batch;
+  int col_A[rels->N + 1], row_A[nnz];
   for (int64_t x = 0; x < rels->N; x++) {
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       i_local(&y, comm);
-      copy_mat('S', A[yx].A, A1_data + yx * ld_batch_mat, A[yx].M, A[yx].N, A[yx].M, dim_batch, dim_batch, ld_batch);
+      copy_mat('S', A[yx].A, A_data + yx * ld_batch_mat, A[yx].M, A[yx].N, A[yx].M, dim_batch, dim_batch, dim_batch);
       row_A[yx] = y;
     }
-    int64_t xx;
-    lookupIJ(&xx, rels, x + lbegin, x);
-    int64_t dim_x = A[xx].N;
-    int64_t dimc_x = A_cc[xx].N;
-    int64_t dimr_x = dim_x - dimc_x;
-    copy_mat('S', A[xx].A, D_data + x * ld_batch_mat, A[xx].M, A[xx].N, A[xx].M, dim_batch, dim_batch, ld_batch);
-    copy_basis('S', Uc[x + ibegin].A, Uo[x + ibegin].A, U1_data + x * ld_batch_mat, dimc_x, dimr_x, dimc_max, dimr_max, dim_x, ld_batch);
     col_A[x] = rels->ColIndex[x];
-    diag_idx[x] = xx;
   }
   col_A[rels->N] = nnz;
 
   for (int64_t i = 0; i < llen; i++)
-    copy_basis('S', Uc[i].A, Uo[i].A, U2_data + i * ld_batch_mat, Uc[i].N, Uo[i].N, dimc_max, dimr_max, Uc[i].M, ld_batch);
+    copy_basis('S', Uc[i].A, Uo[i].A, U_data + i * ld_batch_mat, Uc[i].N, Uo[i].N, dimc_max, dimr_max, Uc[i].M, dim_batch);
 
-  factor_diag(rels->N, D_data, U1_data, dimc_max, dimr_max, ld_batch);
+  /*factor_diag(rels->N, D_data, U1_data, dimc_max, dimr_max, ld_batch);
   compute_rs_splits_right(U1_data, A1_data, A2_data, col_A, dim_batch, ld_batch, nnz);
   compute_rs_splits_left(U2_data, A2_data, A1_data, row_A, dim_batch, ld_batch, nnz);
-  schur_diag(rels->N, A1_data, diag_idx, dimc_max, dimr_max, ld_batch);
+  schur_diag(rels->N, A1_data, diag_idx, dimc_max, dimr_max, ld_batch);*/
+  batch_cholesky_factor(dimc_max, dimr_max, U_data, A_data, rels->N, ibegin, row_A, col_A);
 
   for (int64_t x = 0; x < rels->N; x++)
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      double* A_ptr = A1_data + yx * ld_batch_mat;
-      copy_mat('G', A_ptr, A_cc[yx].A, dimc_max, dimc_max, ld_batch, A_cc[yx].M, A_cc[yx].N, A_cc[yx].M);
-      copy_mat('G', A_ptr + dimc_max, A_oc[yx].A, dimr_max, dimc_max, ld_batch, A_oc[yx].M, A_oc[yx].N, A_oc[yx].M);
-      copy_mat('G', A_ptr + ld_batch * dimc_max + dimc_max, A_oo[yx].A, dimr_max, dimr_max, ld_batch, A_oo[yx].M, A_oo[yx].N, A_oo[yx].M);
+      double* A_ptr = A_data + yx * ld_batch_mat;
+      copy_mat('G', A_ptr, A_cc[yx].A, dimc_max, dimc_max, dim_batch, A_cc[yx].M, A_cc[yx].N, A_cc[yx].M);
+      copy_mat('G', A_ptr + dimc_max, A_oc[yx].A, dimr_max, dimc_max, dim_batch, A_oc[yx].M, A_oc[yx].N, A_oc[yx].M);
+      copy_mat('G', A_ptr + dim_batch * dimc_max + dimc_max, A_oo[yx].A, dimr_max, dimr_max, dim_batch, A_oo[yx].M, A_oo[yx].N, A_oo[yx].M);
     }
 
   sync_batch_lib();
-  free_matrices(A1_data);
-  free_matrices(A2_data);
-  free_matrices(D_data);
-  free_matrices(U1_data);
-  free_matrices(U2_data);
+  free_matrices(A_data);
+  free_matrices(U_data);
 #ifdef _PROF
   record_factor_flops(dimc_max, dimr_max, nnz, rels->N);
 #endif
@@ -226,7 +212,7 @@ void factorA(struct Node A[], const struct Base basis[], const struct CSC rels_n
   for (int64_t i = levels; i > 0; i--) {
     factorNode(A[i].A_cc, A[i].A_oc, A[i].A_oo, A[i].A, basis[i].Uc, basis[i].Uo, &rels_near[i], &comm[i]);
     int64_t inxt = i - 1;
-    nextNode(A[inxt].A,A[i].A_oo, &basis[inxt], &rels_near[inxt], &rels_near[i], &comm[inxt]);
+    nextNode(A[inxt].A,A[i].A_oo, &basis[inxt], &rels_near[inxt], &rels_near[i], &comm[inxt]); // time diff 15:1
 
     int64_t alst = rels_near[inxt].ColIndex[rels_near[inxt].N] - 1;
     int64_t alen = (int64_t)(A[inxt].A[alst].A - A[inxt].A[0].A) + A[inxt].A[alst].M * A[inxt].A[alst].N;

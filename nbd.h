@@ -15,22 +15,15 @@ void mat_cpy_batch(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix*
 void mat_cpy_flush();
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
-void mmult_batch(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
-void mmult_flush();
 
 void chol_decomp(struct Matrix* A);
-void icmp_chol_decomp_batch(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo);
-void icmp_chol_decomp_flush();
-
-void trsm_lowerA_batch(struct Matrix* A, const struct Matrix* L);
-void trsm_lowerA_flush();
 
 void svd_U(struct Matrix* A, struct Matrix* U, double* S);
 
 void id_row_batch(struct Matrix* A, int32_t arows[], double* work);
 void id_row_flush();
 
-void upper_tri_reflec_mult(char side, const struct Matrix* R, struct Matrix* A);
+void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A);
 void qr_full(struct Matrix* Q, struct Matrix* R, double* tau);
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
@@ -42,14 +35,12 @@ void init_batch_lib();
 void finalize_batch_lib();
 void sync_batch_lib();
 
-void alloc_matrices_aligned(double** A_ptr, int* M_align, int M, int N, int count);
+void alloc_matrices_aligned(double** A_ptr, int M, int N, int count);
 void free_matrices(double* A_ptr);
 void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int IR_dim, int IS_dim, int OR_dim, int OS_dim, int ldu_in, int ldu_out);
 void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, int lda_in, int M_out, int N_out, int lda_out);
-void compute_rs_splits_left(const double* U_ptr, const double* A_ptr, double* out_ptr, const int* row_A, int N, int N_align, int A_count);
-void compute_rs_splits_right(const double* V_ptr, const double* A_ptr, double* out_ptr, const int* col_A, int N, int N_align, int A_count);
-void factor_diag(int N_diag, double* A_ptr, double* U_ptr, int R_dim, int S_dim, int N_align);
-void schur_diag(int N_diag, double* A_ptr, const int* diag_idx, int R_dim, int S_dim, int N_align);
+
+void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_ptr, int N_cols, int col_offset, const int row_A[], const int col_A[]);
 
 struct Body { double X[3], B; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
