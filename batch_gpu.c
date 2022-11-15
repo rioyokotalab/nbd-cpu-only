@@ -38,26 +38,24 @@ void free_matrices(double* A_ptr) {
 void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int IR_dim, int IS_dim, int OR_dim, int OS_dim, int ldu_in, int ldu_out) {
   IR_dim = IR_dim < OR_dim ? IR_dim : OR_dim;
   IS_dim = IS_dim < OS_dim ? IS_dim : OS_dim;
-  int n_in = IR_dim + IS_dim;
+  int N_in = IR_dim + IS_dim;
+  int N_out = OR_dim + OS_dim;
   if (dir == 'G') {
-    magma_dgetmatrix(n_in, IR_dim, Ur_in, ldu_in, U_out, ldu_out, queue);
-    magma_dgetmatrix(n_in, IS_dim, Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out, queue);
+    magma_dgetmatrix_async(N_in, IR_dim, Ur_in, ldu_in, U_out, ldu_out, queue);
+    magma_dgetmatrix_async(N_in, IS_dim, Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out, queue);
   }
   else if (dir == 'S') {
-    magma_dsetmatrix(n_in, IR_dim, Ur_in, ldu_in, U_out, ldu_out, queue);
-    magma_dsetmatrix(n_in, IS_dim, Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out, queue);
-
     int diff_r = OR_dim - IR_dim;
     int diff_s = OS_dim - IS_dim;
-    int rs = diff_r < diff_s ? diff_s : diff_r;
-    double* one_array = (double*)malloc(sizeof(double) * rs);
-    for (int i = 0; i < rs; i++)
-      one_array[i] = 1.;
+    double* U = (double*)calloc(N_out * N_out, sizeof(double));
+    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', N_in, IR_dim, Ur_in, ldu_in, U, N_out);
+    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', N_in, IS_dim, Us_in, ldu_in, U + (size_t)OR_dim * N_out, N_out);
     if (diff_r > 0)
-      magma_dsetvector(diff_r, one_array, 1, U_out + ((size_t)ldu_out * IR_dim + n_in), ldu_out + 1, queue);
+      LAPACKE_dlaset(LAPACK_COL_MAJOR, 'A', diff_r, diff_r, 0., 1., U + ((size_t)N_out * IR_dim + N_in), N_out);
     if (diff_s > 0)
-      magma_dsetvector(diff_s, one_array, 1, U_out + (((size_t)ldu_out + 1) * ((size_t)OR_dim + IS_dim)), ldu_out + 1, queue);
-    free(one_array);
+      LAPACKE_dlaset(LAPACK_COL_MAJOR, 'A', diff_s, diff_s, 0., 1., U + (((size_t)N_out + 1) * ((size_t)OR_dim + IS_dim)), N_out);
+    magma_dsetmatrix(N_out, N_out, U, N_out, U_out, ldu_out, queue);
+    free(U);
   }
 }
 
@@ -65,19 +63,17 @@ void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, i
   M_in = M_in < M_out ? M_in : M_out;
   N_in = N_in < N_out ? N_in : N_out;
   if (dir == 'G')
-    magma_dgetmatrix(M_in, N_in, A_in, lda_in, A_out, lda_out, queue);
+    magma_dgetmatrix_async(M_in, N_in, A_in, lda_in, A_out, lda_out, queue);
   else if (dir == 'S') {
-    magma_dsetmatrix(M_in, N_in, A_in, lda_in, A_out, lda_out, queue);
-
     int diff_m = M_out - M_in;
     int diff_n = N_out - N_in;
     int len_i = diff_m < diff_n ? diff_m : diff_n;
-    double* one_array = (double*)malloc(sizeof(double) * len_i);
-    for (int i = 0; i < len_i; i++)
-      one_array[i] = 1.;
+    double* A = (double*)calloc(M_out * N_out, sizeof(double));
+    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', M_in, N_in, A_in, lda_in, A, M_out);
     if (len_i > 0)
-      magma_dsetvector(len_i, one_array, 1, A_out + ((size_t)lda_out * N_in + M_in), lda_out + 1, queue);
-    free(one_array);
+      LAPACKE_dlaset(LAPACK_COL_MAJOR, 'A', diff_m, diff_n, 0., 1., A + ((size_t)M_out * N_in + M_in), M_out);
+    magma_dsetmatrix(M_out, N_out, A, M_out, A_out, lda_out, queue);
+    free(A);
   }
 }
 

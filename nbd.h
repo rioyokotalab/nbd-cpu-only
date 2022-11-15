@@ -11,20 +11,18 @@ extern "C" {
 
 struct Matrix { double* A; int64_t M, N; };
 
-void mat_cpy_batch(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
-void mat_cpy_flush();
+void mat_cpy(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 
 void chol_decomp(struct Matrix* A);
 
-void svd_U(struct Matrix* A, struct Matrix* U, double* S);
+void svd_U(struct Matrix* A, double* S);
 
-void id_row_batch(struct Matrix* A, int32_t arows[], double* work);
-void id_row_flush();
+void id_row(struct Matrix* A, int32_t arows[], double* work);
 
 void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A);
-void qr_full(struct Matrix* Q, struct Matrix* R, double* tau);
+void qr_full(struct Matrix* Q, struct Matrix* R);
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 

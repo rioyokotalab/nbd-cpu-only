@@ -294,11 +294,11 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     int64_t count_m = 0;
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ske_len = samples.SkeLens[i];
-      int64_t len_m = 2 + (samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i]);
+      int64_t len_m = samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i];
       len_m = len_m < ske_len ? ske_len : len_m;
       basis[l].Dims[i + ibegin] = ske_len;
       count = count + ske_len;
-      count_m = count_m + ske_len * (ske_len * 2 + len_m);
+      count_m = count_m + ske_len * (ske_len + len_m + 2);
     }
 
     int32_t* ipiv_data = (int32_t*)malloc(sizeof(int32_t) * count);
@@ -310,12 +310,12 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     count_m = 0;
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ske_len = samples.SkeLens[i];
-      int64_t len_m = 2 + (samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i]);
+      int64_t len_m = samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i];
       len_m = len_m < ske_len ? ske_len : len_m;
       ipiv_ptrs[i] = &ipiv_data[count];
       matrix_ptrs[i + ibegin] = &matrix_data[count_m];
       count = count + ske_len;
-      count_m = count_m + ske_len * (ske_len * 2 + len_m);
+      count_m = count_m + ske_len * (ske_len + len_m + 2);
     }
 
 #pragma omp parallel for
@@ -323,17 +323,17 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       int64_t ske_len = samples.SkeLens[i];
       int64_t len_s = samples.FarLens[i] + (samples.CloseLens[i] > 0 ? ske_len : 0);
       double* mat = matrix_ptrs[i + ibegin];
-      struct Matrix S = (struct Matrix){ &mat[ske_len * ske_len], ske_len, len_s };
+      struct Matrix S = (struct Matrix){ mat, ske_len, len_s };
 
-      struct Matrix S_dn = (struct Matrix){ &mat[ske_len * ske_len], ske_len, ske_len };
+      struct Matrix S_dn = (struct Matrix){ mat, ske_len, ske_len };
       double nrm_dn = 0.;
       double nrm_lr = 0.;
-      struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.CloseLens[i] };
+      struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.CloseLens[i] };
       gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, samples.Skeletons[i], samples.CloseBodies[i]);
       mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
       nrm2_A(&S_dn, &nrm_dn);
 
-      struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, samples.FarLens[i] };
+      struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.FarLens[i] };
       gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, samples.Skeletons[i], samples.FarBodies[i]);
       nrm2_A(&S_lr, &nrm_lr);
       double scale = (nrm_dn == 0. || nrm_lr == 0.) ? 1. : nrm_lr / nrm_dn;
@@ -341,9 +341,8 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
 
       int64_t rank = ske_len < len_s ? ske_len : len_s;
       rank = mrank > 0 ? (mrank < rank ? mrank : rank) : rank;
-      struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
-      double* Svec = &mat[ske_len * (ske_len + len_s)];
-      svd_U(&S, &Q, Svec);
+      double* Svec = &mat[ske_len * len_s];
+      svd_U(&S, Svec);
 
       if (epi > 0.) {
         int64_t r = 0;
@@ -353,38 +352,10 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
         rank = r;
       }
       basis[l].DimsLr[i + ibegin] = rank;
-
-      struct Matrix Rc = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, ske_len };
-      memset(Rc.A, 0, sizeof(double) * ske_len * ske_len);
-      for (int64_t j = 0; j < ske_len; j++)
-        Rc.A[j + j * ske_len] = 1.;
-    }
-
-    for (int64_t i = 0; i < nodes; i++) {
-      int64_t ske_len = samples.SkeLens[i];
-      int64_t rank = basis[l].DimsLr[i + ibegin];
-      double* mat = matrix_ptrs[i + ibegin];
+      
       int32_t* pa = ipiv_ptrs[i];
       struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
-      id_row_batch(&Qo, pa, &mat[ske_len * rank]);
-
-      struct Matrix Rc = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, ske_len };
-      int64_t lc = basis[l].Lchild[i + ibegin];
-      for (int64_t j = 0; lc >= 0 && j < 2; j++) {
-        int64_t diml = basis[l + 1].DimsLr[lc + j];
-        int64_t off = basis[l + 1].Offsets[lc + j] - basis[l + 1].Offsets[lc];
-        mat_cpy_batch(diml, diml, &(basis[l + 1].R)[lc + j], &Rc, 0, 0, off, off);
-      }
-    }
-    id_row_flush();
-    mat_cpy_flush();
-
-#pragma omp parallel for
-    for (int64_t i = 0; i < nodes; i++) {
-      int64_t ske_len = samples.SkeLens[i];
-      int64_t rank = basis[l].DimsLr[i + ibegin];
-      double* mat = matrix_ptrs[i + ibegin];
-      int32_t* pa = ipiv_ptrs[i];
+      id_row(&Qo, pa, S_dn_work.A);
 
       for (int64_t j = 0; j < rank; j++) {
         int64_t piv = (int64_t)pa[j] - 1;
@@ -397,11 +368,11 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
 
       if (rank > 0) {
         struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
-        struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
         struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
-        struct Matrix Rc = (struct Matrix){ &mat[ske_len * ske_len * 2], ske_len, ske_len };
-        upper_tri_reflec_mult('L', 1, &Rc, &Qo);
-        qr_full(&Q, &R, Rc.A);
+        int64_t lc = basis[l].Lchild[i + ibegin];
+        if (lc >= 0)
+          upper_tri_reflec_mult('L', 2, &(basis[l + 1].R)[lc], &Qo);
+        qr_full(&Q, &R);
       }
     }
 

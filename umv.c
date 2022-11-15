@@ -136,11 +136,6 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
 
   for (int64_t i = 0; i < llen; i++)
     copy_basis('S', Uc[i].A, Uo[i].A, U_data + i * ld_batch_mat, Uc[i].N, Uo[i].N, dimc_max, dimr_max, Uc[i].M, dim_batch);
-
-  /*factor_diag(rels->N, D_data, U1_data, dimc_max, dimr_max, ld_batch);
-  compute_rs_splits_right(U1_data, A1_data, A2_data, col_A, dim_batch, ld_batch, nnz);
-  compute_rs_splits_left(U2_data, A2_data, A1_data, row_A, dim_batch, ld_batch, nnz);
-  schur_diag(rels->N, A1_data, diag_idx, dimc_max, dimr_max, ld_batch);*/
   batch_cholesky_factor(dimc_max, dimr_max, U_data, A_data, rels->N, ibegin, row_A, col_A);
 
   for (int64_t x = 0; x < rels->N; x++)
@@ -185,10 +180,9 @@ void nextNode(struct Matrix* Mup, const struct Matrix* Mlow, const struct Base* 
           int64_t off_y = basis_low->Offsets[ci + y] - basis_low->Offsets[ci];
           int64_t off_x = basis_low->Offsets[cj + x] - basis_low->Offsets[cj];
           if (yx >= 0)
-            mat_cpy_batch(Mlow[yx].M, Mlow[yx].N, &Mlow[yx], &Mup[ij], 0, 0, off_y, off_x);
+            mat_cpy(Mlow[yx].M, Mlow[yx].N, &Mlow[yx], &Mup[ij], 0, 0, off_y, off_x);
         }
     }
-  mat_cpy_flush();
 }
 
 void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
@@ -328,18 +322,17 @@ void permuteAndMerge(char fwbk, struct Matrix* px, struct Matrix* nx, const int6
       int64_t c = i + nloc;
       int64_t c0 = lchild[c];
       int64_t c1 = c0 + 1;
-      mat_cpy_batch(px[c0].M, 1, &px[c0], &nx[c], 0, 0, 0, 0);
-      mat_cpy_batch(px[c1].M, 1, &px[c1], &nx[c], 0, 0, nx[c].M - px[c1].M, 0);
+      mat_cpy(px[c0].M, 1, &px[c0], &nx[c], 0, 0, 0, 0);
+      mat_cpy(px[c1].M, 1, &px[c1], &nx[c], 0, 0, nx[c].M - px[c1].M, 0);
     }
   else if (fwbk == 'B' || fwbk == 'b')
     for (int64_t i = 0; i < nboxes; i++) {
       int64_t c = i + nloc;
       int64_t c0 = lchild[c];
       int64_t c1 = c0 + 1;
-      mat_cpy_batch(px[c0].M, 1, &nx[c], &px[c0], 0, 0, 0, 0);
-      mat_cpy_batch(px[c1].M, 1, &nx[c], &px[c1], nx[c].M - px[c1].M, 0, 0, 0);
+      mat_cpy(px[c0].M, 1, &nx[c], &px[c0], 0, 0, 0, 0);
+      mat_cpy(px[c1].M, 1, &nx[c], &px[c1], nx[c].M - px[c1].M, 0, 0, 0);
     }
-  mat_cpy_flush();
 }
 
 void dist_double_svfw(char fwbk, double* arr[], const struct CellComm* comm) {
