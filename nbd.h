@@ -43,7 +43,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
 struct Body { double X[3], B; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
-struct CellComm { struct CSC Comms; int64_t Proc[3], *ProcRootI, *ProcBoxes, *ProcBoxesEnd; MPI_Comm Comm_share, Comm_merge, *Comm_box; };
+struct CellComm { int64_t Proc[2], worldRank, worldSize, lenTargets, *ProcTargets, *ProcRootI, *ProcBoxes, *ProcBoxesEnd; MPI_Comm Comm_share, Comm_merge, *Comm_box; };
 struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, *Offsets, *Multipoles; struct Matrix *Uo, *Uc, *R; };
 struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };

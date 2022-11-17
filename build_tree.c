@@ -243,158 +243,70 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
   int __mpi_rank = 0, __mpi_size = 1;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
-  MPI_Group world_group;
-  MPI_Comm_group(MPI_COMM_WORLD, &world_group);
   int64_t mpi_rank = __mpi_rank;
   int64_t mpi_size = __mpi_size;
-  int* ranks = (int*)malloc(sizeof(int) * mpi_size);
 
   for (int64_t i = 0; i <= levels; i++) {
     int64_t ibegin = 0, iend = ncells;
     get_level(&ibegin, &iend, cells, i, -1);
-    int64_t len_i = iend - ibegin;
 
-    int64_t nbegin = cellNear->ColIndex[ibegin];
-    int64_t nlen = cellNear->ColIndex[iend] - nbegin;
-    int64_t fbegin = cellFar->ColIndex[ibegin];
-    int64_t flen = cellFar->ColIndex[iend] - fbegin;
-    int64_t len_arr = flen + nlen + mpi_size * 4 + 1;
+    int64_t* arr = (int64_t*)malloc(sizeof(int64_t) * mpi_size * 4);
+    comms[i].ProcRootI = arr;
+    comms[i].ProcBoxes = &arr[mpi_size];
+    comms[i].ProcBoxesEnd = &arr[mpi_size * 2];
+    comms[i].ProcTargets = &arr[mpi_size * 3];
 
-    int64_t* rel_arr = (int64_t*)malloc(sizeof(int64_t) * len_arr);
-    int64_t* rel_rows = &rel_arr[mpi_size + 1];
-
-    for (int64_t j = 0; j < len_i; j++) {
-      int64_t j_c = ibegin + j;
-      int64_t src = cells[j_c].Procs[0];
-      int64_t kj_hi = cellFar->ColIndex[j_c + 1];
-      for (int64_t kj = cellFar->ColIndex[j_c]; kj < kj_hi; kj++) {
-        int64_t k = cellFar->RowIndex[kj];
-        int64_t tgt = cells[k].Procs[0];
-        int64_t row_i = kj - fbegin;
-        rel_rows[row_i] = tgt + src * mpi_size;
-      }
-    }
-
-    for (int64_t j = 0; j < len_i; j++) {
-      int64_t j_c = ibegin + j;
-      int64_t src = cells[j_c].Procs[0];
-      int64_t kj_hi = cellNear->ColIndex[j_c + 1];
-      for (int64_t kj = cellNear->ColIndex[j_c]; kj < kj_hi; kj++) {
-        int64_t k = cellNear->RowIndex[kj];
-        int64_t tgt = cells[k].Procs[0];
-        int64_t row_i = kj - nbegin + flen;
-        rel_rows[row_i] = tgt + src * mpi_size;
-      }
-    }
-
-    struct CSC* csc_i = &comms[i].Comms;
-    csc_i->M = mpi_size;
-    csc_i->N = mpi_size;
-    qsort(rel_rows, nlen + flen, sizeof(int64_t), comp_int_64);
-    int64_t* begin = rel_rows;
-    int64_t* last = &begin[nlen + flen];
-    int64_t* iter = begin;
-    if (begin != last) {
-      while (++begin != last)
-        if (!(*iter == *begin) && ++iter != begin)
-          *iter = *begin;
-      iter++;
-    }
-
-    int64_t len = iter - rel_rows;
-    if (len < flen + nlen) {
-      len_arr = len + mpi_size * 4 + 1;
-      rel_arr = (int64_t*)realloc(rel_arr, sizeof(int64_t) * len_arr);
-      rel_rows = &rel_arr[mpi_size + 1];
-    }
-    csc_i->ColIndex = rel_arr;
-    csc_i->RowIndex = rel_rows;
-    int64_t* root_i = &rel_arr[len + mpi_size + 1];
-    memset(root_i, 0xFF, sizeof(int64_t) * mpi_size);
-
-    int64_t loc = -1;
-    for (int64_t j = 0; j < len; j++) {
-      int64_t r = rel_rows[j];
-      int64_t x = r / mpi_size;
-      int64_t y = r - x * mpi_size;
-      rel_rows[j] = y;
-      while (x > loc)
-        rel_arr[++loc] = j;
-      if (y == x)
-        root_i[x] = j - rel_arr[x];
-    }
-    for (int64_t j = loc + 1; j <= mpi_size; j++)
-      rel_arr[j] = len;
-
-    comms[i].ProcRootI = root_i;
-    comms[i].ProcBoxes = &root_i[mpi_size];
-    comms[i].ProcBoxesEnd = &root_i[mpi_size * 2];
+    int64_t mbegin = ibegin, mend = iend;
+    get_level(&mbegin, &mend, cells, i, mpi_rank);
+    int64_t p = cells[mbegin].Procs[0];
+    int64_t lenp = cells[mbegin].Procs[1] - p;
+    comms[i].Proc[0] = p;
+    comms[i].Proc[1] = p + lenp;
+    comms[i].worldRank = mpi_rank;
+    comms[i].worldSize = mpi_size;
+    comms[i].lenTargets = 0;
+    comms[i].Comm_box = (MPI_Comm*)malloc(sizeof(MPI_Comm) * mpi_size);
     for (int64_t j = 0; j < mpi_size; j++) {
+      int is_ngb = 0;
+      for (int64_t k = cellNear->ColIndex[mbegin]; k < cellNear->ColIndex[mend]; k++)
+        if (cells[cellNear->RowIndex[k]].Procs[0] == j)
+          is_ngb = 1;
+      for (int64_t k = cellFar->ColIndex[mbegin]; k < cellFar->ColIndex[mend]; k++)
+        if (cells[cellFar->RowIndex[k]].Procs[0] == j)
+          is_ngb = 1;
+      MPI_Comm_split(MPI_COMM_WORLD, (is_ngb && p == mpi_rank) ? 1 : MPI_UNDEFINED, mpi_rank, &comms[i].Comm_box[j]);
+      if (is_ngb) {
+        int64_t len_t = comms[i].lenTargets;
+        comms[i].ProcTargets[len_t] = j;
+        comms[i].lenTargets = len_t + 1;
+      }
+
       int64_t jbegin = ibegin, jend = iend;
       get_level(&jbegin, &jend, cells, i, j);
       comms[i].ProcBoxes[j] = jbegin - ibegin;
       comms[i].ProcBoxesEnd[j] = jend - ibegin;
     }
 
-    comms[i].Comm_box = (MPI_Comm*)malloc(sizeof(MPI_Comm) * mpi_size);
-    for (int64_t j = 0; j < mpi_size; j++) {
-      int64_t jbegin = rel_arr[j];
-      int64_t jlen = rel_arr[j + 1] - jbegin;
-      if (jlen > 0) {
-        const int64_t* row = &rel_rows[jbegin];
-        for (int64_t k = 0; k < jlen; k++)
-          ranks[k] = row[k];
-        MPI_Group group_j;
-        MPI_Group_incl(world_group, jlen, ranks, &group_j);
-        MPI_Comm_create_group(MPI_COMM_WORLD, group_j, j, &comms[i].Comm_box[j]);
-        MPI_Group_free(&group_j);
-      }
-      else
-        comms[i].Comm_box[j] = MPI_COMM_NULL;
-    }
+    int root = -1;
+    if (comms[i].Comm_box[mpi_rank] != MPI_COMM_NULL)
+      MPI_Comm_rank(comms[i].Comm_box[mpi_rank], &root);
+    MPI_Allgather(&root, 1, MPI_INT, comms[i].ProcRootI, 1, MPI_INT64_T, MPI_COMM_WORLD);
 
-    int64_t mbegin = ibegin, mend = iend;
-    get_level(&mbegin, &mend, cells, i, mpi_rank);
-    const struct Cell* cm = &cells[mbegin];
-    int64_t p = cm->Procs[0];
-    int64_t lenp = cm->Procs[1] - p;
-    comms[i].Proc[0] = p;
-    comms[i].Proc[1] = p + lenp;
-    comms[i].Proc[2] = mpi_rank;
-    comms[i].Comm_merge = MPI_COMM_NULL;
-    comms[i].Comm_share = MPI_COMM_NULL;
-
-    if (lenp > 1 && cm->Child >= 0) {
-      const int64_t lenc = 2;
-      int incl = 0;
-      for (int64_t j = 0; j < lenc; j++) {
-        ranks[j] = cells[cm->Child + j].Procs[0];
-        incl = incl || (ranks[j] == mpi_rank);
-      }
-      if (incl) {
-        MPI_Group group_merge;
-        MPI_Group_incl(world_group, lenc, ranks, &group_merge);
-        MPI_Comm_create_group(MPI_COMM_WORLD, group_merge, mpi_size, &comms[i].Comm_merge);
-        MPI_Group_free(&group_merge);
-      }
-    }
-
-    if (lenp > 1) {
-      for (int64_t j = 0; j < lenp; j++)
-        ranks[j] = j + p;
-      MPI_Group group_share;
-      MPI_Group_incl(world_group, lenp, ranks, &group_share);
-      MPI_Comm_create_group(MPI_COMM_WORLD, group_share, mpi_size + 1, &comms[i].Comm_share);
-      MPI_Group_free(&group_share);
-    }
+    int color = MPI_UNDEFINED;
+    int64_t cc = cells[mbegin].Child;
+    if (lenp > 1 && cc >= 0)
+      for (int64_t j = 0; j < 2; j++)
+        if (cells[cc + j].Procs[0] == mpi_rank)
+          color = p;
+    MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_merge);
+  
+    color = lenp > 1 ? p : MPI_UNDEFINED;
+    MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_share);
   }
-
-  MPI_Group_free(&world_group);
-  free(ranks);
 }
 
 void cellComm_free(struct CellComm* comm) {
-  int64_t mpi_size = comm->Comms.M;
+  int64_t mpi_size = comm->worldSize;
   for (int64_t j = 0; j < mpi_size; j++)
     if (comm->Comm_box[j] != MPI_COMM_NULL)
       MPI_Comm_free(&comm->Comm_box[j]);
@@ -402,7 +314,7 @@ void cellComm_free(struct CellComm* comm) {
     MPI_Comm_free(&comm->Comm_share);
   if (comm->Comm_merge != MPI_COMM_NULL)
     MPI_Comm_free(&comm->Comm_merge);
-  free(comm->Comms.ColIndex);
+  free(comm->ProcRootI);
   free(comm->Comm_box);
 }
 
@@ -421,14 +333,11 @@ void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
 
 void i_local(int64_t* ilocal, const struct CellComm* comm) {
   int64_t iglobal = *ilocal;
-  int64_t p = comm->Proc[0];
-  const int64_t* ngbs = comm->Comms.RowIndex;
-  int64_t nbegin = comm->Comms.ColIndex[p];
-  int64_t nend = comm->Comms.ColIndex[p + 1];
-  const int64_t* ngbs_iter = &ngbs[nbegin];
+  const int64_t* ngbs = comm->ProcTargets;
+  int64_t nend = comm->lenTargets;
+  const int64_t* ngbs_iter = ngbs;
   int64_t slen = 0;
-  while (ngbs_iter != &ngbs[nend] && 
-  comm->ProcBoxesEnd[*ngbs_iter] <= iglobal) {
+  while (ngbs_iter != &ngbs[nend] && comm->ProcBoxesEnd[*ngbs_iter] <= iglobal) {
     slen = slen + comm->ProcBoxesEnd[*ngbs_iter] - comm->ProcBoxes[*ngbs_iter];
     ngbs_iter = ngbs_iter + 1;
   }
@@ -441,11 +350,9 @@ void i_local(int64_t* ilocal, const struct CellComm* comm) {
 
 void i_global(int64_t* iglobal, const struct CellComm* comm) {
   int64_t ilocal = *iglobal;
-  int64_t p = comm->Proc[0];
-  const int64_t* ngbs = comm->Comms.RowIndex;
-  int64_t nbegin = comm->Comms.ColIndex[p];
-  int64_t nend = comm->Comms.ColIndex[p + 1];
-  const int64_t* ngbs_iter = &ngbs[nbegin];
+  const int64_t* ngbs = comm->ProcTargets;
+  int64_t nend = comm->lenTargets;
+  const int64_t* ngbs_iter = ngbs;
   while (ngbs_iter != &ngbs[nend] && 
   comm->ProcBoxesEnd[*ngbs_iter] <= (comm->ProcBoxes[*ngbs_iter] + ilocal)) {
     ilocal = ilocal - comm->ProcBoxesEnd[*ngbs_iter] + comm->ProcBoxes[*ngbs_iter];
@@ -460,10 +367,9 @@ void i_global(int64_t* iglobal, const struct CellComm* comm) {
 
 void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* comm) {
   int64_t p = comm->Proc[0];
-  const int64_t* ngbs = comm->Comms.RowIndex;
-  int64_t nbegin = comm->Comms.ColIndex[p];
-  int64_t nend = comm->Comms.ColIndex[p + 1];
-  const int64_t* ngbs_iter = &ngbs[nbegin];
+  const int64_t* ngbs = comm->ProcTargets;
+  int64_t nend = comm->lenTargets;
+  const int64_t* ngbs_iter = ngbs;
   int64_t slen = 0;
   while (ngbs_iter != &ngbs[nend] && *ngbs_iter != p) {
     slen = slen + comm->ProcBoxesEnd[*ngbs_iter] - comm->ProcBoxes[*ngbs_iter];
@@ -481,11 +387,9 @@ void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* com
 }
 
 void content_length(int64_t* len, const struct CellComm* comm) {
-  int64_t p = comm->Proc[0];
-  const int64_t* ngbs = comm->Comms.RowIndex;
-  int64_t nbegin = comm->Comms.ColIndex[p];
-  int64_t nend = comm->Comms.ColIndex[p + 1];
-  const int64_t* ngbs_iter = &ngbs[nbegin];
+  const int64_t* ngbs = comm->ProcTargets;
+  int64_t nend = comm->lenTargets;
+  const int64_t* ngbs_iter = ngbs;
   int64_t slen = 0;
   while (ngbs_iter != &ngbs[nend]) {
     slen = slen + comm->ProcBoxesEnd[*ngbs_iter] - comm->ProcBoxes[*ngbs_iter];

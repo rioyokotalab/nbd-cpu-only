@@ -168,19 +168,17 @@ void sampleBodies_free(struct SampleBodies* sample) {
 }
 
 void dist_int_64_xlen(int64_t arr_xlen[], const struct CellComm* comm) {
-  int64_t mpi_rank = comm->Proc[2];
-  int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
-  int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
-  const int64_t* row = &comm->Comms.RowIndex[pbegin];
+  int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
+  const int64_t* row = comm->ProcTargets;
+  int64_t lbegin = 0;
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
   for (int64_t i = 0; i < plen; i++) {
     int64_t p = row[i];
-    int64_t lbegin = comm->ProcBoxes[p];
-    int64_t len = comm->ProcBoxesEnd[p] - lbegin;
-    i_local(&lbegin, comm);
+    int64_t len = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
     MPI_Bcast(&arr_xlen[lbegin], len, MPI_INT64_T, comm->ProcRootI[p], comm->Comm_box[p]);
+    lbegin = lbegin + len;
   }
 
   int64_t xlen = 0;
@@ -194,21 +192,19 @@ void dist_int_64_xlen(int64_t arr_xlen[], const struct CellComm* comm) {
 }
 
 void dist_int_64(int64_t arr[], const int64_t offsets[], const struct CellComm* comm) {
-  int64_t mpi_rank = comm->Proc[2];
-  int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
-  int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
-  const int64_t* row = &comm->Comms.RowIndex[pbegin];
+  int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
+  const int64_t* row = comm->ProcTargets;
+  int64_t lbegin = 0;
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
   for (int64_t i = 0; i < plen; i++) {
     int64_t p = row[i];
-    int64_t lbegin = comm->ProcBoxes[p];
-    int64_t llen = comm->ProcBoxesEnd[p] - lbegin;
-    i_local(&lbegin, comm);
+    int64_t llen = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
     int64_t offset = offsets[lbegin];
     int64_t len = offsets[lbegin + llen] - offset;
     MPI_Bcast(&arr[offset], len, MPI_INT64_T, comm->ProcRootI[p], comm->Comm_box[p]);
+    lbegin = lbegin + llen;
   }
 
   int64_t xlen = 0;
@@ -223,22 +219,20 @@ void dist_int_64(int64_t arr[], const int64_t offsets[], const struct CellComm* 
 }
 
 void dist_double(double* arr[], const struct CellComm* comm) {
-  int64_t mpi_rank = comm->Proc[2];
-  int64_t pbegin = comm->Comms.ColIndex[mpi_rank];
-  int64_t plen = comm->Comms.ColIndex[mpi_rank + 1] - pbegin;
-  const int64_t* row = &comm->Comms.RowIndex[pbegin];
+  int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
+  const int64_t* row = comm->ProcTargets;
   double* data = arr[0];
+  int64_t lbegin = 0;
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
   for (int64_t i = 0; i < plen; i++) {
     int64_t p = row[i];
-    int64_t lbegin = comm->ProcBoxes[p];
-    int64_t llen = comm->ProcBoxesEnd[p] - lbegin;
-    i_local(&lbegin, comm);
+    int64_t llen = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
     int64_t offset = arr[lbegin] - data;
     int64_t len = arr[lbegin + llen] - arr[lbegin];
     MPI_Bcast(&data[offset], len, MPI_DOUBLE, comm->ProcRootI[p], comm->Comm_box[p]);
+    lbegin = lbegin + llen;
   }
 
   int64_t xlen = 0;
