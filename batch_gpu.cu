@@ -2,6 +2,7 @@
 #include "nbd.h"
 #include "mkl.h"
 #include "magma_v2.h"
+#include "cuda_runtime_api.h"
 
 #include <stdlib.h>
 
@@ -39,23 +40,13 @@ void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_ou
   IR_dim = IR_dim < OR_dim ? IR_dim : OR_dim;
   IS_dim = IS_dim < OS_dim ? IS_dim : OS_dim;
   int N_in = IR_dim + IS_dim;
-  int N_out = OR_dim + OS_dim;
   if (dir == 'G') {
     magma_dgetmatrix_async(N_in, IR_dim, Ur_in, ldu_in, U_out, ldu_out, queue);
     magma_dgetmatrix_async(N_in, IS_dim, Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out, queue);
   }
   else if (dir == 'S') {
-    int diff_r = OR_dim - IR_dim;
-    int diff_s = OS_dim - IS_dim;
-    double* U = (double*)calloc(N_out * N_out, sizeof(double));
-    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', N_in, IR_dim, Ur_in, ldu_in, U, N_out);
-    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', N_in, IS_dim, Us_in, ldu_in, U + (size_t)OR_dim * N_out, N_out);
-    if (diff_r > 0)
-      LAPACKE_dlaset(LAPACK_COL_MAJOR, 'A', diff_r, diff_r, 0., 1., U + ((size_t)N_out * IR_dim + N_in), N_out);
-    if (diff_s > 0)
-      LAPACKE_dlaset(LAPACK_COL_MAJOR, 'A', diff_s, diff_s, 0., 1., U + (((size_t)N_out + 1) * ((size_t)OR_dim + IS_dim)), N_out);
-    magma_dsetmatrix(N_out, N_out, U, N_out, U_out, ldu_out, queue);
-    free(U);
+    magma_dsetmatrix_async(N_in, IR_dim, Ur_in, ldu_in, U_out, ldu_out, queue);
+    magma_dsetmatrix_async(N_in, IS_dim, Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out, queue);
   }
 }
 
@@ -64,17 +55,16 @@ void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, i
   N_in = N_in < N_out ? N_in : N_out;
   if (dir == 'G')
     magma_dgetmatrix_async(M_in, N_in, A_in, lda_in, A_out, lda_out, queue);
-  else if (dir == 'S') {
-    int diff_m = M_out - M_in;
-    int diff_n = N_out - N_in;
-    int len_i = diff_m < diff_n ? diff_m : diff_n;
-    double* A = (double*)calloc(M_out * N_out, sizeof(double));
-    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', M_in, N_in, A_in, lda_in, A, M_out);
-    if (len_i > 0)
-      LAPACKE_dlaset(LAPACK_COL_MAJOR, 'A', diff_m, diff_n, 0., 1., A + ((size_t)M_out * N_in + M_in), M_out);
-    magma_dsetmatrix(M_out, N_out, A, M_out, A_out, lda_out, queue);
-    free(A);
-  }
+  else if (dir == 'S')
+    magma_dsetmatrix_async(M_in, N_in, A_in, lda_in, A_out, lda_out, queue);
+}
+
+__global__ void diag_process_kernel(double* D_data) {
+  int stride_m = blockDim.x * blockDim.x;
+  int stride_row = blockDim.x + 1;
+  double* data = D_data + stride_m * blockIdx.x + stride_row * threadIdx.x;
+  if (*data == 0.)
+    *data = 1.;
 }
 
 void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_ptr, int N_cols, int col_offset, const int row_A[], const int col_A[]) {
@@ -108,13 +98,13 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   magma_malloc((void**)&B_lis_dev, sizeof(double*) * NNZ);
   magma_malloc((void**)&ASS_lis_dev, sizeof(double*) * N_cols);
 
-  double* D_data, *UD_data, *B_data;
-  magma_dmalloc(&D_data, N_cols * stride);
+  double *UD_data, *B_data;
   magma_dmalloc(&UD_data, N_cols * stride);
   magma_dmalloc(&B_data, NNZ * stride);
 
   int* info_array;
   magma_imalloc(&info_array, N_cols);
+  cudaStream_t stream = magma_queue_get_cuda_stream(queue);
 
   for (int x = 0; x < N_cols; x++) {
     int diag_id = 0;
@@ -131,7 +121,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
     A_lis_diag[x] = A_ptr + stride * diag_id;
     U_lis_diag[x] = U_ptr + stride * row_A[diag_id];
     ARS_lis[x] = A_ptr + stride * diag_id + R_dim;
-    D_lis[x] = D_data + stride * x;
+    D_lis[x] = B_data + stride * x;
     UD_lis[x] = UD_data + stride * x;
     ASS_lis[x] = A_ptr + stride * diag_id + (size_t)(N_dim + 1) * R_dim;
   }
@@ -154,6 +144,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
     U_lis_diag_dev, N_dim, (const double**)UD_lis_dev, N_dim, 0., D_lis_dev, N_dim, N_cols, queue);
   magmablas_dlacpy_batched(MagmaFull, N_dim, N_dim, U_lis_diag_dev, N_dim, UD_lis_dev, N_dim, N_cols, queue);
 
+  diag_process_kernel<<<N_cols, N_dim, 0, stream>>>(B_data);
   magma_dpotrf_batched(MagmaLower, R_dim, D_lis_dev, N_dim, info_array, N_cols, queue);
   magmablas_dtrsm_batched(MagmaRight, MagmaLower, MagmaTrans, MagmaNonUnit, N_dim, R_dim, 1., 
     D_lis_dev, N_dim, UD_lis_dev, N_dim, N_cols, queue);
@@ -177,7 +168,6 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   magma_free(B_lis_dev);
   magma_free(ASS_lis_dev);
 
-  magma_free(D_data);
   magma_free(UD_data);
   magma_free(B_data);
   magma_free(info_array);

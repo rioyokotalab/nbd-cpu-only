@@ -27,16 +27,6 @@ void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_ou
     int n_in = IR_dim + IS_dim;
     MKL_Domatcopy('C', 'N', n_in, IR_dim, 1., Ur_in, ldu_in, U_out, ldu_out);
     MKL_Domatcopy('C', 'N', n_in, IS_dim, 1., Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out);
-
-    if (dir == 'S') {
-      int diff_r = OR_dim - IR_dim;
-      int diff_s = OS_dim - IS_dim;
-      double one = 1.;
-      if (diff_r > 0)
-        cblas_dcopy(diff_r, &one, 0, U_out + ((size_t)ldu_out * IR_dim + n_in), ldu_out + 1);
-      if (diff_s > 0)
-        cblas_dcopy(diff_s, &one, 0, U_out + (((size_t)ldu_out + 1) * ((size_t)OR_dim + IS_dim)), ldu_out + 1);
-    }
   }
 }
 
@@ -45,15 +35,6 @@ void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, i
     M_in = M_in < M_out ? M_in : M_out;
     N_in = N_in < N_out ? N_in : N_out;
     MKL_Domatcopy('C', 'N', M_in, N_in, 1., A_in, lda_in, A_out, lda_out);
-
-    if (dir == 'S') {
-      int diff_m = M_out - M_in;
-      int diff_n = N_out - N_in;
-      int len_i = diff_m < diff_n ? diff_m : diff_n;
-      double one = 1.;
-      if (len_i > 0)
-        cblas_dcopy(len_i, &one, 0, A_out + ((size_t)lda_out * N_in + M_in), lda_out + 1);
-    }
   }
 }
 
@@ -74,7 +55,6 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   double** B_lis = (double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
   double** ASS_lis = (double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
 
-  double* D_data = (double*)MKL_malloc(sizeof(double) * N_cols * stride, ALIGN);
   double* UD_data = (double*)MKL_malloc(sizeof(double) * N_cols * stride, ALIGN);
   double* B_data = (double*)MKL_malloc(sizeof(double) * NNZ * stride, ALIGN);
 
@@ -93,7 +73,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
     A_lis_diag[x] = A_ptr + stride * diag_id;
     U_lis_diag[x] = U_ptr + stride * row_A[diag_id];
     ARS_lis[x] = A_ptr + stride * diag_id + R_dim;
-    D_lis[x] = D_data + stride * x;
+    D_lis[x] = B_data + stride * x;
     UD_lis[x] = UD_data + stride * x;
     ASS_lis[x] = A_ptr + stride * diag_id + (size_t)(N_dim + 1) * R_dim;
   }
@@ -114,8 +94,11 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   for (int i = 0; i < N_cols; i++)
     cblas_dcopy(stride, U_lis_diag[i], 1, UD_lis[i], 1);
 
-  for (int i = 0; i < N_cols; i++)
-    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_dim);
+  for (int i = 0; i < N_cols; i++) {
+    int info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_dim);
+    if (info > 0)
+      cblas_dcopy(R_dim - info + 1, &one, 0, D_lis[i] + (N_dim + 1) * (info - 1), N_dim + 1);
+  }
   cblas_dtrsm_batch(CblasColMajor, &right, &lower, &trans, &non_unit, &N_dim, &R_dim, &one, 
     (const double**)D_lis, &N_dim, UD_lis, &N_dim, 1, &N_cols);
 
@@ -138,7 +121,6 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   MKL_free(B_lis);
   MKL_free(ASS_lis);
 
-  MKL_free(D_data);
   MKL_free(UD_data);
   MKL_free(B_data);
 }

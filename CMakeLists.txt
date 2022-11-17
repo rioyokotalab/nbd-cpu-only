@@ -5,7 +5,7 @@ set(CMAKE_C_COMPILER "gcc")
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_FLAGS "-O3 -m64 -Wall -Wextra")
 
-project ("shimo" LANGUAGES C)
+project ("shimo" LANGUAGES C CUDA)
 
 set(MKL_ARCH intel64)
 set(MKL_LINK dynamic)
@@ -26,7 +26,7 @@ if(DEFINED ENV{CUDADIR})
   set(MAGMA_INCLUDE_DIRS $ENV{MAGMADIR}/include $ENV{MAGMADIR}/sparse/include $ENV{CUDADIR}/include)
   set(MAGMA_LIBS -L$ENV{MAGMADIR}/lib -lmagma_sparse -lmagma -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusparse)
 
-  add_executable(gpu lorasp.c kernel.c linalg.c batch_gpu.c basis.c build_tree.c umv.c profile.c)
+  add_executable(gpu lorasp.c kernel.c linalg.c batch_gpu.cu basis.c build_tree.c umv.c profile.c)
   target_compile_options(gpu PRIVATE -D_PROF ${MAGMA_CFLAGS})
   target_include_directories(gpu PRIVATE ./ ${MAGMA_INCLUDE_DIRS})
   target_link_libraries(gpu MPI::MPI_C OpenMP::OpenMP_C MKL::MKL ${MAGMA_LIBS})
