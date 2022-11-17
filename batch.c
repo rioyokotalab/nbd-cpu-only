@@ -71,7 +71,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
     }
 
     A_lis_diag[x] = A_ptr + stride * diag_id;
-    U_lis_diag[x] = U_ptr + stride * row_A[diag_id];
+    U_lis_diag[x] = U_ptr + stride * (x + col_offset);
     ARS_lis[x] = A_ptr + stride * diag_id + R_dim;
     D_lis[x] = B_data + stride * x;
     UD_lis[x] = UD_data + stride * x;
@@ -91,8 +91,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
     A_lis_diag, &N_dim, U_lis_diag, &N_dim, &zero, UD_lis, &N_dim, 1, &N_cols);
   cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &R_dim, &R_dim, &N_dim, &one, 
     U_lis_diag, &N_dim, (const double**)UD_lis, &N_dim, &zero, D_lis, &N_dim, 1, &N_cols);
-  for (int i = 0; i < N_cols; i++)
-    cblas_dcopy(stride, U_lis_diag[i], 1, UD_lis[i], 1);
+  cblas_dcopy(stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
 
   for (int i = 0; i < N_cols; i++) {
     int info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_dim);
