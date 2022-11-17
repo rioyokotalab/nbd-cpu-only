@@ -9,7 +9,6 @@
 cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
 cusolverDnHandle_t cusolverH = NULL;
-cusolverDnParams_t cusolverParams = NULL;
 
 void init_batch_lib() {
   int mpi_rank;
@@ -25,7 +24,6 @@ void init_batch_lib() {
 
   cusolverDnCreate(&cusolverH);
   cusolverDnSetStream(cusolverH, stream);
-  cusolverDnCreateParams(&cusolverParams);
 }
 
 void finalize_batch_lib() {
@@ -35,8 +33,6 @@ void finalize_batch_lib() {
     cublasDestroy(cublasH);
   if (cusolverH)
     cusolverDnDestroy(cusolverH);
-  if (cusolverParams)
-    cusolverDnDestroyParams(cusolverParams);
 }
 
 void sync_batch_lib() {
@@ -150,14 +146,6 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   cudaMalloc((void**)&info_array, sizeof(int) * (N_cols + 1));
   cudaMalloc((void**)&row_arr, sizeof(int) * NNZ);
 
-  size_t workspaceInBytesOnDevice, workspaceInBytesOnHost;
-  cusolverDnXpotrf_bufferSize(cusolverH, cusolverParams, CUBLAS_FILL_MODE_LOWER, R_dim, CUDA_R_64F, B_data, N_dim, CUDA_R_64F, &workspaceInBytesOnDevice, &workspaceInBytesOnHost);
-  void *bufferOnDevice = NULL, *bufferOnHost = NULL;
-  if (workspaceInBytesOnDevice)
-    cudaMalloc(&bufferOnDevice, workspaceInBytesOnDevice);
-  if (workspaceInBytesOnHost)
-    bufferOnHost = malloc(workspaceInBytesOnHost);
-
   cudaMemcpyAsync((void*)info_array, (void*)col_A, sizeof(int) * (N_cols + 1), cudaMemcpyHostToDevice);
   cudaMemcpyAsync((void*)row_arr, (void*)row_A, sizeof(int) * NNZ, cudaMemcpyHostToDevice);
   args_kernel<<<N_cols, 64, 0, stream>>>(R_dim, S_dim, U_ptr, A_ptr, N_cols, col_offset, row_arr, info_array,
@@ -171,10 +159,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   cublasDcopy(cublasH, stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
 
   diag_process_kernel<<<N_cols, N_dim, 0, stream>>>(B_data);
-  for (int i = 0; i < N_cols; i++)
-    cusolverDnXpotrf(cusolverH, cusolverParams, CUBLAS_FILL_MODE_LOWER, R_dim, CUDA_R_64F, B_data + stride * i, N_dim, CUDA_R_64F,
-      bufferOnDevice, workspaceInBytesOnDevice, bufferOnHost, workspaceInBytesOnHost, info_array + i);
-
+  cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R_dim, D_lis, N_dim, info_array, N_cols);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
     N_dim, R_dim, &one, D_lis, N_dim, UD_lis, N_dim, N_cols);
 
@@ -201,12 +186,6 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   cudaFree(B_data);
   cudaFree(info_array);
   cudaFree(row_arr);
-
-  if (bufferOnDevice)
-    cudaFree(bufferOnDevice);
-
-  if (bufferOnHost)
-    free(bufferOnHost);
 }
 
 
