@@ -66,12 +66,12 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  buildBasis(ef, basis, ncells, cell, rels_near, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts);
+  buildBasis(ef, basis, ncells, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts);
   stopTimer(&construct_time, &construct_comm_time);
   
   allocNodes(nodes, basis, rels_near, rels_far, cell_comm, levels);
 
-  evalD(ef, nodes[levels].A, ncells, cell, body, &rels_near[levels], levels);
+  evalD(ef, nodes[levels].A, ncells, cell, body, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++)
     evalS(ef, nodes[i].S, &basis[i], body, &rels_far[i], &cell_comm[i]);
 

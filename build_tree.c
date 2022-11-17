@@ -566,18 +566,19 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
   for (int64_t i = 0; i < nodes; i++) {
     int64_t lc = ibegin + i;
     const struct Cell* ci = &cells[lc];
-    int64_t nbegin = rels->ColIndex[i];
-    int64_t nlen = rels->ColIndex[i + 1] - nbegin;
+    int64_t nbegin = rels->ColIndex[lc];
+    int64_t nlen = rels->ColIndex[lc + 1] - nbegin;
     const int64_t* ngbs = &rels->RowIndex[nbegin];
     int64_t x_begin = ci->Body[0];
     int64_t n = ci->Body[1] - x_begin;
+    int64_t offsetD = nbegin - rels->ColIndex[ibegin];
 
     for (int64_t j = 0; j < nlen; j++) {
       int64_t lj = ngbs[j];
-      const struct Cell* cj = &cells[lj + jbegin];
+      const struct Cell* cj = &cells[lj];
       int64_t y_begin = cj->Body[0];
       int64_t m = cj->Body[1] - y_begin;
-      gen_matrix(ef, m, n, &bodies[y_begin], &bodies[x_begin], D[nbegin + j].A, NULL, NULL);
+      gen_matrix(ef, m, n, &bodies[y_begin], &bodies[x_begin], D[offsetD + j].A, NULL, NULL);
     }
   }
 }

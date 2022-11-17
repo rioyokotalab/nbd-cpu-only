@@ -36,14 +36,14 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
   int64_t count_f = 0, count_c = 0, count_s = 0;
   for (int64_t i = 0; i < nodes; i++) {
     int64_t li = ibegin + i;
-    int64_t nbegin = rels->ColIndex[i];
-    int64_t nlen = rels->ColIndex[i + 1] - nbegin;
+    int64_t nbegin = rels->ColIndex[li];
+    int64_t nlen = rels->ColIndex[li + 1] - nbegin;
     const int64_t* ngbs = &rels->RowIndex[nbegin];
 
     int64_t far_avail = nbodies;
     int64_t close_avail = 0;
     for (int64_t j = 0; j < nlen; j++) {
-      int64_t lj = ngbs[j] + jbegin;
+      int64_t lj = ngbs[j];
       const struct Cell* cj = &cells[lj];
       int64_t len = cj->Body[1] - cj->Body[0];
       far_avail = far_avail - len;
@@ -94,8 +94,9 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
 
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {
-    int64_t nbegin = rels->ColIndex[i];
-    int64_t nlen = rels->ColIndex[i + 1] - nbegin;
+    int64_t li = ibegin + i;
+    int64_t nbegin = rels->ColIndex[li];
+    int64_t nlen = rels->ColIndex[li + 1] - nbegin;
     const int64_t* ngbs = &rels->RowIndex[nbegin];
 
     int64_t* remote = arr_list[i];
@@ -109,11 +110,10 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
 
     int64_t box_i = 0;
     int64_t s_lens = 0;
-    int64_t ic = jbegin + ngbs[box_i];
+    int64_t ic = ngbs[box_i];
     int64_t offset_i = cells[ic].Body[0];
     int64_t len_i = cells[ic].Body[1] - offset_i;
 
-    int64_t li = i + ibegin - jbegin;
     int64_t cpos = 0;
     while (cpos < nlen && ngbs[cpos] != li)
       cpos = cpos + 1;
@@ -123,7 +123,7 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
       while (box_i < nlen && loc + s_lens >= offset_i) {
         s_lens = s_lens + len_i;
         box_i = box_i + 1;
-        ic = box_i < nlen ? (jbegin + ngbs[box_i]) : ic;
+        ic = box_i < nlen ? (ngbs[box_i]) : ic;
         offset_i = cells[ic].Body[0];
         len_i = cells[ic].Body[1] - offset_i;
       }
@@ -132,7 +132,7 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
 
     box_i = (int64_t)(cpos == 0);
     s_lens = 0;
-    ic = box_i < nlen ? (jbegin + ngbs[box_i]) : ic;
+    ic = box_i < nlen ? (ngbs[box_i]) : ic;
     offset_i = cells[ic].Body[0];
     len_i = cells[ic].Body[1] - offset_i;
 
@@ -142,7 +142,7 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
         s_lens = s_lens + len_i;
         box_i = box_i + 1;
         box_i = box_i + (int64_t)(box_i == cpos);
-        ic = jbegin + ngbs[box_i];
+        ic = ngbs[box_i];
         offset_i = cells[ic].Body[0];
         len_i = cells[ic].Body[1] - offset_i;
       }
@@ -150,7 +150,7 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
     }
 
     int64_t lc = lt_child[i];
-    int64_t sbegin = cells[i + ibegin].Body[0];
+    int64_t sbegin = cells[li].Body[0];
     if (basis_lo != NULL && lc >= 0)
       memcpy(skeleton, basis_lo->Multipoles + basis_lo->Offsets[lc], sizeof(int64_t) * ske_len);
     else
@@ -288,7 +288,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     int64_t nodes = iend - ibegin;
 
     struct SampleBodies samples;
-    buildSampleBodies(&samples, sp_pts, sp_pts, nbodies, ncells, cells, &rel_near[l], &basis[l].Lchild[ibegin], l == levels ? NULL : &basis[l + 1], l);
+    buildSampleBodies(&samples, sp_pts, sp_pts, nbodies, ncells, cells, rel_near, &basis[l].Lchild[ibegin], l == levels ? NULL : &basis[l + 1], l);
 
     int64_t count = 0;
     int64_t count_m = 0;
@@ -439,20 +439,19 @@ void basis_free(struct Base* basis) {
 void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
-  int64_t lbegin = ibegin;
-  i_global(&lbegin, comm);
+  int64_t* multipoles = basis->Multipoles;
 
 #pragma omp parallel for
   for (int64_t x = 0; x < rels->N; x++) {
+    int64_t n = basis->DimsLr[x + ibegin];
+    int64_t off_x = basis->Offsets[x + ibegin];
+
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       int64_t box_y = y;
       i_local(&box_y, comm);
       int64_t m = basis->DimsLr[box_y];
-      int64_t n = basis->DimsLr[x + ibegin];
-      int64_t* multipoles = basis->Multipoles;
       int64_t off_y = basis->Offsets[box_y];
-      int64_t off_x = basis->Offsets[x + ibegin];
       gen_matrix(ef, m, n, bodies, bodies, S[yx].A, &multipoles[off_y], &multipoles[off_x]);
       upper_tri_reflec_mult('L', 1, &basis->R[box_y], &S[yx]);
       upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
