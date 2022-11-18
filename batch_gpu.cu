@@ -148,7 +148,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
 
   cudaMemcpyAsync((void*)info_array, (void*)col_A, sizeof(int) * (N_cols + 1), cudaMemcpyHostToDevice);
   cudaMemcpyAsync((void*)row_arr, (void*)row_A, sizeof(int) * NNZ, cudaMemcpyHostToDevice);
-  args_kernel<<<N_cols, 64, 0, stream>>>(R_dim, S_dim, U_ptr, A_ptr, N_cols, col_offset, row_arr, info_array,
+  args_kernel<<<N_cols, 256, 0, stream>>>(R_dim, S_dim, U_ptr, A_ptr, N_cols, col_offset, row_arr, info_array,
     UD_data, B_data, A_lis_diag, U_lis_diag, U_lis, V_lis, ARS_lis, D_lis, UD_lis, A_lis, B_lis, ASS_lis);
 
   double one = 1., zero = 0., minus_one = -1.;

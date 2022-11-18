@@ -416,7 +416,7 @@ void loadX(double* X, int64_t body[], const struct Body* bodies) {
     X[i] = blocal[i].B;
 }
 
-void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels) {
+void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm) {
   int __mpi_rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   int64_t mpi_rank = __mpi_rank;
@@ -441,8 +441,10 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
       cols[j] = count;
       int64_t cbegin = cellRel->ColIndex[lc];
       int64_t ent = cellRel->ColIndex[lc + 1] - cbegin;
-      for (int64_t k = 0; k < ent; k++)
+      for (int64_t k = 0; k < ent; k++) {
         rows[count + k] = cellRel->RowIndex[cbegin + k] - jbegin;
+        i_local(&rows[count + k], &comm[i]);
+      }
       count = count + ent;
     }
 

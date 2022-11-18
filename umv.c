@@ -33,10 +33,8 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
 
       for (int64_t yx = rels_near[i].ColIndex[x]; yx < rels_near[i].ColIndex[x + 1]; yx++) {
         int64_t y = rels_near[i].RowIndex[yx];
-        int64_t box_y = y;
-        i_local(&box_y, &comm[i]);
-        int64_t dim_y = basis[i].Dims[box_y];
-        int64_t diml_y = basis[i].DimsLr[box_y];
+        int64_t dim_y = basis[i].Dims[y];
+        int64_t diml_y = basis[i].DimsLr[y];
         int64_t dimc_y = dim_y - diml_y;
         arr_m[yx].M = dim_y; // A
         arr_m[yx].N = dim_x;
@@ -51,9 +49,7 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
         int64_t y = rels_far[i].RowIndex[yx];
-        int64_t box_y = y;
-        i_local(&box_y, &comm[i]);
-        int64_t diml_y = basis[i].DimsLr[box_y];
+        int64_t diml_y = basis[i].DimsLr[y];
         arr_m[yx + nnz * 4].M = diml_y; // S
         arr_m[yx + nnz * 4].N = diml_x;
         count += diml_y * diml_x;
@@ -94,8 +90,6 @@ void node_free(struct Node* node) {
 void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, struct Matrix* A, const struct Matrix* Uc, const struct Matrix* Uo, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
-  int64_t lbegin = ibegin;
-  i_global(&lbegin, comm);
   int64_t llen = 0;
   content_length(&llen, comm);
 
@@ -103,7 +97,7 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
   int64_t clen = 0, dimc_max = 0, dimr_max = 0;
   for (int64_t x = 0; x < rels->N; x++) {
     int64_t xx;
-    lookupIJ(&xx, rels, x + lbegin, x);
+    lookupIJ(&xx, rels, x + ibegin, x);
     int64_t dim_x = A[xx].N;
     int64_t dimc_x = A_cc[xx].N;
     clen = clen + dimc_x * (dim_x + dimc_x);
@@ -126,7 +120,6 @@ void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, s
   for (int64_t x = 0; x < rels->N; x++) {
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
-      i_local(&y, comm);
       copy_mat('S', A[yx].A, A_data + yx * ld_batch_mat, A[yx].M, A[yx].N, A[yx].M, dim_batch, dim_batch, dim_batch);
       row_A[yx] = y;
     }
@@ -168,15 +161,12 @@ void nextNode(struct Matrix* Mup, const struct Matrix* Mlow, const struct Base* 
       int64_t cj_let = cj - ploc;
 
       int64_t li = rels_up->RowIndex[ij];
-      i_local(&li, comm_up);
       int64_t ci = basis_up->Lchild[li];
-      int64_t ci_gl = ci;
-      i_global(&ci_gl, comm_low);
 
       for (int64_t x = 0; x < 2; x++)
         for (int64_t y = 0; y < 2; y++) {
-          int64_t yx;
-          lookupIJ(&yx, rels_low, ci_gl + y, cj_let + x);
+          int64_t yx = -1;
+          lookupIJ(&yx, rels_low, ci + y, cj_let + x);
           int64_t off_y = basis_low->Offsets[ci + y] - basis_low->Offsets[ci];
           int64_t off_x = basis_low->Offsets[cj + x] - basis_low->Offsets[cj];
           if (yx >= 0)
@@ -267,23 +257,19 @@ void rightHandSides_free(struct RightHandSides* rhs) {
 void svAccFw(struct Matrix* Xc, struct Matrix* Xo, const struct Matrix* X, const struct Matrix* Uc, const struct Matrix* Uo, const struct Matrix* A_cc, const struct Matrix* A_oc, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
-  int64_t lbegin = ibegin;
-  i_global(&lbegin, comm);
 
   for (int64_t x = 0; x < rels->N; x++) {
     mmult('T', 'N', &Uc[x + ibegin], &X[x + ibegin], &Xc[x + ibegin], 1., 1.);
     mmult('T', 'N', &Uo[x + ibegin], &X[x + ibegin], &Xo[x + ibegin], 1., 1.);
     int64_t xx;
-    lookupIJ(&xx, rels, x + lbegin, x);
+    lookupIJ(&xx, rels, x + ibegin, x);
     mat_solve('F', &Xc[x + ibegin], &A_cc[xx]);
 
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
-      int64_t box_y = y;
-      i_local(&box_y, comm);
-      if (y > x + lbegin)
-        mmult('N', 'N', &A_cc[yx], &Xc[x + ibegin], &Xc[box_y], -1., 1.);
-      mmult('N', 'N', &A_oc[yx], &Xc[x + ibegin], &Xo[box_y], -1., 1.);
+      if (y > x + ibegin)
+        mmult('N', 'N', &A_cc[yx], &Xc[x + ibegin], &Xc[y], -1., 1.);
+      mmult('N', 'N', &A_oc[yx], &Xc[x + ibegin], &Xo[y], -1., 1.);
     }
   }
 }
@@ -291,21 +277,17 @@ void svAccFw(struct Matrix* Xc, struct Matrix* Xo, const struct Matrix* X, const
 void svAccBk(struct Matrix* Xc, const struct Matrix* Xo, struct Matrix* X, const struct Matrix* Uc, const struct Matrix* Uo, const struct Matrix* A_cc, const struct Matrix* A_oc, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
-  int64_t lbegin = ibegin;
-  i_global(&lbegin, comm);
 
   for (int64_t x = rels->N - 1; x >= 0; x--) {
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
-      int64_t box_y = y;
-      i_local(&box_y, comm);
-      mmult('T', 'N', &A_oc[yx], &Xo[box_y], &Xc[x + ibegin], -1., 1.);
-      if (y > x + lbegin)
-        mmult('T', 'N', &A_cc[yx], &Xc[box_y], &Xc[x + ibegin], -1., 1.);
+      mmult('T', 'N', &A_oc[yx], &Xo[y], &Xc[x + ibegin], -1., 1.);
+      if (y > x + ibegin)
+        mmult('T', 'N', &A_cc[yx], &Xc[y], &Xc[x + ibegin], -1., 1.);
     }
 
     int64_t xx;
-    lookupIJ(&xx, rels, x + lbegin, x);
+    lookupIJ(&xx, rels, x + ibegin, x);
     mat_solve('B', &Xc[x + ibegin], &A_cc[xx]);
     mmult('N', 'N', &Uc[x + ibegin], &Xc[x + ibegin], &X[x + ibegin], 1., 0.);
     mmult('N', 'N', &Uo[x + ibegin], &Xo[x + ibegin], &X[x + ibegin], 1., 1.);
@@ -458,7 +440,6 @@ void horizontalPass(struct Matrix* B, const struct Matrix* X, const struct Matri
   for (int64_t y = 0; y < rels->N; y++)
     for (int64_t xy = rels->ColIndex[y]; xy < rels->ColIndex[y + 1]; xy++) {
       int64_t x = rels->RowIndex[xy];
-      i_local(&x, comm);
       mmult('T', 'N', &A[xy], &X[x], &B[y + ibegin], 1., 1.);
     }
 }

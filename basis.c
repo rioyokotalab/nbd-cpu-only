@@ -442,12 +442,10 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
 
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
-      int64_t box_y = y;
-      i_local(&box_y, comm);
-      int64_t m = basis->DimsLr[box_y];
-      int64_t off_y = basis->Offsets[box_y];
+      int64_t m = basis->DimsLr[y];
+      int64_t off_y = basis->Offsets[y];
       gen_matrix(ef, m, n, bodies, bodies, S[yx].A, &multipoles[off_y], &multipoles[off_x]);
-      upper_tri_reflec_mult('L', 1, &basis->R[box_y], &S[yx]);
+      upper_tri_reflec_mult('L', 1, &basis->R[y], &S[yx]);
       upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
     }
   }

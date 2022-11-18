@@ -102,7 +102,7 @@ void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int
 
 void loadX(double* X, int64_t body[], const struct Body* bodies);
 
-void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels);
+void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
 
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
