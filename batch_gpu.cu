@@ -90,33 +90,52 @@ __global__ void args_kernel(int R_dim, int S_dim, const double* U_ptr, double* A
   int N_dim = R_dim + S_dim;
   size_t stride = (size_t)N_dim * N_dim;
 
-  for (int yx = col_A[blockIdx.x] + threadIdx.x; yx < col_A[blockIdx.x + 1]; yx += blockDim.x) {
-    int y = row_A[yx];
-    if (blockIdx.x + col_offset == y) {
-      A_lis_diag[blockIdx.x] = A_ptr + stride * yx;
-      ARS_lis[blockIdx.x] = A_ptr + stride * yx + R_dim;
-      ASS_lis[blockIdx.x] = A_ptr + stride * yx + (size_t)(N_dim + 1) * R_dim;
+  for (int x = blockIdx.x; x < N_cols; x += gridDim.x) {
+    for (int yx = col_A[x] + threadIdx.x; yx < col_A[x + 1]; yx += blockDim.x) {
+      int y = row_A[yx];
+      if (x + col_offset == y) {
+        A_lis_diag[x] = A_ptr + stride * yx;
+        ARS_lis[x] = A_ptr + stride * yx + R_dim;
+        ASS_lis[x] = A_ptr + stride * yx + (size_t)(N_dim + 1) * R_dim;
+      }
+  
+      U_lis[yx] = U_ptr + stride * y;
+      V_lis[yx] = UD_data + stride * x;
+      A_lis[yx] = A_ptr + stride * yx;
+      B_lis[yx] = B_data + stride * yx;
     }
-
-    U_lis[yx] = U_ptr + stride * y;
-    V_lis[yx] = UD_data + stride * blockIdx.x;
-    A_lis[yx] = A_ptr + stride * yx;
-    B_lis[yx] = B_data + stride * yx;
-  }
-
-  if (threadIdx.x == 0) {
-    U_lis_diag[blockIdx.x] = U_ptr + stride * (blockIdx.x + col_offset);
-    D_lis[blockIdx.x] = B_data + stride * blockIdx.x;
-    UD_lis[blockIdx.x] = UD_data + stride * blockIdx.x;
+  
+    if (threadIdx.x == 0) {
+      U_lis_diag[x] = U_ptr + stride * (x + col_offset);
+      D_lis[x] = B_data + stride * x;
+      UD_lis[x] = UD_data + stride * x;
+    }
   }
 }
 
-__global__ void diag_process_kernel(double* D_data) {
-  int stride_m = blockDim.x * blockDim.x;
-  int stride_row = blockDim.x + 1;
-  double* data = D_data + stride_m * blockIdx.x + stride_row * threadIdx.x;
-  if (*data == 0.)
-    *data = 1.;
+__global__ void diag_process_kernel(double* D_data, int N_dim, int N) {
+  int stride_m = N_dim * N_dim;
+  int stride_row = N_dim + 1;
+  int rem = N_dim % 8;
+  int N_dim_rem = N_dim - rem;
+
+  for (int b = blockIdx.x; b < N; b += gridDim.x) {
+    double* data = D_data + stride_m * b;
+    for (int i = threadIdx.x * 8; i < N_dim_rem; i += blockDim.x * 8)
+      for (int n = 0; n < 8; n++) {
+        int loc = (i + n) * stride_row;
+        double d = data[loc];
+        d = (d == 0.) ? 1. : d;
+        data[loc] = d;
+      }
+  
+    if (threadIdx.x < rem) {
+      int loc = (N_dim_rem + threadIdx.x) * stride_row; 
+      double d = data[loc];
+      d = (d == 0.) ? 1. : d;
+      data[loc] = d;
+    }
+  }
 }
 
 void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_ptr, int N_cols, int col_offset, const int row_A[], const int col_A[]) {
@@ -148,7 +167,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
 
   cudaMemcpyAsync((void*)info_array, (void*)col_A, sizeof(int) * (N_cols + 1), cudaMemcpyHostToDevice);
   cudaMemcpyAsync((void*)row_arr, (void*)row_A, sizeof(int) * NNZ, cudaMemcpyHostToDevice);
-  args_kernel<<<N_cols, 256, 0, stream>>>(R_dim, S_dim, U_ptr, A_ptr, N_cols, col_offset, row_arr, info_array,
+  args_kernel<<<8, 256, 0, stream>>>(R_dim, S_dim, U_ptr, A_ptr, N_cols, col_offset, row_arr, info_array,
     UD_data, B_data, A_lis_diag, U_lis_diag, U_lis, V_lis, ARS_lis, D_lis, UD_lis, A_lis, B_lis, ASS_lis);
 
   double one = 1., zero = 0., minus_one = -1.;
@@ -158,7 +177,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
     U_lis_diag, N_dim, (const double**)UD_lis, N_dim, &zero, D_lis, N_dim, N_cols);
   cublasDcopy(cublasH, stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
 
-  diag_process_kernel<<<N_cols, N_dim, 0, stream>>>(B_data);
+  diag_process_kernel<<<8, 256, 0, stream>>>(B_data, N_dim, N_cols);
   cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R_dim, D_lis, N_dim, info_array, N_cols);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
     N_dim, R_dim, &one, D_lis, N_dim, UD_lis, N_dim, N_cols);
