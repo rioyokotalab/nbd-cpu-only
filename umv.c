@@ -125,58 +125,6 @@ void node_free(struct Node* node) {
   free(node->A);
 }
 
-void factorNode(struct Matrix* A_cc, struct Matrix* A_oc, struct Matrix* A_oo, struct Matrix* A, const struct Matrix* Uc, const struct Matrix* Uo, const struct CSC* rels, const struct CellComm* comm) {
-  int64_t ibegin = 0, iend = 0;
-  self_local_range(&ibegin, &iend, comm);
-  int64_t llen = 0;
-  content_length(&llen, comm);
-
-  int64_t nnz = rels->ColIndex[rels->N];
-  int64_t dimc_max = 0, dimr_max = 0;
-
-  for (int64_t i = 0; i < llen; i++) {
-    int64_t dimc = Uc[i].N;
-    int64_t dimr = Uo[i].N;
-    dimc_max = dimc_max < dimc ? dimc : dimc_max;
-    dimr_max = dimr_max < dimr ? dimr : dimr_max;
-  }
-
-  int64_t dim_batch = dimc_max + dimr_max;
-  double* A_data, *U_data;
-  alloc_matrices_aligned(&A_data, dim_batch, dim_batch, nnz);
-  alloc_matrices_aligned(&U_data, dim_batch, dim_batch, llen);
-
-  int64_t ld_batch_mat = dim_batch * dim_batch;
-  int col_A[rels->N + 1], row_A[nnz];
-  for (int64_t x = 0; x < rels->N; x++) {
-    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      int64_t y = rels->RowIndex[yx];
-      copy_mat('S', A[yx].A, A_data + yx * ld_batch_mat, A[yx].M, A[yx].N, A[yx].LDA, dim_batch, dim_batch, dim_batch);
-      row_A[yx] = y;
-    }
-    col_A[x] = rels->ColIndex[x];
-  }
-  col_A[rels->N] = nnz;
-
-  for (int64_t i = 0; i < llen; i++)
-    copy_basis('S', Uc[i].A, Uo[i].A, U_data + i * ld_batch_mat, Uc[i].N, Uo[i].N, dimc_max, dimr_max, Uc[i].LDA, dim_batch);
-  batch_cholesky_factor(dimc_max, dimr_max, U_data, A_data, rels->N, ibegin, row_A, col_A);
-
-  for (int64_t x = 0; x < rels->N; x++)
-    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      double* A_ptr = A_data + yx * ld_batch_mat;
-      copy_mat('G', A_ptr, A_cc[yx].A, dimc_max, dimc_max, dim_batch, A_cc[yx].M, A_cc[yx].N, A_cc[yx].LDA);
-      copy_mat('G', A_ptr + dimc_max, A_oc[yx].A, dimr_max, dimc_max, dim_batch, A_oc[yx].M, A_oc[yx].N, A_oc[yx].LDA);
-      copy_mat('G', A_ptr + dim_batch * dimc_max + dimc_max, A_oo[yx].A, dimr_max, dimr_max, dim_batch, A_oo[yx].M, A_oo[yx].N, A_oo[yx].LDA);
-    }
-
-  sync_batch_lib();
-  free_matrices(A_data);
-  free_matrices(U_data);
-#ifdef _PROF
-  record_factor_flops(dimc_max, dimr_max, nnz, rels->N);
-#endif
-}
 
 void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
 #ifdef _PROF
@@ -192,13 +140,56 @@ void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
 #endif
 }
 
-void factorA(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CellComm comm[], int64_t levels) {
+void factorA(struct Node A[], const struct Base basis[], const struct CSC rels[], const struct CellComm comm[], int64_t levels) {
   for (int64_t i = levels; i > 0; i--) {
-    factorNode(A[i].A_cc, A[i].A_oc, A[i].A_oo, A[i].A, basis[i].Uc, basis[i].Uo, &rels_near[i], &comm[i]);
+    int64_t ibegin = 0, iend = 0;
+    self_local_range(&ibegin, &iend, &comm[i]);
+    int64_t llen = basis[i].Ulen;
+
+    int64_t nnz = rels[i].ColIndex[rels[i].N];
+    int64_t dimc_max = 0, dimr_max = 0;
+
+    for (int64_t x = 0; x < llen; x++) {
+      int64_t dimc = basis[i].Uc[x].N;
+      int64_t dimr = basis[i].Uo[x].N;
+      dimc_max = dimc_max < dimc ? dimc : dimc_max;
+      dimr_max = dimr_max < dimr ? dimr : dimr_max;
+    }
+
+    int64_t dim_batch = dimc_max + dimr_max;
+    double* A_data, *U_data;
+    alloc_matrices_aligned(&A_data, dim_batch, dim_batch, nnz);
+    alloc_matrices_aligned(&U_data, dim_batch, dim_batch, llen);
+
+    int64_t ld_batch_mat = dim_batch * dim_batch;
+    for (int64_t x = 0; x < rels[i].N; x++)
+      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++)
+        copy_mat('S', A[i].A[yx].A, A_data + yx * ld_batch_mat, A[i].A[yx].M, A[i].A[yx].N, A[i].A[yx].LDA, dim_batch, dim_batch, dim_batch);
+
+    for (int64_t x = 0; x < llen; x++)
+      copy_basis('S', basis[i].Uc[x].A, basis[i].Uo[x].A, U_data + x * ld_batch_mat, basis[i].Uc[x].N, basis[i].Uo[x].N, dimc_max, dimr_max, basis[i].Uc[x].LDA, dim_batch);
+    batch_cholesky_factor(dimc_max, dimr_max, U_data, A_data, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex);
+
+    for (int64_t x = 0; x < rels[i].N; x++)
+      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
+        double* A_ptr = A_data + yx * ld_batch_mat;
+        copy_mat('G', A_ptr, A[i].A_cc[yx].A, dimc_max, dimc_max, dim_batch, A[i].A_cc[yx].M, A[i].A_cc[yx].N, A[i].A_cc[yx].LDA);
+        copy_mat('G', A_ptr + dimc_max, A[i].A_oc[yx].A, dimr_max, dimc_max, dim_batch, A[i].A_oc[yx].M, A[i].A_oc[yx].N, A[i].A_oc[yx].LDA);
+        copy_mat('G', A_ptr + dim_batch * dimc_max + dimc_max, A[i].A_oo[yx].A, dimr_max, dimr_max, dim_batch, A[i].A_oo[yx].M, A[i].A_oo[yx].N, A[i].A_oo[yx].LDA);
+      }
+
+    sync_batch_lib();
+    free_matrices(A_data);
+    free_matrices(U_data);
+
     int64_t inxt = i - 1;
-    int64_t alst = rels_near[inxt].ColIndex[rels_near[inxt].N] - 1;
+    int64_t alst = rels[inxt].ColIndex[rels[inxt].N] - 1;
     int64_t alen = (int64_t)(A[inxt].A[alst].A - A[inxt].A[0].A) + A[inxt].A[alst].M * A[inxt].A[alst].N;
     merge_double(A[inxt].A[0].A, alen, &comm[inxt]);
+
+#ifdef _PROF
+    record_factor_flops(dimc_max, dimr_max, nnz, rels[i].N);
+#endif
   }
   chol_decomp(&A[0].A[0]);
 }

@@ -33,12 +33,12 @@ void init_batch_lib();
 void finalize_batch_lib();
 void sync_batch_lib();
 
-void alloc_matrices_aligned(double** A_ptr, int M, int N, int count);
+void alloc_matrices_aligned(double** A_ptr, int64_t M, int64_t N, int64_t count);
 void free_matrices(double* A_ptr);
-void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int IR_dim, int IS_dim, int OR_dim, int OS_dim, int ldu_in, int ldu_out);
-void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, int lda_in, int M_out, int N_out, int lda_out);
+void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int64_t IR_dim, int64_t IS_dim, int64_t OR_dim, int64_t OS_dim, int64_t ldu_in, int64_t ldu_out);
+void copy_mat(char dir, const double* A_in, double* A_out, int64_t M_in, int64_t N_in, int64_t lda_in, int64_t M_out, int64_t N_out, int64_t lda_out);
 
-void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_ptr, int N_cols, int col_offset, const int row_A[], const int col_A[]);
+void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]);
 
 struct Body { double X[3], B; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };

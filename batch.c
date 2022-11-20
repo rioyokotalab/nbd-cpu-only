@@ -11,8 +11,8 @@ void finalize_batch_lib() { }
 
 void sync_batch_lib() { }
 
-void alloc_matrices_aligned(double** A_ptr, int M, int N, int count) {
-  size_t stride = (size_t)M * N;
+void alloc_matrices_aligned(double** A_ptr, int64_t M, int64_t N, int64_t count) {
+  int64_t stride = M * N;
   *A_ptr = (double*)MKL_calloc(count * stride, sizeof(double), ALIGN);
 }
 
@@ -20,17 +20,17 @@ void free_matrices(double* A_ptr) {
   MKL_free(A_ptr);
 }
 
-void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int IR_dim, int IS_dim, int OR_dim, int OS_dim, int ldu_in, int ldu_out) {
+void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int64_t IR_dim, int64_t IS_dim, int64_t OR_dim, int64_t OS_dim, int64_t ldu_in, int64_t ldu_out) {
   if (dir == 'G' || dir == 'S') {
     IR_dim = IR_dim < OR_dim ? IR_dim : OR_dim;
     IS_dim = IS_dim < OS_dim ? IS_dim : OS_dim;
-    int n_in = IR_dim + IS_dim;
+    int64_t n_in = IR_dim + IS_dim;
     MKL_Domatcopy('C', 'N', n_in, IR_dim, 1., Ur_in, ldu_in, U_out, ldu_out);
-    MKL_Domatcopy('C', 'N', n_in, IS_dim, 1., Us_in, ldu_in, U_out + (size_t)OR_dim * ldu_out, ldu_out);
+    MKL_Domatcopy('C', 'N', n_in, IS_dim, 1., Us_in, ldu_in, U_out + OR_dim * ldu_out, ldu_out);
   }
 }
 
-void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, int lda_in, int M_out, int N_out, int lda_out) {
+void copy_mat(char dir, const double* A_in, double* A_out, int64_t M_in, int64_t N_in, int64_t lda_in, int64_t M_out, int64_t N_out, int64_t lda_out) {
   if (dir == 'G' || dir == 'S') {
     M_in = M_in < M_out ? M_in : M_out;
     N_in = N_in < N_out ? N_in : N_out;
@@ -38,10 +38,10 @@ void copy_mat(char dir, const double* A_in, double* A_out, int M_in, int N_in, i
   }
 }
 
-void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_ptr, int N_cols, int col_offset, const int row_A[], const int col_A[]) {
-  int N_dim = R_dim + S_dim;
-  int NNZ = col_A[N_cols] - col_A[0];
-  size_t stride = (size_t)N_dim * N_dim;
+void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]) {
+  int64_t N_dim = R_dim + S_dim;
+  int64_t NNZ = col_A[N_cols] - col_A[0];
+  int64_t stride = N_dim * N_dim;
 
   const double** A_lis_diag = (const double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
   const double** U_lis_diag = (const double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
@@ -58,10 +58,10 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
   double* UD_data = (double*)MKL_malloc(sizeof(double) * N_cols * stride, ALIGN);
   double* B_data = (double*)MKL_malloc(sizeof(double) * NNZ * stride, ALIGN);
 
-  for (int x = 0; x < N_cols; x++) {
-    int diag_id = 0;
-    for (int yx = col_A[x]; yx < col_A[x + 1]; yx++) {
-      int y = row_A[yx];
+  for (int64_t x = 0; x < N_cols; x++) {
+    int64_t diag_id = 0;
+    for (int64_t yx = col_A[x]; yx < col_A[x + 1]; yx++) {
+      int64_t y = row_A[yx];
       if (x + col_offset == y)
         diag_id = yx;
       U_lis[yx] = U_ptr + stride * y;
@@ -75,7 +75,7 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
     ARS_lis[x] = A_ptr + stride * diag_id + R_dim;
     D_lis[x] = B_data + stride * x;
     UD_lis[x] = UD_data + stride * x;
-    ASS_lis[x] = A_ptr + stride * diag_id + (size_t)(N_dim + 1) * R_dim;
+    ASS_lis[x] = A_ptr + stride * diag_id + (N_dim + 1) * R_dim;
   }
 
   CBLAS_SIDE right = CblasRight;
@@ -93,8 +93,8 @@ void batch_cholesky_factor(int R_dim, int S_dim, const double* U_ptr, double* A_
     U_lis_diag, &N_dim, (const double**)UD_lis, &N_dim, &zero, D_lis, &N_dim, 1, &N_cols);
   cblas_dcopy(stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
 
-  for (int i = 0; i < N_cols; i++) {
-    int info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_dim);
+  for (int64_t i = 0; i < N_cols; i++) {
+    int64_t info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_dim);
     if (info > 0)
       cblas_dcopy(R_dim - info + 1, &one, 0, D_lis[i] + (N_dim + 1) * (info - 1), N_dim + 1);
   }
