@@ -7,24 +7,54 @@
 #include "math.h"
 
 void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
+  const int alignment = 16;
+  int64_t* dim_max = (int64_t*)malloc(sizeof(int64_t) * (levels + 1) * 2);
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t ibegin = 0, iend = 0;
+    self_local_range(&ibegin, &iend, &comm[i]);
+    int64_t dimc_max = 0, dimr_max = 0;
+    for (int64_t x = ibegin; x < iend; x++) {
+      int64_t dimr = basis[i].DimsLr[x];
+      int64_t dimc = basis[i].Dims[x] - dimr;
+      dimc_max = dimc_max < dimc ? dimc : dimc_max;
+      dimr_max = dimr_max < dimr ? dimr : dimr_max;
+    }
+    int64_t dimc_rem = dimc_max & (alignment - 1);
+    int64_t dimr_rem = dimr_max & (alignment - 1);
+    dim_max[i * 2] = dimc_max - dimc_rem + (dimc_rem ? alignment : 0);
+    dim_max[i * 2 + 1] = dimr_max - dimr_rem + (dimr_rem ? alignment : 0);
+  }
+  MPI_Allreduce(MPI_IN_PLACE, dim_max, (levels + 1) * 2, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
+
   for (int64_t i = 0; i <= levels; i++) {
     int64_t n_i = rels_near[i].N;
     int64_t nnz = rels_near[i].ColIndex[n_i];
     int64_t nnz_f = rels_far[i].ColIndex[n_i];
-    int64_t len_arr = nnz * 4 + nnz_f;
+    int64_t llen = basis[i].Ulen;
+    int64_t len_arr = nnz * 3 + nnz_f;
+
     struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
+    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * nnz * 3);
     A[i].A = arr_m;
     A[i].A_cc = &arr_m[nnz];
     A[i].A_oc = &arr_m[nnz * 2];
-    A[i].A_oo = &arr_m[nnz * 3];
-    A[i].S = &arr_m[nnz * 4];
+    A[i].S = &arr_m[nnz * 3];
     A[i].lenA = nnz;
     A[i].lenS = nnz_f;
+    A[i].dimR = dim_max[i * 2];
+    A[i].dimS = dim_max[i * 2 + 1];
+    A[i].A_i = arr_i;
+    A[i].A_y = &arr_i[nnz];
+    A[i].A_x = &arr_i[nnz * 2];
+
+    int64_t dimn = A[i].dimR + A[i].dimS;
+    int64_t stride = dimn * dimn;
+    alloc_matrices_aligned(&A[i].A_ptr, &A[i].A_buf, dimn, dimn, nnz);
+    alloc_matrices_aligned(&A[i].U_ptr, &A[i].U_buf, dimn, dimn, llen);
 
     int64_t nloc = 0, nend = 0;
     self_local_range(&nloc, &nend, &comm[i]);
 
-    int64_t count = 0;
     for (int64_t x = 0; x < rels_near[i].N; x++) {
       int64_t box_x = nloc + x;
       int64_t dim_x = basis[i].Dims[box_x];
@@ -36,41 +66,21 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
         int64_t dim_y = basis[i].Dims[y];
         int64_t diml_y = basis[i].DimsLr[y];
         int64_t dimc_y = dim_y - diml_y;
-        arr_m[yx].M = dim_y; // A
-        arr_m[yx].N = dim_x;
-        arr_m[yx].LDA = dim_y;
-        arr_m[yx + nnz].M = dimc_y; // A_cc
-        arr_m[yx + nnz].N = dimc_x;
-        arr_m[yx + nnz].LDA = dim_y;
-        arr_m[yx + nnz * 2].M = diml_y; // A_oc
-        arr_m[yx + nnz * 2].N = dimc_x;
-        arr_m[yx + nnz * 2].LDA = dim_y;
-        arr_m[yx + nnz * 3].M = diml_y; // A_oo
-        arr_m[yx + nnz * 3].N = diml_x;
-        count += dim_y * dim_x;
+        arr_m[yx] = (struct Matrix) { A[i].A_buf + yx * stride, dim_y, dim_x, dimn }; // A
+        arr_m[yx + nnz] = (struct Matrix) { A[i].A_buf + yx * stride, dimc_y, dimc_x, dimn }; // A_cc
+        arr_m[yx + nnz * 2] = (struct Matrix) { A[i].A_buf + yx * stride + A[i].dimR, diml_y, dimc_x, dimn }; // A_oc
       }
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
         int64_t y = rels_far[i].RowIndex[yx];
         int64_t diml_y = basis[i].DimsLr[y];
-        arr_m[yx + nnz * 4].M = diml_y; // S
-        arr_m[yx + nnz * 4].N = diml_x;
+        arr_m[yx + nnz * 3] = (struct Matrix) { NULL, diml_y, diml_x, 0 }; // S
       }
     }
 
-    double* data = NULL;
-    if (count > 0)
-      data = (double*)calloc(count, sizeof(double));
-    
-    for (int64_t x = 0; x < nnz; x++) {
-      int64_t dim_y = arr_m[x].M;
-      int64_t dim_x = arr_m[x].N;
-      int64_t dimc_y = arr_m[x + nnz].M;
-      arr_m[x].A = data; // A
-      arr_m[x + nnz].A = data; // A_cc
-      arr_m[x + nnz * 2].A = data + dimc_y; // A_oc
-      data = data + dim_y * dim_x;
-    }
+    for (int64_t x = 0; x < llen; x++)
+      copy_basis(basis[i].Uc[x].A, basis[i].Uo[x].A, A[i].U_buf + x * stride, basis[i].Uc[x].N, basis[i].Uo[x].N, A[i].dimR, A[i].dimS, basis[i].Uc[x].LDA, dimn);
+    flush_buffer('S', A[i].U_ptr, A[i].U_buf, stride * llen);
 
     if (i > 0) {
       const struct CSC* rels_up = &rels_near[i - 1];
@@ -81,50 +91,53 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
       self_local_range(&ploc, &pend, &comm[i - 1]);
       int64_t offset_x[2] = {0};
       int64_t offset_y[2] = {0};
+      const int64_t NCHILD = 2;
 
       for (int64_t j = 0; j < rels_up->N; j++) {
         int64_t lj = j + ploc;
         int64_t cj = lchild[lj];
         int64_t x0 = cj - nloc;
-        for (int64_t x = 0; x < 1; x++)
+        for (int64_t x = 0; x < NCHILD - 1; x++)
           offset_x[x + 1] = offset_x[x] + dims_lr[x + cj];
 
         for (int64_t ij = rels_up->ColIndex[j]; ij < rels_up->ColIndex[j + 1]; ij++) {
           int64_t li = rels_up->RowIndex[ij];
           int64_t y0 = lchild[li];
-          for (int64_t y = 0; y < 1; y++)
+          for (int64_t y = 0; y < NCHILD - 1; y++)
             offset_y[y + 1] = offset_y[y] + dims_lr[y + y0];
 
-          for (int64_t x = 0; x < 2; x++)
+          for (int64_t x = 0; x < NCHILD; x++)
             if ((x + x0) >= 0 && (x + x0) < rels_near[i].N)
               for (int64_t yx = rels_near[i].ColIndex[x + x0]; yx < rels_near[i].ColIndex[x + x0 + 1]; yx++)
-                for (int64_t y = 0; y < 2; y++)
+                for (int64_t y = 0; y < NCHILD; y++)
                   if (rels_near[i].RowIndex[yx] == (y + y0)) {
-                    arr_m[yx + nnz * 3].A = Mup[ij].A + Mup[ij].LDA * offset_x[x] + offset_y[y];
-                    arr_m[yx + nnz * 3].LDA = Mup[ij].LDA;
+                    arr_i[yx] = ij;
+                    arr_i[yx + nnz] = offset_y[y];
+                    arr_i[yx + nnz * 2] = offset_x[x];
                   }
           
-          for (int64_t x = 0; x < 2; x++)
+          for (int64_t x = 0; x < NCHILD; x++)
             if ((x + x0) >= 0 && (x + x0) < rels_far[i].N)
               for (int64_t yx = rels_far[i].ColIndex[x + x0]; yx < rels_far[i].ColIndex[x + x0 + 1]; yx++)
-                for (int64_t y = 0; y < 2; y++)
+                for (int64_t y = 0; y < NCHILD; y++)
                   if (rels_far[i].RowIndex[yx] == (y + y0)) {
-                    arr_m[yx + nnz * 4].A = Mup[ij].A + Mup[ij].LDA * offset_x[x] + offset_y[y];
-                    arr_m[yx + nnz * 4].LDA = Mup[ij].LDA;
+                    arr_m[yx + nnz * 3].A = Mup[ij].A + Mup[ij].LDA * offset_x[x] + offset_y[y];
+                    arr_m[yx + nnz * 3].LDA = Mup[ij].LDA;
                   }
         }
       }
     }
   }
+
+  free(dim_max);
 }
 
 void node_free(struct Node* node) {
-  double* data = node->A[0].A;
-  if (data)
-    free(data);
+  free_matrices(node->A_ptr, node->A_buf);
+  free_matrices(node->U_ptr, node->U_buf);
   free(node->A);
+  free(node->A_i);
 }
-
 
 void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
 #ifdef _PROF
@@ -140,58 +153,39 @@ void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
 #endif
 }
 
+void factorA_mov_mem(char dir, struct Node A[], int64_t levels) {
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t stride = (A[i].dimR + A[i].dimS) * (A[i].dimR + A[i].dimS);
+    flush_buffer(dir, A[i].A_ptr, A[i].A_buf, stride * A[i].lenA);
+  }
+}
+
 void factorA(struct Node A[], const struct Base basis[], const struct CSC rels[], const struct CellComm comm[], int64_t levels) {
+
   for (int64_t i = levels; i > 0; i--) {
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
     int64_t llen = basis[i].Ulen;
-
     int64_t nnz = rels[i].ColIndex[rels[i].N];
-    int64_t dimc_max = 0, dimr_max = 0;
+    int64_t dimc = A[i].dimR;
+    int64_t dimr = A[i].dimS;
 
-    for (int64_t x = 0; x < llen; x++) {
-      int64_t dimc = basis[i].Uc[x].N;
-      int64_t dimr = basis[i].Uo[x].N;
-      dimc_max = dimc_max < dimc ? dimc : dimc_max;
-      dimr_max = dimr_max < dimr ? dimr : dimr_max;
-    }
+    double** A_next = (double**)malloc(sizeof(double*) * nnz);
+    int64_t n_next = A[i - 1].dimR + A[i - 1].dimS;
+    int64_t nnz_next = rels[i - 1].ColIndex[rels[i - 1].N];
 
-    int64_t dim_batch = dimc_max + dimr_max;
-    double* A_data, *U_data;
-    alloc_matrices_aligned(&A_data, dim_batch, dim_batch, nnz);
-    alloc_matrices_aligned(&U_data, dim_batch, dim_batch, llen);
+    for (int64_t x = 0; x < nnz; x++)
+      A_next[x] = A[i - 1].A_ptr + ((A[i].A_i[x] * n_next + A[i].A_x[x]) * n_next + A[i].A_y[x]);
 
-    int64_t ld_batch_mat = dim_batch * dim_batch;
-    for (int64_t x = 0; x < rels[i].N; x++)
-      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++)
-        copy_mat('S', A[i].A[yx].A, A_data + yx * ld_batch_mat, A[i].A[yx].M, A[i].A[yx].N, A[i].A[yx].LDA, dim_batch, dim_batch, dim_batch);
+    batch_cholesky_factor(dimc, dimr, A[i].U_ptr, A[i].A_ptr, n_next, A_next, llen, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex, basis[i].DimsLr);
 
-    for (int64_t x = 0; x < llen; x++)
-      copy_basis('S', basis[i].Uc[x].A, basis[i].Uo[x].A, U_data + x * ld_batch_mat, basis[i].Uc[x].N, basis[i].Uo[x].N, dimc_max, dimr_max, basis[i].Uc[x].LDA, dim_batch);
-    batch_cholesky_factor(dimc_max, dimr_max, U_data, A_data, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex);
-
-    for (int64_t x = 0; x < rels[i].N; x++)
-      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
-        double* A_ptr = A_data + yx * ld_batch_mat;
-        copy_mat('G', A_ptr, A[i].A_cc[yx].A, dimc_max, dimc_max, dim_batch, A[i].A_cc[yx].M, A[i].A_cc[yx].N, A[i].A_cc[yx].LDA);
-        copy_mat('G', A_ptr + dimc_max, A[i].A_oc[yx].A, dimr_max, dimc_max, dim_batch, A[i].A_oc[yx].M, A[i].A_oc[yx].N, A[i].A_oc[yx].LDA);
-        copy_mat('G', A_ptr + dim_batch * dimc_max + dimc_max, A[i].A_oo[yx].A, dimr_max, dimr_max, dim_batch, A[i].A_oo[yx].M, A[i].A_oo[yx].N, A[i].A_oo[yx].LDA);
-      }
-
-    sync_batch_lib();
-    free_matrices(A_data);
-    free_matrices(U_data);
-
-    int64_t inxt = i - 1;
-    int64_t alst = rels[inxt].ColIndex[rels[inxt].N] - 1;
-    int64_t alen = (int64_t)(A[inxt].A[alst].A - A[inxt].A[0].A) + A[inxt].A[alst].M * A[inxt].A[alst].N;
-    merge_double(A[inxt].A[0].A, alen, &comm[inxt]);
-
+    merge_double(A[i - 1].A_ptr, n_next * n_next * nnz_next, &comm[i - 1]);
+    free(A_next);
 #ifdef _PROF
-    record_factor_flops(dimc_max, dimr_max, nnz, rels[i].N);
+    record_factor_flops(dimc, dimr, nnz, rels[i].N);
 #endif
   }
-  chol_decomp(&A[0].A[0]);
+  chol_decomp(A[0].A_ptr, A[0].dimR);
 }
 
 void allocRightHandSides(char mvsv, struct RightHandSides rhs[], const struct Base base[], int64_t levels) {

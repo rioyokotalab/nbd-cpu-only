@@ -15,8 +15,6 @@ void mat_cpy(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, i
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 
-void chol_decomp(struct Matrix* A);
-
 void svd_U(struct Matrix* A, double* S);
 
 void id_row(struct Matrix* A, int32_t arows[], double* work);
@@ -31,21 +29,22 @@ void scal_A(struct Matrix* A, double alpha);
 
 void init_batch_lib();
 void finalize_batch_lib();
-void sync_batch_lib();
 
-void alloc_matrices_aligned(double** A_ptr, int64_t M, int64_t N, int64_t count);
-void free_matrices(double* A_ptr);
-void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int64_t IR_dim, int64_t IS_dim, int64_t OR_dim, int64_t OS_dim, int64_t ldu_in, int64_t ldu_out);
-void copy_mat(char dir, const double* A_in, double* A_out, int64_t M_in, int64_t N_in, int64_t lda_in, int64_t M_out, int64_t N_out, int64_t lda_out);
+void alloc_matrices_aligned(double** A_ptr, double** A_buffer, int64_t M, int64_t N, int64_t count);
+void flush_buffer(char dir, double* A_ptr, double* A_buffer, int64_t len);
+void free_matrices(double* A_ptr, double* A_buffer);
+void copy_basis(const double* Ur_in, const double* Us_in, double* U_out, int64_t IR_dim, int64_t IS_dim, int64_t OR_dim, int64_t OS_dim, int64_t ldu_in, int64_t ldu_out);
 
-void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]);
+void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
+  int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dims[]);
+void chol_decomp(double* A, int64_t N);
 
 struct Body { double X[3], B; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 struct CellComm { int64_t Proc[2], worldRank, worldSize, lenTargets, *ProcTargets, *ProcRootI, *ProcBoxes, *ProcBoxesEnd; MPI_Comm Comm_share, Comm_merge, *Comm_box; };
 struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, *Offsets, *Multipoles; struct Matrix *Uo, *Uc, *R; };
-struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; };
+struct Node { int64_t lenA, lenS, dimR, dimS, *A_i, *A_y, *A_x; struct Matrix *A, *S, *A_cc, *A_oc; double* A_ptr, *A_buf, *U_ptr, *U_buf; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
 
 void laplace3d(double* r2);
@@ -115,6 +114,8 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
 void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
 void node_free(struct Node* node);
+
+void factorA_mov_mem(char dir, struct Node A[], int64_t levels);
 
 void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CellComm comm[], int64_t levels);
 

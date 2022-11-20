@@ -9,36 +9,30 @@ void init_batch_lib() { }
 
 void finalize_batch_lib() { }
 
-void sync_batch_lib() { }
-
-void alloc_matrices_aligned(double** A_ptr, int64_t M, int64_t N, int64_t count) {
+void alloc_matrices_aligned(double** A_ptr, double** A_buffer, int64_t M, int64_t N, int64_t count) {
   int64_t stride = M * N;
   *A_ptr = (double*)MKL_calloc(count * stride, sizeof(double), ALIGN);
+  *A_buffer = *A_ptr;
 }
 
-void free_matrices(double* A_ptr) {
+void flush_buffer(char dir, double* A_ptr, double* A_buffer, int64_t len) { }
+
+void free_matrices(double* A_ptr, double* A_buffer) {
   MKL_free(A_ptr);
 }
 
-void copy_basis(char dir, const double* Ur_in, const double* Us_in, double* U_out, int64_t IR_dim, int64_t IS_dim, int64_t OR_dim, int64_t OS_dim, int64_t ldu_in, int64_t ldu_out) {
-  if (dir == 'G' || dir == 'S') {
-    IR_dim = IR_dim < OR_dim ? IR_dim : OR_dim;
-    IS_dim = IS_dim < OS_dim ? IS_dim : OS_dim;
-    int64_t n_in = IR_dim + IS_dim;
-    MKL_Domatcopy('C', 'N', n_in, IR_dim, 1., Ur_in, ldu_in, U_out, ldu_out);
-    MKL_Domatcopy('C', 'N', n_in, IS_dim, 1., Us_in, ldu_in, U_out + OR_dim * ldu_out, ldu_out);
-  }
+void copy_basis(const double* Ur_in, const double* Us_in, double* U_out, int64_t IR_dim, int64_t IS_dim, int64_t OR_dim, int64_t OS_dim, int64_t ldu_in, int64_t ldu_out) {
+  IR_dim = IR_dim < OR_dim ? IR_dim : OR_dim;
+  IS_dim = IS_dim < OS_dim ? IS_dim : OS_dim;
+  int64_t n_in = IR_dim + IS_dim;
+  MKL_Domatcopy('C', 'N', n_in, IR_dim, 1., Ur_in, ldu_in, U_out, ldu_out);
+  MKL_Domatcopy('C', 'N', n_in, IS_dim, 1., Us_in, ldu_in, U_out + OR_dim * ldu_out, ldu_out);
 }
 
-void copy_mat(char dir, const double* A_in, double* A_out, int64_t M_in, int64_t N_in, int64_t lda_in, int64_t M_out, int64_t N_out, int64_t lda_out) {
-  if (dir == 'G' || dir == 'S') {
-    M_in = M_in < M_out ? M_in : M_out;
-    N_in = N_in < N_out ? N_in : N_out;
-    MKL_Domatcopy('C', 'N', M_in, N_in, 1., A_in, lda_in, A_out, lda_out);
-  }
-}
-
-void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]) {
+void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
+  int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dims[]) {
+  
+  *(&N_rows) = -1; // not used param to get rid of warning.
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
@@ -86,11 +80,16 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   double one = 1.;
   double zero = 0.;
   double minus_one = -1.;
+  MKL_INT N = N_dim;
+  MKL_INT R = R_dim;
+  MKL_INT S = S_dim;
+  MKL_INT D = N_cols;
+  MKL_INT Z = NNZ;
 
-  cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N_dim, &R_dim, &N_dim, &one, 
-    A_lis_diag, &N_dim, U_lis_diag, &N_dim, &zero, UD_lis, &N_dim, 1, &N_cols);
-  cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &R_dim, &R_dim, &N_dim, &one, 
-    U_lis_diag, &N_dim, (const double**)UD_lis, &N_dim, &zero, D_lis, &N_dim, 1, &N_cols);
+  cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N, &R, &N, &one, 
+    A_lis_diag, &N, U_lis_diag, &N, &zero, UD_lis, &N, 1, &D);
+  cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &R, &R, &N, &one, 
+    U_lis_diag, &N, (const double**)UD_lis, &N, &zero, D_lis, &N, 1, &D);
   cblas_dcopy(stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
 
   for (int64_t i = 0; i < N_cols; i++) {
@@ -98,15 +97,25 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
     if (info > 0)
       cblas_dcopy(R_dim - info + 1, &one, 0, D_lis[i] + (N_dim + 1) * (info - 1), N_dim + 1);
   }
-  cblas_dtrsm_batch(CblasColMajor, &right, &lower, &trans, &non_unit, &N_dim, &R_dim, &one, 
-    (const double**)D_lis, &N_dim, UD_lis, &N_dim, 1, &N_cols);
+  cblas_dtrsm_batch(CblasColMajor, &right, &lower, &trans, &non_unit, &N, &R, &one, 
+    (const double**)D_lis, &N, UD_lis, &N, 1, &D);
 
-  cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &N_dim, &N_dim, &N_dim, &one, 
-    U_lis, &N_dim, (const double**)A_lis, &N_dim, &zero, B_lis, &N_dim, 1, &NNZ);
-  cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N_dim, &N_dim, &N_dim, &one, 
-    (const double**)B_lis, &N_dim, V_lis, &N_dim, &zero, A_lis, &N_dim, 1, &NNZ);
-  cblas_dgemm_batch(CblasColMajor, &no_trans, &trans, &S_dim, &S_dim, &R_dim, &minus_one, 
-    ARS_lis, &N_dim, ARS_lis, &N_dim, &one, ASS_lis, &N_dim, 1, &N_cols);
+  cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &N, &N, &N, &one, 
+    U_lis, &N, (const double**)A_lis, &N, &zero, B_lis, &N, 1, &Z);
+  cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N, &N, &N, &one, 
+    (const double**)B_lis, &N, V_lis, &N, &zero, A_lis, &N, 1, &Z);
+  cblas_dgemm_batch(CblasColMajor, &no_trans, &trans, &S, &S, &R, &minus_one, 
+    ARS_lis, &N, ARS_lis, &N, &one, ASS_lis, &N, 1, &D);
+
+  for (int64_t x = 0; x < N_cols; x++)
+    for (int64_t yx = col_A[x]; yx < col_A[x + 1]; yx++) {
+      double* A = &A_ptr[yx * stride + (N_dim + 1) * R_dim];
+      double* B = A_up[yx];
+      int64_t y = row_A[yx];
+      int64_t m = dims[y];
+      int64_t n = dims[x + col_offset];
+      LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', m, n, A, N_dim, B, N_up);
+    }
 
   MKL_free(A_lis_diag);
   MKL_free(U_lis_diag);
@@ -124,3 +133,9 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   MKL_free(B_data);
 }
 
+void chol_decomp(double* A, int64_t N) {
+  double one = 1.;
+  int64_t info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', N, A, N);
+  if (info > 0)
+    cblas_dcopy(N - info + 1, &one, 0, A + (N + 1) * (info - 1), N + 1);
+}

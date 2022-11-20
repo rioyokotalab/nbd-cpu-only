@@ -85,10 +85,12 @@ int main(int argc, char* argv[]) {
   else 
     mat_vec_reference(ef, body_local[0], body_local[1], X1, Nbody, body);
   
+  factorA_mov_mem('S', nodes, levels);
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
   factorA(nodes, basis, rels_near, cell_comm, levels);
   stopTimer(&factor_time, &factor_comm_time);
+  factorA_mov_mem('G', nodes, levels);
 
   int64_t factor_flops;
   get_factor_flops(&factor_flops);

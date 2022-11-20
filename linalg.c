@@ -17,10 +17,6 @@ void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, str
   cblas_dgemm(CblasColMajor, tac, tbc, C->M, C->N, k, alpha, A->A, lda, B->A, ldb, beta, C->A, ldc);
 }
 
-void chol_decomp(struct Matrix* A) {
-  int64_t lda = 1 < A->LDA ? A->LDA : 1;
-  LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', A->M, A->A, lda);
-}
 
 void svd_U(struct Matrix* A, double* S) {
   int64_t rank_a = A->M < A->N ? A->M : A->N;
