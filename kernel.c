@@ -30,7 +30,7 @@ void set_kernel_constants(double singularity, double alpha) {
   _alpha = alpha;
 }
 
-void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]) {
+void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], int64_t lda, const int64_t sel_i[], const int64_t sel_j[]) {
   if (m > 0)
     for (int64_t x = 0; x < n; x++) {
       int64_t bx = sel_j == NULL ? x : sel_j[x];
@@ -42,13 +42,10 @@ void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi,
         double dY = bii[1] - bjj[1];
         double dZ = bii[2] - bjj[2];
         double r2 = dX * dX + dY * dY + dZ * dZ;
-        Aij[y + x * m] = r2;
+        ef(&r2);
+        Aij[y + x * lda] = r2;
       }
     }
-
-  int64_t len = m * n;
-  for (int64_t i = 0; i < len; i++)
-    ef(&Aij[i]);
 }
 
 void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsigned int seed) {

@@ -317,18 +317,18 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       int64_t ske_len = samples.SkeLens[i];
       int64_t len_s = samples.FarLens[i] + (samples.CloseLens[i] > 0 ? ske_len : 0);
       double* mat = matrix_ptrs[i + ibegin];
-      struct Matrix S = (struct Matrix){ mat, ske_len, len_s };
+      struct Matrix S = (struct Matrix){ mat, ske_len, len_s, ske_len };
 
-      struct Matrix S_dn = (struct Matrix){ mat, ske_len, ske_len };
+      struct Matrix S_dn = (struct Matrix){ mat, ske_len, ske_len, ske_len };
       double nrm_dn = 0.;
       double nrm_lr = 0.;
-      struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.CloseLens[i] };
-      gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, samples.Skeletons[i], samples.CloseBodies[i]);
+      struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.CloseLens[i], ske_len };
+      gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, S_dn_work.LDA, samples.Skeletons[i], samples.CloseBodies[i]);
       mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
       nrm2_A(&S_dn, &nrm_dn);
 
-      struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.FarLens[i] };
-      gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, samples.Skeletons[i], samples.FarBodies[i]);
+      struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.FarLens[i], ske_len };
+      gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, S_lr.LDA, samples.Skeletons[i], samples.FarBodies[i]);
       nrm2_A(&S_lr, &nrm_lr);
       double scale = (nrm_dn == 0. || nrm_lr == 0.) ? 1. : nrm_lr / nrm_dn;
       scal_A(&S_dn, scale);
@@ -348,7 +348,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       basis[l].DimsLr[i + ibegin] = rank;
       
       int32_t* pa = ipiv_ptrs[i];
-      struct Matrix Qo = (struct Matrix){ mat, ske_len, rank };
+      struct Matrix Qo = (struct Matrix){ mat, ske_len, rank, ske_len };
       id_row(&Qo, pa, S_dn_work.A);
 
       for (int64_t j = 0; j < rank; j++) {
@@ -361,8 +361,8 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       }
 
       if (rank > 0) {
-        struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len };
-        struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank };
+        struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len, ske_len };
+        struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank, rank };
         int64_t lc = basis[l].Lchild[i + ibegin];
         if (lc >= 0)
           upper_tri_reflec_mult('L', 2, &(basis[l + 1].R)[lc], &Qo);
@@ -403,9 +403,9 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       int64_t size = m * m + n * n;
       if (ibegin <= i && i < iend && size > 0)
         memcpy(data_basis, matrix_ptrs[i], sizeof(double) * size);
-      basis[l].Uo[i] = (struct Matrix){ data_basis, m, n };
-      basis[l].Uc[i] = (struct Matrix){ &data_basis[m * n], m, m - n };
-      basis[l].R[i] = (struct Matrix){ &data_basis[m * m], n, n };
+      basis[l].Uo[i] = (struct Matrix){ data_basis, m, n, m };
+      basis[l].Uc[i] = (struct Matrix){ &data_basis[m * n], m, m - n, m };
+      basis[l].R[i] = (struct Matrix){ &data_basis[m * m], n, n, n };
       matrix_ptrs[i] = data_basis;
       data_basis = &data_basis[size];
     }
@@ -444,7 +444,7 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
       int64_t y = rels->RowIndex[yx];
       int64_t m = basis->DimsLr[y];
       int64_t off_y = basis->Offsets[y];
-      gen_matrix(ef, m, n, bodies, bodies, S[yx].A, &multipoles[off_y], &multipoles[off_x]);
+      gen_matrix(ef, m, n, bodies, bodies, S[yx].A, S[yx].LDA, &multipoles[off_y], &multipoles[off_x]);
       upper_tri_reflec_mult('L', 1, &basis->R[y], &S[yx]);
       upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
     }

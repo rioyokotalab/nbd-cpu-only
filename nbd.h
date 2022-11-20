@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-struct Matrix { double* A; int64_t M, N; };
+struct Matrix { double* A; int64_t M, N, LDA; };
 
 void mat_cpy(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
 
@@ -54,7 +54,7 @@ void yukawa3d(double* r2);
 
 void set_kernel_constants(double singularity, double alpha);
 
-void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], const int64_t sel_i[], const int64_t sel_j[]);
+void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], int64_t lda, const int64_t sel_i[], const int64_t sel_j[]);
 
 void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsigned int seed);
 
@@ -116,7 +116,7 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
 
 void node_free(struct Node* node);
 
-void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
+void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CellComm comm[], int64_t levels);
 
 void allocRightHandSides(char mvsv, struct RightHandSides st[], const struct Base base[], int64_t levels);
 

@@ -87,7 +87,7 @@ int main(int argc, char* argv[]) {
   
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorA(nodes, basis, rels_near, rels_far, cell_comm, levels);
+  factorA(nodes, basis, rels_near, cell_comm, levels);
   stopTimer(&factor_time, &factor_comm_time);
 
   int64_t factor_flops;

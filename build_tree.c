@@ -484,7 +484,7 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
       const struct Cell* cj = &cells[lj];
       int64_t y_begin = cj->Body[0];
       int64_t m = cj->Body[1] - y_begin;
-      gen_matrix(ef, m, n, &bodies[y_begin], &bodies[x_begin], D[offsetD + j].A, NULL, NULL);
+      gen_matrix(ef, m, n, &bodies[y_begin], &bodies[x_begin], D[offsetD + j].A, D[offsetD + j].LDA, NULL, NULL);
     }
   }
 }
