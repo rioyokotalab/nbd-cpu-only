@@ -55,7 +55,7 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
     int64_t nloc = 0, nend = 0;
     self_local_range(&nloc, &nend, &comm[i]);
 
-    for (int64_t x = 0; x < rels_near[i].N; x++) {
+    for (int64_t x = 0; x < n_i; x++) {
       int64_t box_x = nloc + x;
       int64_t dim_x = basis[i].Dims[box_x];
       int64_t diml_x = basis[i].DimsLr[box_x];
@@ -66,9 +66,10 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
         int64_t dim_y = basis[i].Dims[y];
         int64_t diml_y = basis[i].DimsLr[y];
         int64_t dimc_y = dim_y - diml_y;
-        arr_m[yx] = (struct Matrix) { A[i].A_buf + yx * stride, dim_y, dim_x, dimn }; // A
-        arr_m[yx + nnz] = (struct Matrix) { A[i].A_buf + yx * stride, dimc_y, dimc_x, dimn }; // A_cc
-        arr_m[yx + nnz * 2] = (struct Matrix) { A[i].A_buf + yx * stride + A[i].dimR, diml_y, dimc_x, dimn }; // A_oc
+        int64_t loc = yx; //(y == box_x) ? x : ((y < box_x) ? (yx + n_i - x) : (yx + n_i - x - 1));
+        arr_m[yx] = (struct Matrix) { A[i].A_buf + loc * stride, dim_y, dim_x, dimn }; // A
+        arr_m[yx + nnz] = (struct Matrix) { A[i].A_buf + loc * stride, dimc_y, dimc_x, dimn }; // A_cc
+        arr_m[yx + nnz * 2] = (struct Matrix) { A[i].A_buf + loc * stride + A[i].dimR, diml_y, dimc_x, dimn }; // A_oc
       }
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
