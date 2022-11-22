@@ -2,6 +2,9 @@
 #include "nbd.h"
 #include "profile.h"
 
+#include <vector>
+#include <algorithm>
+#include <cstdio>
 #include "stdlib.h"
 #include "math.h"
 #include "string.h"
@@ -151,8 +154,10 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
 
     int64_t lc = lt_child[i];
     int64_t sbegin = cells[li].Body[0];
-    if (basis_lo != NULL && lc >= 0)
-      memcpy(skeleton, basis_lo->Multipoles + basis_lo->Offsets[lc], sizeof(int64_t) * ske_len);
+    if (basis_lo != NULL && lc >= 0) {
+      memcpy(skeleton, basis_lo->Multipoles + basis_lo->dimS * lc, sizeof(int64_t) * basis_lo->DimsLr[lc]);
+      memcpy(skeleton + basis_lo->DimsLr[lc], basis_lo->Multipoles + basis_lo->dimS * (lc + 1), sizeof(int64_t) * basis_lo->DimsLr[lc + 1]);
+    }
     else
       for (int64_t j = 0; j < ske_len; j++)
         skeleton[j] = j + sbegin;
@@ -167,7 +172,7 @@ void sampleBodies_free(struct SampleBodies* sample) {
   free(sample->FarBodies);
 }
 
-void dist_int_64_xlen(int64_t arr_xlen[], const struct CellComm* comm) {
+void dist_int_64(int64_t arr[], int64_t blen, const struct CellComm* comm) {
   int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
   const int64_t* row = comm->ProcTargets;
   int64_t lbegin = 0;
@@ -176,40 +181,14 @@ void dist_int_64_xlen(int64_t arr_xlen[], const struct CellComm* comm) {
 #endif
   for (int64_t i = 0; i < plen; i++) {
     int64_t p = row[i];
-    int64_t len = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
-    MPI_Bcast(&arr_xlen[lbegin], len, MPI_INT64_T, comm->ProcRootI[p], comm->Comm_box[p]);
+    int64_t len = (comm->ProcBoxesEnd[p] - comm->ProcBoxes[p]) * blen;
+    MPI_Bcast(&arr[lbegin], len, MPI_INT64_T, comm->ProcRootI[p], comm->Comm_box[p]);
     lbegin = lbegin + len;
   }
 
   int64_t xlen = 0;
   content_length(&xlen, comm);
-  if (comm->Proc[1] - comm->Proc[0] > 1)
-    MPI_Bcast(arr_xlen, xlen, MPI_INT64_T, 0, comm->Comm_share);
-#ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
-#endif
-}
-
-void dist_int_64(int64_t arr[], const int64_t offsets[], const struct CellComm* comm) {
-  int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
-  const int64_t* row = comm->ProcTargets;
-  int64_t lbegin = 0;
-#ifdef _PROF
-  double stime = MPI_Wtime();
-#endif
-  for (int64_t i = 0; i < plen; i++) {
-    int64_t p = row[i];
-    int64_t llen = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
-    int64_t offset = offsets[lbegin];
-    int64_t len = offsets[lbegin + llen] - offset;
-    MPI_Bcast(&arr[offset], len, MPI_INT64_T, comm->ProcRootI[p], comm->Comm_box[p]);
-    lbegin = lbegin + llen;
-  }
-
-  int64_t xlen = 0;
-  content_length(&xlen, comm);
-  int64_t alen = offsets[xlen];
+  int64_t alen = xlen * blen;
   if (comm->Proc[1] - comm->Proc[0] > 1)
     MPI_Bcast(arr, alen, MPI_INT64_T, 0, comm->Comm_share);
 #ifdef _PROF
@@ -253,33 +232,40 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     int64_t xlen = 0;
     content_length(&xlen, &comm[l]);
     basis[l].Ulen = xlen;
-    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * (xlen * 4 + 1));
+    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * xlen * 3);
     basis[l].Lchild = arr_i;
     basis[l].Dims = &arr_i[xlen];
     basis[l].DimsLr = &arr_i[xlen * 2];
-    basis[l].Offsets = &arr_i[xlen * 3];
-    basis[l].Multipoles = NULL;
+
     int64_t jbegin = 0, jend = ncells;
+    int64_t ibegin = 0, iend = xlen;
     get_level(&jbegin, &jend, cells, l, -1);
-    for (int64_t j = 0; j < xlen; j++) {
-      int64_t gj = j;
-      i_global(&gj, &comm[l]);
-      int64_t lc = cells[jbegin + gj].Child;
-      arr_i[j] = -1;
+    self_local_range(&ibegin, &iend, &comm[l]);
+    int64_t nodes = iend - ibegin;
+
+    for (int64_t i = 0; i < xlen; i++) {
+      int64_t gi = i;
+      i_global(&gi, &comm[l]);
+      int64_t lc = cells[jbegin + gi].Child;
+      int64_t ske = cells[jbegin + gi].Body[1] - cells[jbegin + gi].Body[0];
+
       if (lc >= 0) {
-        arr_i[j] = lc - jend;
-        i_local(&arr_i[j], &comm[l + 1]);
+        lc = lc - jend;
+        i_local(&lc, &comm[l + 1]);
+        ske = basis[l + 1].DimsLr[lc] + basis[l + 1].DimsLr[lc + 1];
       }
+      arr_i[i] = lc;
+      arr_i[i + xlen] = ske;
     }
+
+    dist_int_64(basis[l].Dims, 1, &comm[l]);
+    basis[l].dimN = *std::max_element(basis[l].Dims, basis[l].Dims + xlen);
+    std::vector<int64_t> skeletons(basis[l].dimN * xlen);
 
     struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
     basis[l].Uo = arr_m;
     basis[l].Uc = &arr_m[xlen];
     basis[l].R = &arr_m[xlen * 2];
-
-    int64_t ibegin = 0, iend = xlen;
-    self_local_range(&ibegin, &iend, &comm[l]);
-    int64_t nodes = iend - ibegin;
 
     struct SampleBodies samples;
     buildSampleBodies(&samples, sp_pts, sp_pts, nbodies, ncells, cells, rel_near, &basis[l].Lchild[ibegin], l == levels ? NULL : &basis[l + 1], l);
@@ -290,7 +276,6 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       int64_t ske_len = samples.SkeLens[i];
       int64_t len_m = samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i];
       len_m = len_m < ske_len ? ske_len : len_m;
-      basis[l].Dims[i + ibegin] = ske_len;
       count = count + ske_len;
       count_m = count_m + ske_len * (ske_len + len_m + 2);
     }
@@ -370,29 +355,26 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       }
     }
 
-    dist_int_64_xlen(basis[l].Dims, &comm[l]);
-    dist_int_64_xlen(basis[l].DimsLr, &comm[l]);
+    dist_int_64(basis[l].DimsLr, 1, &comm[l]);
+    basis[l].dimS = *std::max_element(basis[l].DimsLr, basis[l].DimsLr + xlen);
 
-    count = 0;
     count_m = 0;
     for (int64_t i = 0; i < xlen; i++) {
       int64_t m = basis[l].Dims[i];
       int64_t n = basis[l].DimsLr[i];
-      basis[l].Offsets[i] = count;
-      count = count + n;
       count_m = count_m + m * m + n * n;
     }
-    basis[l].Offsets[xlen] = count;
 
-    if (count > 0)
-      basis[l].Multipoles = (int64_t*)malloc(sizeof(int64_t) * count);
+    basis[l].Multipoles = NULL;
+    if (basis[l].dimS > 0)
+      basis[l].Multipoles = (int64_t*)malloc(sizeof(int64_t) * basis[l].dimS * xlen);
     for (int64_t i = 0; i < nodes; i++) {
-      int64_t offset = basis[l].Offsets[i + ibegin];
+      int64_t offset = basis[l].dimS * (i + ibegin);
       int64_t n = basis[l].DimsLr[i + ibegin];
       if (n > 0)
         memcpy(&basis[l].Multipoles[offset], samples.Skeletons[i], sizeof(int64_t) * n);
     }
-    dist_int_64(basis[l].Multipoles, basis[l].Offsets, &comm[l]);
+    dist_int_64(basis[l].Multipoles, basis[l].dimS, &comm[l]);
 
     double* data_basis = NULL;
     if (count_m > 0)
@@ -438,12 +420,12 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
 #pragma omp parallel for
   for (int64_t x = 0; x < rels->N; x++) {
     int64_t n = basis->DimsLr[x + ibegin];
-    int64_t off_x = basis->Offsets[x + ibegin];
+    int64_t off_x = basis->dimS * (x + ibegin);
 
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       int64_t m = basis->DimsLr[y];
-      int64_t off_y = basis->Offsets[y];
+      int64_t off_y = basis->dimS * y;
       gen_matrix(ef, m, n, bodies, bodies, S[yx].A, S[yx].LDA, &multipoles[off_y], &multipoles[off_x]);
       upper_tri_reflec_mult('L', 1, &basis->R[y], &S[yx]);
       upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);

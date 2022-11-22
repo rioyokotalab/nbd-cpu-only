@@ -188,6 +188,9 @@ void factorA(struct Node A[], const struct Base basis[], const struct CSC rels[]
 #endif
   }
   chol_decomp(A[0].A_ptr, A[0].dimR);
+#ifdef _PROF
+  record_factor_flops(0, A[0].dimR, 1, 1);
+#endif
 }
 
 void allocRightHandSides(char mvsv, struct RightHandSides rhs[], const struct Base base[], int64_t levels) {
