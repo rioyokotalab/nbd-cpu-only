@@ -21,14 +21,6 @@ void free_matrices(double* A_ptr, double* A_buffer) {
   MKL_free(A_ptr);
 }
 
-void copy_basis(const double* Ur_in, const double* Us_in, double* U_out, int64_t IR_dim, int64_t IS_dim, int64_t OR_dim, int64_t OS_dim, int64_t ldu_in, int64_t ldu_out) {
-  IR_dim = IR_dim < OR_dim ? IR_dim : OR_dim;
-  IS_dim = IS_dim < OS_dim ? IS_dim : OS_dim;
-  int64_t n_in = IR_dim + IS_dim;
-  MKL_Domatcopy('C', 'N', n_in, IR_dim, 1., Ur_in, ldu_in, U_out, ldu_out);
-  MKL_Domatcopy('C', 'N', n_in, IS_dim, 1., Us_in, ldu_in, U_out + OR_dim * ldu_out, ldu_out);
-}
-
 void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
   int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dims[]) {
   

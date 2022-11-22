@@ -31,21 +31,21 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
     int64_t nnz = rels_near[i].ColIndex[n_i];
     int64_t nnz_f = rels_far[i].ColIndex[n_i];
     int64_t llen = basis[i].Ulen;
-    int64_t len_arr = nnz * 3 + nnz_f;
+    int64_t len_arr = nnz * 4 + nnz_f;
 
     struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
-    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * nnz * 3);
+    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * nnz * 2);
     A[i].A = arr_m;
     A[i].A_cc = &arr_m[nnz];
     A[i].A_oc = &arr_m[nnz * 2];
-    A[i].S = &arr_m[nnz * 3];
+    A[i].A_oo = &arr_m[nnz * 3];
+    A[i].S = &arr_m[nnz * 4];
+    A[i].Ay = arr_i;
+    A[i].Ax = &arr_i[nnz];
     A[i].lenA = nnz;
     A[i].lenS = nnz_f;
     A[i].dimR = dim_max[i * 2];
     A[i].dimS = dim_max[i * 2 + 1];
-    A[i].A_i = arr_i;
-    A[i].A_y = &arr_i[nnz];
-    A[i].A_x = &arr_i[nnz * 2];
 
     int64_t dimn = A[i].dimR + A[i].dimS;
     int64_t stride = dimn * dimn;
@@ -66,21 +66,29 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
         int64_t dim_y = basis[i].Dims[y];
         int64_t diml_y = basis[i].DimsLr[y];
         int64_t dimc_y = dim_y - diml_y;
-        int64_t loc = yx; //(y == box_x) ? x : ((y < box_x) ? (yx + n_i - x) : (yx + n_i - x - 1));
-        arr_m[yx] = (struct Matrix) { A[i].A_buf + loc * stride, dim_y, dim_x, dimn }; // A
-        arr_m[yx + nnz] = (struct Matrix) { A[i].A_buf + loc * stride, dimc_y, dimc_x, dimn }; // A_cc
-        arr_m[yx + nnz * 2] = (struct Matrix) { A[i].A_buf + loc * stride + A[i].dimR, diml_y, dimc_x, dimn }; // A_oc
+        int64_t loc = (y == box_x) ? x : ((y < box_x) ? (yx + n_i - x) : (yx + n_i - x - 1));
+
+        arr_m[yx] = (struct Matrix) { A[i].A_buf + yx * stride, dim_y, dim_x, dimn }; // A
+        arr_m[yx + nnz] = (struct Matrix) { A[i].A_buf + yx * stride, dimc_y, dimc_x, dimn }; // A_cc
+        arr_m[yx + nnz * 2] = (struct Matrix) { A[i].A_buf + yx * stride + A[i].dimR, diml_y, dimc_x, dimn }; // A_oc
+        arr_m[yx + nnz * 3] = (struct Matrix) { NULL, diml_y, diml_x, 0 }; // A_oo
+        arr_i[loc] = y;
+        arr_i[loc + nnz] = box_x;
       }
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
         int64_t y = rels_far[i].RowIndex[yx];
         int64_t diml_y = basis[i].DimsLr[y];
-        arr_m[yx + nnz * 3] = (struct Matrix) { NULL, diml_y, diml_x, 0 }; // S
+        arr_m[yx + nnz * 4] = (struct Matrix) { NULL, diml_y, diml_x, 0 }; // S
       }
     }
 
-    for (int64_t x = 0; x < llen; x++)
-      copy_basis(basis[i].Uc[x].A, basis[i].Uo[x].A, A[i].U_buf + x * stride, basis[i].Uc[x].N, basis[i].Uo[x].N, A[i].dimR, A[i].dimS, basis[i].Uc[x].LDA, dimn);
+    for (int64_t x = 0; x < llen; x++) {
+      struct Matrix Uc = (struct Matrix) { A[i].U_buf + x * stride, dimn, A[i].dimR, dimn };
+      struct Matrix Uo = (struct Matrix) { A[i].U_buf + x * stride + A[i].dimR * dimn, dimn, A[i].dimS, dimn };
+      mat_cpy(basis[i].Uc[x].M, basis[i].Uc[x].N, &basis[i].Uc[x], &Uc, 0, 0, 0, 0);
+      mat_cpy(basis[i].Uo[x].M, basis[i].Uo[x].N, &basis[i].Uo[x], &Uo, 0, 0, 0, 0);
+    }
     flush_buffer('S', A[i].U_ptr, A[i].U_buf, stride * llen);
 
     if (i > 0) {
@@ -112,9 +120,8 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
               for (int64_t yx = rels_near[i].ColIndex[x + x0]; yx < rels_near[i].ColIndex[x + x0 + 1]; yx++)
                 for (int64_t y = 0; y < NCHILD; y++)
                   if (rels_near[i].RowIndex[yx] == (y + y0)) {
-                    arr_i[yx] = ij;
-                    arr_i[yx + nnz] = offset_y[y];
-                    arr_i[yx + nnz * 2] = offset_x[x];
+                    arr_m[yx + nnz * 3].A = Mup[ij].A + Mup[ij].LDA * offset_x[x] + offset_y[y];
+                    arr_m[yx + nnz * 3].LDA = Mup[ij].LDA;
                   }
           
           for (int64_t x = 0; x < NCHILD; x++)
@@ -122,8 +129,8 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
               for (int64_t yx = rels_far[i].ColIndex[x + x0]; yx < rels_far[i].ColIndex[x + x0 + 1]; yx++)
                 for (int64_t y = 0; y < NCHILD; y++)
                   if (rels_far[i].RowIndex[yx] == (y + y0)) {
-                    arr_m[yx + nnz * 3].A = Mup[ij].A + Mup[ij].LDA * offset_x[x] + offset_y[y];
-                    arr_m[yx + nnz * 3].LDA = Mup[ij].LDA;
+                    arr_m[yx + nnz * 4].A = Mup[ij].A + Mup[ij].LDA * offset_x[x] + offset_y[y];
+                    arr_m[yx + nnz * 4].LDA = Mup[ij].LDA;
                   }
         }
       }
@@ -137,7 +144,7 @@ void node_free(struct Node* node) {
   free_matrices(node->A_ptr, node->A_buf);
   free_matrices(node->U_ptr, node->U_buf);
   free(node->A);
-  free(node->A_i);
+  free(node->Ay);
 }
 
 void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
@@ -167,23 +174,23 @@ void factorA(struct Node A[], const struct Base basis[], const struct CSC rels[]
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
     int64_t llen = basis[i].Ulen;
-    int64_t nnz = rels[i].ColIndex[rels[i].N];
+    int64_t nnz = A[i].lenA;
     int64_t dimc = A[i].dimR;
     int64_t dimr = A[i].dimS;
 
     double** A_next = (double**)malloc(sizeof(double*) * nnz);
     int64_t n_next = A[i - 1].dimR + A[i - 1].dimS;
-    int64_t nnz_next = rels[i - 1].ColIndex[rels[i - 1].N];
+    int64_t nnz_next = A[i - 1].lenA;
 
     for (int64_t x = 0; x < nnz; x++)
-      A_next[x] = A[i - 1].A_ptr + ((A[i].A_i[x] * n_next + A[i].A_x[x]) * n_next + A[i].A_y[x]);
+      A_next[x] = A[i - 1].A_ptr + (A[i].A_oo[x].A - A[i - 1].A_buf);
 
     batch_cholesky_factor(dimc, dimr, A[i].U_ptr, A[i].A_ptr, n_next, A_next, llen, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex, basis[i].DimsLr);
 
     merge_double(A[i - 1].A_ptr, n_next * n_next * nnz_next, &comm[i - 1]);
     free(A_next);
 #ifdef _PROF
-    record_factor_flops(dimc, dimr, nnz, rels[i].N);
+    record_factor_flops(dimc, dimr, nnz, iend - ibegin);
 #endif
   }
   chol_decomp(A[0].A_ptr, A[0].dimR);
@@ -208,18 +215,10 @@ void allocRightHandSides(char mvsv, struct RightHandSides rhs[], const struct Ba
       int64_t dimb = dim;
       if (mvsv == 'S' || mvsv == 's')
       { dimc = dim - diml; dimb = 0; }
-      arr_m[j].M = dim; // X
-      arr_m[j].N = 1;
-      arr_m[j].LDA = dim;
-      arr_m[j + len].M = dimc; // Xc
-      arr_m[j + len].N = 1;
-      arr_m[j + len].LDA = dimc;
-      arr_m[j + len * 2].M = diml; // Xo
-      arr_m[j + len * 2].N = 1;
-      arr_m[j + len * 2].LDA = diml;
-      arr_m[j + len * 3].M = dimb; // B
-      arr_m[j + len * 3].N = 1;
-      arr_m[j + len * 3].LDA = dimb;
+      arr_m[j] = (struct Matrix) { NULL, dim, 1, dim }; // X
+      arr_m[j + len] = (struct Matrix) { NULL, dimc, 1, dimc }; // Xc
+      arr_m[j + len * 2] = (struct Matrix) { NULL, diml, 1, diml }; // Xo
+      arr_m[j + len * 3] = (struct Matrix) { NULL, dimb, 1, dimb }; // B
       count = count + dim + dimc + diml + dimb;
     }
 
