@@ -1,11 +1,27 @@
 
-CC = mpicc -std=c99 -O3 -m64 -Wall -Wextra -I. -I"${MKLROOT}/include" -fopenmp -D_PROF -D_MKL
-LDFLAGS = -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lpthread -lm -ldl
+CC 			= mpicc -std=c99 
+CFLAGS		= -O3 -m64 -Wall -Wextra -I. -I"${MKLROOT}/include" -fopenmp
+LDFLAGS 	= -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
+
+NVCC		= ${CUDADIR}/bin/nvcc -ccbin=mpicxx
+NVCCFLAGS	= -O3 -m64 -I. -I"${MKLROOT}/include" --Werror=all-warnings -Xcompiler=-fopenmp
+NVCCLIBS	= -L${CUDADIR}/lib64 -lcublas -lcudart -lcusolver
 
 all:
-	mkdir -p build
-	$(CC) linalg.c kernel.c build_tree.c basis.c umv.c profile.c \
-	lorasp.c $(LDFLAGS) -o build/lorasp
+	$(CC) $(CFLAGS) -c linalg.c -o linalg.o
+	$(CC) $(CFLAGS) -c batch.c -o batch.o
+	$(CC) $(CFLAGS) -c kernel.c -o kernel.o
+	$(CC) $(CFLAGS) -c build_tree.c -o build_tree.o
+	$(CC) $(CFLAGS) -D_PROF -c basis.c -o basis.o
+	$(CC) $(CFLAGS) -D_PROF -c umv.c -o umv.o
+	$(CC) $(CFLAGS) -D_PROF -c profile.c -o profile.o
+	$(CC) $(CFLAGS) -c lorasp.c -o lorasp.o
+	$(NVCC) $(NVCCFLAGS) -c batch_gpu.cu -o batch_gpu.o
 
+	$(CC) $(CFLAGS) linalg.o batch.o kernel.o build_tree.o basis.o umv.o profile.o \
+	  lorasp.o $(LDFLAGS) -o lorasp
+	$(NVCC) $(NVCCFLAGS) linalg.o batch_gpu.o kernel.o build_tree.o basis.o umv.o profile.o \
+	  lorasp.o $(LDFLAGS) $(NVCCLIBS) -o gpu
+	
 clean:
-	rm -rf build
+	rm -rf *.a *.o lorasp gpu

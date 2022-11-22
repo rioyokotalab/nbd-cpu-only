@@ -34,14 +34,12 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
     int64_t len_arr = nnz * 4 + nnz_f;
 
     struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
-    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * nnz * 2);
     A[i].A = arr_m;
     A[i].A_cc = &arr_m[nnz];
     A[i].A_oc = &arr_m[nnz * 2];
     A[i].A_oo = &arr_m[nnz * 3];
     A[i].S = &arr_m[nnz * 4];
-    A[i].Ay = arr_i;
-    A[i].Ax = &arr_i[nnz];
+
     A[i].lenA = nnz;
     A[i].lenS = nnz_f;
     A[i].dimR = dim_max[i * 2];
@@ -66,14 +64,11 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
         int64_t dim_y = basis[i].Dims[y];
         int64_t diml_y = basis[i].DimsLr[y];
         int64_t dimc_y = dim_y - diml_y;
-        int64_t loc = (y == box_x) ? x : ((y < box_x) ? (yx + n_i - x) : (yx + n_i - x - 1));
 
         arr_m[yx] = (struct Matrix) { A[i].A_buf + yx * stride, dim_y, dim_x, dimn }; // A
         arr_m[yx + nnz] = (struct Matrix) { A[i].A_buf + yx * stride, dimc_y, dimc_x, dimn }; // A_cc
         arr_m[yx + nnz * 2] = (struct Matrix) { A[i].A_buf + yx * stride + A[i].dimR, diml_y, dimc_x, dimn }; // A_oc
         arr_m[yx + nnz * 3] = (struct Matrix) { NULL, diml_y, diml_x, 0 }; // A_oo
-        arr_i[loc] = y;
-        arr_i[loc + nnz] = box_x;
       }
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
@@ -144,7 +139,6 @@ void node_free(struct Node* node) {
   free_matrices(node->A_ptr, node->A_buf);
   free_matrices(node->U_ptr, node->U_buf);
   free(node->A);
-  free(node->Ay);
 }
 
 void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {

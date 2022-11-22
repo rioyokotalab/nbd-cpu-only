@@ -3,9 +3,8 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
-h2_example
 lorasp
-lra_example
+gpu
 
 # User-specific files
 *.rsuser
