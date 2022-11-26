@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <numeric>
 #include <cstdio>
 #include "stdlib.h"
 #include "math.h"
@@ -11,6 +12,42 @@
 
 struct SampleBodies 
 { int64_t LTlen, *FarLens, *FarAvails, **FarBodies, *CloseLens, *CloseAvails, **CloseBodies, *SkeLens, **Skeletons; };
+
+int64_t gen_close(int64_t clen, int64_t close[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[]) {
+  int64_t avail = std::accumulate(ngbs_len, ngbs_len + ngbs, 0);
+  clen = std::min(avail, clen);
+  std::iota(close, close + clen, 0);
+  std::transform(close, close + clen, close, [avail, clen](int64_t& i)->int64_t { return (double)(i * avail) / clen; });
+  int64_t* begin = close;
+  for (int64_t i = 0; i < ngbs; i++) {
+    int64_t len = std::min(std::distance(begin, close + clen), ngbs_len[i]);
+    int64_t slen = std::accumulate(ngbs_len, ngbs_len + i, 0);
+    int64_t bound = ngbs_len[i] + slen;
+    int64_t body = ngbs_body[i] - slen;
+    int64_t* next = std::find_if(begin, begin + len, [bound](int64_t& i)->bool { return i >= bound; });
+    std::transform(begin, next, begin, [body](int64_t& i)->int64_t { return i + body; });
+    begin = next;
+  }
+  return clen;
+}
+
+int64_t gen_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[], int64_t nbody) {
+  int64_t near = std::accumulate(ngbs_len, ngbs_len + ngbs, 0);
+  int64_t avail = nbody - near;
+  flen = std::min(avail, flen);
+  std::iota(far, far + flen, 0);
+  std::transform(far, far + flen, far, [avail, flen](int64_t& i)->int64_t { return (double)(i * avail) / flen; });
+  int64_t* begin = far;
+  for (int64_t i = 0; i < ngbs; i++) {
+    int64_t slen = std::accumulate(ngbs_len, ngbs_len + i, 0);
+    int64_t bound = ngbs_body[i] - slen;
+    int64_t* next = std::find_if(begin, far + flen, [bound](int64_t& i)->bool { return i >= bound; });
+    std::transform(begin, next, begin, [slen](int64_t& i)->int64_t { return i + slen; });
+    begin = next;
+  }
+  std::transform(begin, far + flen, begin, [near](int64_t& i)->int64_t { return i + near; });
+  return flen;
+}
 
 void buildSampleBodies(struct SampleBodies* sample, int64_t sp_max_far, int64_t sp_max_near, int64_t nbodies, int64_t ncells, const struct Cell* cells, 
 const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, int64_t level) {
@@ -139,18 +176,20 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
     offset_i = cells[ic].Body[0];
     len_i = cells[ic].Body[1] - offset_i;
 
-    for (int64_t j = 0; j < close_len; j++) {
-      int64_t loc = (int64_t)((double)(close_avail * j) / close_len);
-      while (loc - s_lens >= len_i) {
-        s_lens = s_lens + len_i;
-        box_i = box_i + 1;
-        box_i = box_i + (int64_t)(box_i == cpos);
-        ic = ngbs[box_i];
-        offset_i = cells[ic].Body[0];
-        len_i = cells[ic].Body[1] - offset_i;
+    std::vector<int64_t> body, lens;
+    for (int64_t j = 0; j < nlen; j++)
+      if (ngbs[j] != li) {
+        body.emplace_back(cells[ngbs[j]].Body[0]);
+        lens.emplace_back(cells[ngbs[j]].Body[1] - cells[ngbs[j]].Body[0]);
       }
-      close[j] = loc + offset_i - s_lens;
+    gen_close(sp_max_near, close, body.size(), body.data(), lens.data());
+
+    body.clear(); lens.clear();
+    for (int64_t j = 0; j < nlen; j++) {
+      body.emplace_back(cells[ngbs[j]].Body[0]);
+      lens.emplace_back(cells[ngbs[j]].Body[1] - cells[ngbs[j]].Body[0]);
     }
+    gen_far(sp_max_far, remote, body.size(), body.data(), lens.data(), nbodies);
 
     int64_t lc = lt_child[i];
     int64_t sbegin = cells[li].Body[0];
@@ -172,10 +211,11 @@ void sampleBodies_free(struct SampleBodies* sample) {
   free(sample->FarBodies);
 }
 
-void dist_int_64(int64_t arr[], int64_t blen, const struct CellComm* comm) {
+int64_t dist_int_64(int64_t arr[], int64_t blen, const struct CellComm* comm) {
   int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
   const int64_t* row = comm->ProcTargets;
   int64_t lbegin = 0;
+  int64_t lmax = 0;
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
@@ -191,10 +231,16 @@ void dist_int_64(int64_t arr[], int64_t blen, const struct CellComm* comm) {
   int64_t alen = xlen * blen;
   if (comm->Proc[1] - comm->Proc[0] > 1)
     MPI_Bcast(arr, alen, MPI_INT64_T, 0, comm->Comm_share);
+
+  for (int64_t i = 0; i < alen; i++)
+    lmax = lmax < arr[i] ? arr[i] : lmax;
+  MPI_Allreduce(MPI_IN_PLACE, &lmax, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
+
 #ifdef _PROF
   double etime = MPI_Wtime() - stime;
   recordCommTime(etime);
 #endif
+  return lmax;
 }
 
 void dist_double(double* arr[], const struct CellComm* comm) {
@@ -237,6 +283,11 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     basis[l].Dims = &arr_i[xlen];
     basis[l].DimsLr = &arr_i[xlen * 2];
 
+    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
+    basis[l].Uo = arr_m;
+    basis[l].Uc = &arr_m[xlen];
+    basis[l].R = &arr_m[xlen * 2];
+
     int64_t jbegin = 0, jend = ncells;
     int64_t ibegin = 0, iend = xlen;
     get_level(&jbegin, &jend, cells, l, -1);
@@ -258,14 +309,29 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       arr_i[i + xlen] = ske;
     }
 
-    dist_int_64(basis[l].Dims, 1, &comm[l]);
-    basis[l].dimN = *std::max_element(basis[l].Dims, basis[l].Dims + xlen);
+    basis[l].dimN = dist_int_64(basis[l].Dims, 1, &comm[l]);
     std::vector<int64_t> skeletons(basis[l].dimN * xlen);
 
-    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
-    basis[l].Uo = arr_m;
-    basis[l].Uc = &arr_m[xlen];
-    basis[l].R = &arr_m[xlen * 2];
+    for (int64_t i = ibegin; i < iend; i++) {
+      int64_t lc = arr_i[i];
+      int64_t ske = arr_i[i + xlen];
+
+      if (lc >= 0) {
+        const int64_t* m1 = basis[l + 1].Multipoles + basis[l + 1].dimS * lc;
+        const int64_t* m2 = basis[l + 1].Multipoles + basis[l + 1].dimS * (lc + 1);
+        int64_t len1 = basis[l + 1].DimsLr[lc];
+        int64_t len2 = basis[l + 1].DimsLr[lc + 1];
+        std::copy(m1, m1 + len1, skeletons.begin() + i * basis[l].dimN);
+        std::copy(m2, m2 + len2, skeletons.begin() + i * basis[l].dimN + len1);
+      }
+      else {
+        int64_t gi = i;
+        i_global(&gi, &comm[l]);
+        std::iota(skeletons.begin() + i * basis[l].dimN, skeletons.begin() + i * basis[l].dimN + ske, cells[jbegin + gi].Body[0]);
+      }
+    }
+
+    dist_int_64(skeletons.data(), basis[l].dimN, &comm[l]);
 
     struct SampleBodies samples;
     buildSampleBodies(&samples, sp_pts, sp_pts, nbodies, ncells, cells, rel_near, &basis[l].Lchild[ibegin], l == levels ? NULL : &basis[l + 1], l);
@@ -308,12 +374,12 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       double nrm_dn = 0.;
       double nrm_lr = 0.;
       struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.CloseLens[i], ske_len };
-      gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, S_dn_work.LDA, samples.Skeletons[i], samples.CloseBodies[i]);
+      gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, S_dn_work.LDA, &skeletons[(i + ibegin) * basis[l].dimN], samples.CloseBodies[i]);
       mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
       nrm2_A(&S_dn, &nrm_dn);
 
       struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.FarLens[i], ske_len };
-      gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, S_lr.LDA, samples.Skeletons[i], samples.FarBodies[i]);
+      gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, S_lr.LDA, &skeletons[(i + ibegin) * basis[l].dimN], samples.FarBodies[i]);
       nrm2_A(&S_lr, &nrm_lr);
       double scale = (nrm_dn == 0. || nrm_lr == 0.) ? 1. : nrm_lr / nrm_dn;
       scal_A(&S_dn, scale);
@@ -355,8 +421,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       }
     }
 
-    dist_int_64(basis[l].DimsLr, 1, &comm[l]);
-    basis[l].dimS = *std::max_element(basis[l].DimsLr, basis[l].DimsLr + xlen);
+    basis[l].dimS = dist_int_64(basis[l].DimsLr, 1, &comm[l]);
 
     count_m = 0;
     for (int64_t i = 0; i < xlen; i++) {
