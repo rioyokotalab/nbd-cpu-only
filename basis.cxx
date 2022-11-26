@@ -10,9 +10,6 @@
 #include "math.h"
 #include "string.h"
 
-struct SampleBodies 
-{ int64_t LTlen, *FarLens, *FarAvails, **FarBodies, *CloseLens, *CloseAvails, **CloseBodies, *SkeLens, **Skeletons; };
-
 int64_t gen_close(int64_t clen, int64_t close[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[]) {
   int64_t avail = std::accumulate(ngbs_len, ngbs_len + ngbs, 0);
   clen = std::min(avail, clen);
@@ -47,168 +44,6 @@ int64_t gen_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_bo
   }
   std::transform(begin, far + flen, begin, [near](int64_t& i)->int64_t { return i + near; });
   return flen;
-}
-
-void buildSampleBodies(struct SampleBodies* sample, int64_t sp_max_far, int64_t sp_max_near, int64_t nbodies, int64_t ncells, const struct Cell* cells, 
-const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, int64_t level) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  const int64_t LEN_CHILD = 2;
-  
-  int64_t jbegin = 0, jend = ncells;
-  get_level(&jbegin, &jend, cells, level, -1);
-  int64_t ibegin = jbegin, iend = jend;
-  get_level(&ibegin, &iend, cells, level, mpi_rank);
-  int64_t nodes = iend - ibegin;
-  int64_t* arr_ctrl = (int64_t*)malloc(sizeof(int64_t) * nodes * 5);
-  int64_t** arr_list = (int64_t**)malloc(sizeof(int64_t*) * nodes * 3);
-  sample->LTlen = nodes;
-  sample->FarLens = arr_ctrl;
-  sample->CloseLens = &arr_ctrl[nodes];
-  sample->SkeLens = &arr_ctrl[nodes * 2];
-  sample->FarAvails = &arr_ctrl[nodes * 3];
-  sample->CloseAvails = &arr_ctrl[nodes * 4];
-  sample->FarBodies = arr_list;
-  sample->CloseBodies = &arr_list[nodes];
-  sample->Skeletons = &arr_list[nodes * 2];
-
-  int64_t count_f = 0, count_c = 0, count_s = 0;
-  for (int64_t i = 0; i < nodes; i++) {
-    int64_t li = ibegin + i;
-    int64_t nbegin = rels->ColIndex[li];
-    int64_t nlen = rels->ColIndex[li + 1] - nbegin;
-    const int64_t* ngbs = &rels->RowIndex[nbegin];
-
-    int64_t far_avail = nbodies;
-    int64_t close_avail = 0;
-    for (int64_t j = 0; j < nlen; j++) {
-      int64_t lj = ngbs[j];
-      const struct Cell* cj = &cells[lj];
-      int64_t len = cj->Body[1] - cj->Body[0];
-      far_avail = far_avail - len;
-      if (lj != li)
-        close_avail = close_avail + len;
-    }
-
-    int64_t lc = lt_child[i];
-    int64_t ske_len = 0;
-    if (basis_lo != NULL && lc >= 0)
-      for (int64_t j = 0; j < LEN_CHILD; j++)
-        ske_len = ske_len + basis_lo->DimsLr[lc + j];
-    else
-      ske_len = cells[li].Body[1] - cells[li].Body[0];
-
-    int64_t far_len = sp_max_far < far_avail ? sp_max_far : far_avail;
-    int64_t close_len = sp_max_near < close_avail ? sp_max_near : close_avail;
-    arr_ctrl[i] = far_len;
-    arr_ctrl[i + nodes] = close_len;
-    arr_ctrl[i + nodes * 2] = ske_len;
-    arr_ctrl[i + nodes * 3] = far_avail;
-    arr_ctrl[i + nodes * 4] = close_avail;
-    count_f = count_f + far_len;
-    count_c = count_c + close_len;
-    count_s = count_s + ske_len;
-  }
-
-  int64_t* arr_bodies = NULL;
-  if ((count_f + count_c + count_s) > 0)
-    arr_bodies = (int64_t*)malloc(sizeof(int64_t) * (count_f + count_c + count_s));
-  count_s = count_f + count_c;
-  count_c = count_f;
-  count_f = 0;
-  for (int64_t i = 0; i < nodes; i++) {
-    int64_t* remote = &arr_bodies[count_f];
-    int64_t* close = &arr_bodies[count_c];
-    int64_t* skeleton = &arr_bodies[count_s];
-    int64_t far_len = arr_ctrl[i];
-    int64_t close_len = arr_ctrl[i + nodes];
-    int64_t ske_len = arr_ctrl[i + nodes * 2];
-    arr_list[i] = remote;
-    arr_list[i + nodes] = close;
-    arr_list[i + nodes * 2] = skeleton;
-    count_f = count_f + far_len;
-    count_c = count_c + close_len;
-    count_s = count_s + ske_len;
-  }
-
-#pragma omp parallel for
-  for (int64_t i = 0; i < nodes; i++) {
-    int64_t li = ibegin + i;
-    int64_t nbegin = rels->ColIndex[li];
-    int64_t nlen = rels->ColIndex[li + 1] - nbegin;
-    const int64_t* ngbs = &rels->RowIndex[nbegin];
-
-    int64_t* remote = arr_list[i];
-    int64_t* close = arr_list[i + nodes];
-    int64_t* skeleton = arr_list[i + nodes * 2];
-    int64_t far_len = arr_ctrl[i];
-    int64_t close_len = arr_ctrl[i + nodes];
-    int64_t ske_len = arr_ctrl[i + nodes * 2];
-    int64_t far_avail = arr_ctrl[i + nodes * 3];
-    int64_t close_avail = arr_ctrl[i + nodes * 4];
-
-    int64_t box_i = 0;
-    int64_t s_lens = 0;
-    int64_t ic = ngbs[box_i];
-    int64_t offset_i = cells[ic].Body[0];
-    int64_t len_i = cells[ic].Body[1] - offset_i;
-
-    int64_t cpos = 0;
-    while (cpos < nlen && ngbs[cpos] != li)
-      cpos = cpos + 1;
-
-    for (int64_t j = 0; j < far_len; j++) {
-      int64_t loc = (int64_t)((double)(far_avail * j) / far_len);
-      while (box_i < nlen && loc + s_lens >= offset_i) {
-        s_lens = s_lens + len_i;
-        box_i = box_i + 1;
-        ic = box_i < nlen ? (ngbs[box_i]) : ic;
-        offset_i = cells[ic].Body[0];
-        len_i = cells[ic].Body[1] - offset_i;
-      }
-      remote[j] = loc + s_lens;
-    }
-
-    box_i = (int64_t)(cpos == 0);
-    s_lens = 0;
-    ic = box_i < nlen ? (ngbs[box_i]) : ic;
-    offset_i = cells[ic].Body[0];
-    len_i = cells[ic].Body[1] - offset_i;
-
-    std::vector<int64_t> body, lens;
-    for (int64_t j = 0; j < nlen; j++)
-      if (ngbs[j] != li) {
-        body.emplace_back(cells[ngbs[j]].Body[0]);
-        lens.emplace_back(cells[ngbs[j]].Body[1] - cells[ngbs[j]].Body[0]);
-      }
-    gen_close(sp_max_near, close, body.size(), body.data(), lens.data());
-
-    body.clear(); lens.clear();
-    for (int64_t j = 0; j < nlen; j++) {
-      body.emplace_back(cells[ngbs[j]].Body[0]);
-      lens.emplace_back(cells[ngbs[j]].Body[1] - cells[ngbs[j]].Body[0]);
-    }
-    gen_far(sp_max_far, remote, body.size(), body.data(), lens.data(), nbodies);
-
-    int64_t lc = lt_child[i];
-    int64_t sbegin = cells[li].Body[0];
-    if (basis_lo != NULL && lc >= 0) {
-      memcpy(skeleton, basis_lo->Multipoles + basis_lo->dimS * lc, sizeof(int64_t) * basis_lo->DimsLr[lc]);
-      memcpy(skeleton + basis_lo->DimsLr[lc], basis_lo->Multipoles + basis_lo->dimS * (lc + 1), sizeof(int64_t) * basis_lo->DimsLr[lc + 1]);
-    }
-    else
-      for (int64_t j = 0; j < ske_len; j++)
-        skeleton[j] = j + sbegin;
-  }
-}
-
-void sampleBodies_free(struct SampleBodies* sample) {
-  int64_t* data = sample->FarBodies[0];
-  if (data)
-    free(data);
-  free(sample->FarLens);
-  free(sample->FarBodies);
 }
 
 int64_t dist_int_64(int64_t arr[], int64_t blen, const struct CellComm* comm) {
@@ -293,12 +128,15 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     get_level(&jbegin, &jend, cells, l, -1);
     self_local_range(&ibegin, &iend, &comm[l]);
     int64_t nodes = iend - ibegin;
+    std::vector<int64_t> cell_ids(xlen);
 
     for (int64_t i = 0; i < xlen; i++) {
       int64_t gi = i;
       i_global(&gi, &comm[l]);
-      int64_t lc = cells[jbegin + gi].Child;
-      int64_t ske = cells[jbegin + gi].Body[1] - cells[jbegin + gi].Body[0];
+      int64_t ci = jbegin + gi;
+      int64_t lc = cells[ci].Child;
+      int64_t ske = cells[ci].Body[1] - cells[ci].Body[0];
+      cell_ids[i] = ci;
 
       if (lc >= 0) {
         lc = lc - jend;
@@ -310,11 +148,11 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     }
 
     basis[l].dimN = dist_int_64(basis[l].Dims, 1, &comm[l]);
-    std::vector<int64_t> skeletons(basis[l].dimN * xlen);
+    std::vector<int64_t> skeletons(basis[l].dimN * nodes);
 
-    for (int64_t i = ibegin; i < iend; i++) {
-      int64_t lc = arr_i[i];
-      int64_t ske = arr_i[i + xlen];
+    for (int64_t i = 0; i < nodes; i++) {
+      int64_t lc = arr_i[i + ibegin];
+      int64_t ske = arr_i[i + ibegin + xlen];
 
       if (lc >= 0) {
         const int64_t* m1 = basis[l + 1].Multipoles + basis[l + 1].dimS * lc;
@@ -325,69 +163,51 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
         std::copy(m2, m2 + len2, skeletons.begin() + i * basis[l].dimN + len1);
       }
       else {
-        int64_t gi = i;
-        i_global(&gi, &comm[l]);
-        std::iota(skeletons.begin() + i * basis[l].dimN, skeletons.begin() + i * basis[l].dimN + ske, cells[jbegin + gi].Body[0]);
+        int64_t ci = cell_ids[i + ibegin];
+        std::iota(skeletons.begin() + i * basis[l].dimN, skeletons.begin() + i * basis[l].dimN + ske, cells[ci].Body[0]);
       }
     }
 
-    dist_int_64(skeletons.data(), basis[l].dimN, &comm[l]);
-
-    struct SampleBodies samples;
-    buildSampleBodies(&samples, sp_pts, sp_pts, nbodies, ncells, cells, rel_near, &basis[l].Lchild[ibegin], l == levels ? NULL : &basis[l + 1], l);
-
-    int64_t count = 0;
-    int64_t count_m = 0;
-    for (int64_t i = 0; i < nodes; i++) {
-      int64_t ske_len = samples.SkeLens[i];
-      int64_t len_m = samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i];
-      len_m = len_m < ske_len ? ske_len : len_m;
-      count = count + ske_len;
-      count_m = count_m + ske_len * (ske_len + len_m + 2);
-    }
-
-    int32_t* ipiv_data = (int32_t*)malloc(sizeof(int32_t) * count);
-    int32_t** ipiv_ptrs = (int32_t**)malloc(sizeof(int32_t*) * nodes);
-    double* matrix_data = (double*)malloc(sizeof(double) * count_m);
-    double** matrix_ptrs = (double**)malloc(sizeof(double*) * (xlen + 1));
-
-    count = 0;
-    count_m = 0;
-    for (int64_t i = 0; i < nodes; i++) {
-      int64_t ske_len = samples.SkeLens[i];
-      int64_t len_m = samples.FarLens[i] < samples.CloseLens[i] ? samples.CloseLens[i] : samples.FarLens[i];
-      len_m = len_m < ske_len ? ske_len : len_m;
-      ipiv_ptrs[i] = &ipiv_data[count];
-      matrix_ptrs[i + ibegin] = &matrix_data[count_m];
-      count = count + ske_len;
-      count_m = count_m + ske_len * (ske_len + len_m + 2);
-    }
+    double* matrix_data = (double*)malloc(sizeof(double) * basis[l].dimN * basis[l].dimN * nodes * 2);
 
 #pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
-      int64_t ske_len = samples.SkeLens[i];
-      int64_t len_s = samples.FarLens[i] + (samples.CloseLens[i] > 0 ? ske_len : 0);
-      double* mat = matrix_ptrs[i + ibegin];
-      struct Matrix S = (struct Matrix){ mat, ske_len, len_s, ske_len };
+      int64_t ske_len = basis[l].Dims[i + ibegin];
+      int64_t ci = cell_ids[i + ibegin];
+      int64_t nbegin = rel_near->ColIndex[ci];
+      int64_t nlen = rel_near->ColIndex[ci + 1] - nbegin;
+      const int64_t* ngbs = &rel_near->RowIndex[nbegin];
+      std::vector<int64_t> close(sp_pts), remote(sp_pts), body, lens;
 
-      struct Matrix S_dn = (struct Matrix){ mat, ske_len, ske_len, ske_len };
+      for (int64_t j = 0; j < nlen; j++) {
+        body.emplace_back(cells[ngbs[j]].Body[0]);
+        lens.emplace_back(cells[ngbs[j]].Body[1] - cells[ngbs[j]].Body[0]);
+      }
+      int64_t len_f = gen_far(sp_pts, remote.data(), body.size(), body.data(), lens.data(), nbodies);
+      int64_t cpos = std::distance(ngbs, std::find(ngbs, ngbs + nlen, ci));
+      body.erase(body.begin() + cpos);
+      lens.erase(lens.begin() + cpos);
+      int64_t len_c = gen_close(sp_pts, close.data(), body.size(), body.data(), lens.data());
+      int64_t* ske_i = &skeletons[i * basis[l].dimN];
+      
+      std::vector<double> Smat(ske_len * (ske_len + sp_pts)), Svec(ske_len * 2);
+      struct Matrix S_dn = (struct Matrix){ Smat.data(), ske_len, ske_len, ske_len };
       double nrm_dn = 0.;
       double nrm_lr = 0.;
-      struct Matrix S_dn_work = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.CloseLens[i], ske_len };
-      gen_matrix(ef, ske_len, samples.CloseLens[i], bodies, bodies, S_dn_work.A, S_dn_work.LDA, &skeletons[(i + ibegin) * basis[l].dimN], samples.CloseBodies[i]);
+      struct Matrix S_dn_work = (struct Matrix){ &Smat[ske_len * ske_len], ske_len, len_c, ske_len };
+      gen_matrix(ef, ske_len, len_c, bodies, bodies, S_dn_work.A, S_dn_work.LDA, ske_i, close.data());
       mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
       nrm2_A(&S_dn, &nrm_dn);
 
-      struct Matrix S_lr = (struct Matrix){ &mat[ske_len * ske_len], ske_len, samples.FarLens[i], ske_len };
-      gen_matrix(ef, ske_len, samples.FarLens[i], bodies, bodies, S_lr.A, S_lr.LDA, &skeletons[(i + ibegin) * basis[l].dimN], samples.FarBodies[i]);
+      struct Matrix S_lr = (struct Matrix){ &Smat[ske_len * ske_len], ske_len, len_f, ske_len };
+      gen_matrix(ef, ske_len, len_f, bodies, bodies, S_lr.A, S_lr.LDA, ske_i, remote.data());
       nrm2_A(&S_lr, &nrm_lr);
       double scale = (nrm_dn == 0. || nrm_lr == 0.) ? 1. : nrm_lr / nrm_dn;
       scal_A(&S_dn, scale);
 
-      int64_t rank = ske_len < len_s ? ske_len : len_s;
-      rank = mrank > 0 ? (mrank < rank ? mrank : rank) : rank;
-      double* Svec = &mat[ske_len * len_s];
-      svd_U(&S, Svec);
+      int64_t rank = mrank > 0 ? (mrank < ske_len ? mrank : ske_len) : ske_len;
+      struct Matrix S = (struct Matrix){ Smat.data(), ske_len, ske_len + len_f, ske_len };
+      svd_U(&S, Svec.data());
 
       if (epi > 0.) {
         int64_t r = 0;
@@ -398,32 +218,34 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       }
       basis[l].DimsLr[i + ibegin] = rank;
       
-      int32_t* pa = ipiv_ptrs[i];
+      std::vector<int32_t> pa(ske_len);
+      double* mat = &matrix_data[basis[l].dimN * basis[l].dimN * i * 2];
       struct Matrix Qo = (struct Matrix){ mat, ske_len, rank, ske_len };
-      id_row(&Qo, pa, S_dn_work.A);
+      struct Matrix work = (struct Matrix){ Smat.data(), ske_len, rank, ske_len };
+      id_row(&Qo, &work, pa.data());
+      int64_t lc = basis[l].Lchild[i + ibegin];
+      if (lc >= 0)
+        upper_tri_reflec_mult('L', 2, &(basis[l + 1].R)[lc], &Qo);
 
       for (int64_t j = 0; j < rank; j++) {
         int64_t piv = (int64_t)pa[j] - 1;
         if (piv != j) { 
-          int64_t c = samples.Skeletons[i][piv];
-          samples.Skeletons[i][piv] = samples.Skeletons[i][j];
-          samples.Skeletons[i][j] = c;
+          int64_t c = ske_i[piv];
+          ske_i[piv] = ske_i[j];
+          ske_i[j] = c;
         }
       }
 
       if (rank > 0) {
         struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len, ske_len };
         struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank, rank };
-        int64_t lc = basis[l].Lchild[i + ibegin];
-        if (lc >= 0)
-          upper_tri_reflec_mult('L', 2, &(basis[l + 1].R)[lc], &Qo);
         qr_full(&Q, &R);
       }
     }
 
     basis[l].dimS = dist_int_64(basis[l].DimsLr, 1, &comm[l]);
 
-    count_m = 0;
+    int64_t count_m = 0;
     for (int64_t i = 0; i < xlen; i++) {
       int64_t m = basis[l].Dims[i];
       int64_t n = basis[l].DimsLr[i];
@@ -437,10 +259,11 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       int64_t offset = basis[l].dimS * (i + ibegin);
       int64_t n = basis[l].DimsLr[i + ibegin];
       if (n > 0)
-        memcpy(&basis[l].Multipoles[offset], samples.Skeletons[i], sizeof(int64_t) * n);
+        memcpy(&basis[l].Multipoles[offset], &skeletons[i * basis[l].dimN], sizeof(int64_t) * n);
     }
     dist_int_64(basis[l].Multipoles, basis[l].dimS, &comm[l]);
 
+    double** matrix_ptrs = (double**)malloc(sizeof(double*) * (xlen + 1));
     double* data_basis = NULL;
     if (count_m > 0)
       data_basis = (double*)malloc(sizeof(int64_t) * count_m);
@@ -449,7 +272,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       int64_t n = basis[l].DimsLr[i];
       int64_t size = m * m + n * n;
       if (ibegin <= i && i < iend && size > 0)
-        memcpy(data_basis, matrix_ptrs[i], sizeof(double) * size);
+        memcpy(data_basis, &matrix_data[basis[l].dimN * basis[l].dimN * (i - ibegin) * 2], sizeof(double) * size);
       basis[l].Uo[i] = (struct Matrix){ data_basis, m, n, m };
       basis[l].Uc[i] = (struct Matrix){ &data_basis[m * n], m, m - n, m };
       basis[l].R[i] = (struct Matrix){ &data_basis[m * m], n, n, n };
@@ -459,11 +282,8 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     matrix_ptrs[xlen] = data_basis;
     dist_double(matrix_ptrs, &comm[l]);
 
-    free(ipiv_data);
-    free(ipiv_ptrs);
     free(matrix_data);
     free(matrix_ptrs);
-    sampleBodies_free(&samples);
   }
 }
 

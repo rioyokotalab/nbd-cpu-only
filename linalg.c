@@ -25,12 +25,13 @@ void svd_U(struct Matrix* A, double* S) {
   LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A->M, A->N, A->A, lda, S, NULL, lda, NULL, ldv, &S[rank_a]);
 }
 
-void id_row(struct Matrix* A, int32_t arows[], double* work) {
+void id_row(struct Matrix* U, struct Matrix* A, int32_t arows[]) {
   int64_t lda = 1 < A->LDA ? A->LDA : 1;
-  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', A->M, A->N, A->A, lda, work, lda);
-  LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, A->N, work, lda, arows);
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, A->N, 1., work, lda, A->A, lda);
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, A->N, 1., work, lda, A->A, lda);
+  int64_t ldu = 1 < U->LDA ? U->LDA : 1;
+  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', A->M, A->N, A->A, lda, U->A, ldu);
+  LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, A->N, A->A, lda, arows);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, A->N, 1., A->A, lda, U->A, ldu);
+  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, A->N, 1., A->A, lda, U->A, ldu);
 }
 
 void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A) {

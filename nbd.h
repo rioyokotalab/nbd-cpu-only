@@ -17,7 +17,7 @@ void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, str
 
 void svd_U(struct Matrix* A, double* S);
 
-void id_row(struct Matrix* A, int32_t arows[], double* work);
+void id_row(struct Matrix* U, struct Matrix* A, int32_t arows[]);
 
 void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A);
 void qr_full(struct Matrix* Q, struct Matrix* R);
