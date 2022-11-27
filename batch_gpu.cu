@@ -11,10 +11,9 @@
 #include <thrust/functional.h>
 
 #include <thrust/copy.h>
-#include <thrust/scan.h>
 #include <thrust/tabulate.h>
 #include <thrust/transform.h>
-#include <thrust/iterator/counting_iterator.h>
+#include <thrust/distance.h>
 #include <thrust/iterator/permutation_iterator.h>
 
 #include <stdio.h>
@@ -219,7 +218,7 @@ struct set_const_double_ptr {
 struct cmp_int {
   int64_t _offset;
   cmp_int(int64_t offset) { _offset = offset; };
-  __host__ __device__ int64_t operator()(int64_t i, int64_t j) const { return (int64_t)((i - j) == _offset); }
+  __host__ __device__ bool operator()(int64_t i) const { return i == _offset; }
 };
 
 void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
@@ -237,16 +236,12 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   cudaMalloc((void**)&info_array, sizeof(int) * N_cols);
 
   thrust::host_vector<int64_t> col_coo(NNZ, 0);
-  thrust::host_vector<int64_t> stencil(NNZ);
   thrust::host_vector<int64_t> diag_idx(N_cols);
 
-  thrust::fill(thrust::make_permutation_iterator(col_coo.begin(), col_A + 1),
-    thrust::make_permutation_iterator(col_coo.begin(), col_A + N_cols), 
-    (int64_t)1);
-  thrust::inclusive_scan(col_coo.begin(), col_coo.end(), col_coo.begin());
-  thrust::transform(row_A, row_A + NNZ, col_coo.begin(), stencil.begin(), cmp_int(col_offset));
-  thrust::counting_iterator<int64_t> it(0);
-  thrust::copy_if(it, it + NNZ, stencil.begin(), diag_idx.begin(), thrust::identity<int64_t>());
+  for (int64_t i = 0; i < N_cols; i++) {
+    thrust::fill(col_coo.begin() + col_A[i], col_coo.begin() + col_A[i + 1], i);
+    diag_idx[i] = thrust::distance(row_A, thrust::find_if(row_A + col_A[i], row_A + col_A[i + 1], cmp_int(i + col_offset)));
+  }
 
   thrust::device_vector<int64_t> dims_arr(N_rows);
   thrust::device_vector<int64_t> col_arr(NNZ);
