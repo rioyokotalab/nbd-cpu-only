@@ -78,28 +78,25 @@ int64_t dist_int_64(int64_t arr[], int64_t blen, const struct CellComm* comm) {
   return lmax;
 }
 
-void dist_double(double* arr[], const struct CellComm* comm) {
+void dist_double(double arr[], int64_t blen, const struct CellComm* comm) {
   int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
   const int64_t* row = comm->ProcTargets;
-  double* data = arr[0];
   int64_t lbegin = 0;
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
   for (int64_t i = 0; i < plen; i++) {
     int64_t p = row[i];
-    int64_t llen = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
-    int64_t offset = arr[lbegin] - data;
-    int64_t len = arr[lbegin + llen] - arr[lbegin];
-    MPI_Bcast(&data[offset], len, MPI_DOUBLE, comm->ProcRootI[p], comm->Comm_box[p]);
-    lbegin = lbegin + llen;
+    int64_t len = (comm->ProcBoxesEnd[p] - comm->ProcBoxes[p]) * blen;
+    MPI_Bcast(&arr[lbegin], len, MPI_DOUBLE, comm->ProcRootI[p], comm->Comm_box[p]);
+    lbegin = lbegin + len;
   }
 
   int64_t xlen = 0;
   content_length(&xlen, comm);
-  int64_t alen = arr[xlen] - data;
+  int64_t alen = xlen * blen;
   if (comm->Proc[1] - comm->Proc[0] > 1)
-    MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
+    MPI_Bcast(arr, alen, MPI_DOUBLE, 0, comm->Comm_share);
 #ifdef _PROF
   double etime = MPI_Wtime() - stime;
   recordCommTime(etime);
@@ -148,6 +145,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
     }
 
     basis[l].dimN = dist_int_64(basis[l].Dims, 1, &comm[l]);
+    int64_t strideU = basis[l].dimN * basis[l].dimN;
     std::vector<int64_t> skeletons(basis[l].dimN * nodes);
 
     for (int64_t i = 0; i < nodes; i++) {
@@ -168,7 +166,7 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       }
     }
 
-    double* matrix_data = (double*)malloc(sizeof(double) * basis[l].dimN * basis[l].dimN * nodes * 2);
+    std::vector<double> matrix_data(strideU * nodes * 2);
 
 #pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
@@ -219,71 +217,59 @@ const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double 
       basis[l].DimsLr[i + ibegin] = rank;
       
       std::vector<int32_t> pa(ske_len);
-      double* mat = &matrix_data[basis[l].dimN * basis[l].dimN * i * 2];
-      struct Matrix Qo = (struct Matrix){ mat, ske_len, rank, ske_len };
+      struct Matrix Qo = (struct Matrix){ &matrix_data[strideU * i * 2], ske_len, rank, ske_len };
       struct Matrix work = (struct Matrix){ Smat.data(), ske_len, rank, ske_len };
       id_row(&Qo, &work, pa.data());
       int64_t lc = basis[l].Lchild[i + ibegin];
       if (lc >= 0)
         upper_tri_reflec_mult('L', 2, &(basis[l + 1].R)[lc], &Qo);
 
-      for (int64_t j = 0; j < rank; j++) {
-        int64_t piv = (int64_t)pa[j] - 1;
-        if (piv != j) { 
-          int64_t c = ske_i[piv];
-          ske_i[piv] = ske_i[j];
-          ske_i[j] = c;
-        }
-      }
+      for (int64_t j = 0; j < rank; j++)
+        std::iter_swap(ske_i + (pa[j] - 1), &ske_i[j]);
 
       if (rank > 0) {
-        struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len, ske_len };
-        struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank, rank };
+        struct Matrix Q = (struct Matrix){ &matrix_data[strideU * i * 2], ske_len, ske_len, ske_len };
+        struct Matrix R = (struct Matrix){ &matrix_data[strideU * i * 2 + ske_len * ske_len], rank, rank, rank };
         qr_full(&Q, &R);
       }
     }
 
     basis[l].dimS = dist_int_64(basis[l].DimsLr, 1, &comm[l]);
+    int64_t strideR = basis[l].dimS * basis[l].dimS;
 
-    int64_t count_m = 0;
-    for (int64_t i = 0; i < xlen; i++) {
-      int64_t m = basis[l].Dims[i];
-      int64_t n = basis[l].DimsLr[i];
-      count_m = count_m + m * m + n * n;
-    }
-
-    basis[l].Multipoles = NULL;
-    if (basis[l].dimS > 0)
-      basis[l].Multipoles = (int64_t*)malloc(sizeof(int64_t) * basis[l].dimS * xlen);
+    basis[l].Multipoles = (int64_t*)malloc(sizeof(int64_t) * basis[l].dimS * xlen);
     for (int64_t i = 0; i < nodes; i++) {
       int64_t offset = basis[l].dimS * (i + ibegin);
       int64_t n = basis[l].DimsLr[i + ibegin];
       if (n > 0)
         memcpy(&basis[l].Multipoles[offset], &skeletons[i * basis[l].dimN], sizeof(int64_t) * n);
     }
-    dist_int_64(basis[l].Multipoles, basis[l].dimS, &comm[l]);
+    if (basis[l].dimS)
+      dist_int_64(basis[l].Multipoles, basis[l].dimS, &comm[l]);
 
-    double** matrix_ptrs = (double**)malloc(sizeof(double*) * (xlen + 1));
-    double* data_basis = NULL;
-    if (count_m > 0)
-      data_basis = (double*)malloc(sizeof(int64_t) * count_m);
+    int64_t strideD = strideU + strideR;
+    double* data = (double*)malloc(sizeof(double) * strideD * xlen);
+
+#pragma omp parallel for
     for (int64_t i = 0; i < xlen; i++) {
       int64_t m = basis[l].Dims[i];
       int64_t n = basis[l].DimsLr[i];
-      int64_t size = m * m + n * n;
-      if (ibegin <= i && i < iend && size > 0)
-        memcpy(data_basis, &matrix_data[basis[l].dimN * basis[l].dimN * (i - ibegin) * 2], sizeof(double) * size);
-      basis[l].Uo[i] = (struct Matrix){ data_basis, m, n, m };
-      basis[l].Uc[i] = (struct Matrix){ &data_basis[m * n], m, m - n, m };
-      basis[l].R[i] = (struct Matrix){ &data_basis[m * m], n, n, n };
-      matrix_ptrs[i] = data_basis;
-      data_basis = &data_basis[size];
+      basis[l].Uo[i] = (struct Matrix){ &data[strideD * i], m, n, basis[l].dimN };
+      basis[l].Uc[i] = (struct Matrix){ &data[strideD * i + basis[l].dimN * n], m, m - n, basis[l].dimN };
+      basis[l].R[i] = (struct Matrix){ &data[strideD * i + basis[l].dimN * m], n, n, basis[l].dimS };
+      if (i >= ibegin && i < iend) {
+        double* mat = &matrix_data[strideU * (i - ibegin) * 2];
+        struct Matrix Qo = (struct Matrix){ mat, m, n, m };
+        struct Matrix Qc = (struct Matrix){ &mat[m * n], m, m - n, m };
+        struct Matrix R = (struct Matrix){ &mat[m * m], n, n, n };
+        mat_cpy(m, n, &Qo, &basis[l].Uo[i], 0, 0, 0, 0);
+        mat_cpy(m, m - n, &Qc, &basis[l].Uc[i], 0, 0, 0, 0);
+        mat_cpy(n, n, &R, &basis[l].R[i], 0, 0, 0, 0);
+      }
     }
-    matrix_ptrs[xlen] = data_basis;
-    dist_double(matrix_ptrs, &comm[l]);
 
-    free(matrix_data);
-    free(matrix_ptrs);
+    if (strideU)
+      dist_double(data, strideD, &comm[l]);
   }
 }
 

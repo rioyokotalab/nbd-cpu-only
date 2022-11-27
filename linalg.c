@@ -36,18 +36,20 @@ void id_row(struct Matrix* U, struct Matrix* A, int32_t arows[]) {
 
 void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A) {
   int64_t lda = 1 < A->LDA ? A->LDA : 1;
+  double work[A->M * A->N];
+  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'F', A->M, A->N, A->A, lda, work, A->M);
   int64_t y = 0;
   if (side == 'L' || side == 'l')
     for (int64_t i = 0; i < lenR; i++) {
       int64_t ldr = 1 < R[i].LDA ? R[i].LDA : 1;
-      cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, R[i].M, A->N, 1., R[i].A, ldr, &A->A[y], lda);
+      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R[i].M, A->N, R[i].M, 1., R[i].A, ldr, &work[y], A->M, 0., &A->A[y], lda);
       y = y + R[i].M;
     }
   else if (side == 'R' || side == 'r')
     for (int64_t i = 0; i < lenR; i++) {
       int64_t ldr = 1 < R[i].LDA ? R[i].LDA : 1;
-      cblas_dtrmm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, A->M, R[i].M, 1., R[i].A, ldr, &A->A[y], lda);
-      y = y + A->LDA * R[i].M;
+      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, A->M, R[i].M, R[i].M, 1., &work[y * A->M], A->M, R[i].A, ldr, 0., &A->A[y * lda], lda);
+      y = y + R[i].M;
     }
 }
 
@@ -55,11 +57,11 @@ void qr_full(struct Matrix* Q, struct Matrix* R) {
   int64_t ldq = 1 < Q->LDA ? Q->LDA : 1;
   int64_t k = R->N;
   int64_t ldr = 1 < R->LDA ? R->LDA : 1;
-  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, k, Q->A, ldq, R->A);
-  double a0 = Q->N > 0 ? Q->A[0] : 0.;
-  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', R->M, R->N - 1, &Q->A[ldq], ldq, &R->A[ldr], ldr);
-  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, k, Q->A, ldq, R->A);
-  R->A[0] = a0;
+  double tau[Q->N];
+  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, k, Q->A, ldq, tau);
+  LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', R->M, R->N, 0., 0., R->A, ldr);
+  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'U', R->M, R->N, Q->A, ldq, R->A, ldr);
+  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, k, Q->A, ldq, tau);
 }
 
 void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {
