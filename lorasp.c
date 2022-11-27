@@ -31,6 +31,7 @@ int main(int argc, char* argv[]) {
   
   struct Body* body = (struct Body*)malloc(sizeof(struct Body) * Nbody);
   struct Cell* cell = (struct Cell*)malloc(sizeof(struct Cell) * ncells);
+  struct CellBasis* cell_basis = (struct CellBasis*)malloc(sizeof(struct CellBasis) * ncells);
   struct CSC cellNear, cellFar;
   struct CSC* rels_far = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
   struct CSC* rels_near = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
@@ -61,14 +62,18 @@ int main(int argc, char* argv[]) {
 
   traverse('N', &cellNear, ncells, cell, theta);
   traverse('F', &cellFar, ncells, cell, theta);
+  //buildCellBasis(epi, rank_max, sp_pts, ef, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
+
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
   relations(rels_near, ncells, cell, &cellNear, levels, cell_comm);
   relations(rels_far, ncells, cell, &cellFar, levels, cell_comm);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  buildBasis(ef, basis, ncells, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts);
+  buildCellBasis(epi, rank_max, sp_pts, ef, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
   stopTimer(&construct_time, &construct_comm_time);
+
+  buildBasis(basis, ncells, cell, cell_basis, levels, cell_comm);
   
   allocNodes(nodes, basis, rels_near, rels_far, cell_comm, levels);
 
@@ -142,11 +147,14 @@ int main(int argc, char* argv[]) {
     rightHandSides_free(&rhs[i]);
     cellComm_free(&cell_comm[i]);
   }
+  for (int64_t i = 0; i < ncells; i++)
+    cellBasis_free(&cell_basis[i]);
   csc_free(&cellFar);
   csc_free(&cellNear);
   
   free(body);
   free(cell);
+  free(cell_basis);
   free(rels_far);
   free(rels_near);
   free(cell_comm);

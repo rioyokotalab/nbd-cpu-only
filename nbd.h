@@ -40,9 +40,10 @@ void chol_decomp(double* A, int64_t N);
 
 struct Body { double X[3], B; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
+struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 struct CellComm { int64_t Proc[2], worldRank, worldSize, lenTargets, *ProcTargets, *ProcRootI, *ProcBoxes, *ProcBoxesEnd; MPI_Comm Comm_share, Comm_merge, *Comm_box; };
-struct Base { int64_t Ulen, dimN, dimS, *Lchild, *Dims, *DimsLr, *Multipoles; struct Matrix *Uo, *Uc, *R; };
+struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, **Multipoles; struct Matrix *Uo, *Uc, *R; };
 struct Node { int64_t lenA, lenS, dimR, dimS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf, *U_ptr, *U_buf; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
 
@@ -82,6 +83,10 @@ void csc_free(struct CSC* csc);
 
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank);
 
+void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, int64_t nbodies, const struct Body* bodies, const struct CSC* rels, int64_t levels);
+
+void cellBasis_free(struct CellBasis* basis);
+
 void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 
 void cellComm_free(struct CellComm* comm);
@@ -104,7 +109,7 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
 
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
 
-void buildBasis(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* rel_near, int64_t levels, const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts);
+void buildBasis(struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm);
 
 void basis_free(struct Base* basis);
 

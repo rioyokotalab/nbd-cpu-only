@@ -13,15 +13,14 @@ all:
 	$(CC) $(CFLAGS) -c batch.c -o batch.o
 	$(CC) $(CFLAGS) -c kernel.c -o kernel.o
 	$(CC) $(CFLAGS) -c build_tree.c -o build_tree.o
-	$(CXX) $(CFLAGS) -D_PROF -c basis.cxx -o basis.o
 	$(CC) $(CFLAGS) -D_PROF -c umv.c -o umv.o
 	$(CC) $(CFLAGS) -D_PROF -c profile.c -o profile.o
 	$(CC) $(CFLAGS) -c lorasp.c -o lorasp.o
 	$(NVCC) $(NVCCFLAGS) -c batch_gpu.cu -o batch_gpu.o
 
-	$(CXX) $(CFLAGS) linalg.o batch.o kernel.o build_tree.o basis.o umv.o profile.o \
+	$(CC) $(CFLAGS) linalg.o batch.o kernel.o build_tree.o umv.o profile.o \
 	  lorasp.o $(LDFLAGS) -o lorasp
-	$(NVCC) $(NVCCFLAGS) linalg.o batch_gpu.o kernel.o build_tree.o basis.o umv.o profile.o \
+	$(NVCC) $(NVCCFLAGS) linalg.o batch_gpu.o kernel.o build_tree.o umv.o profile.o \
 	  lorasp.o $(LDFLAGS) $(NVCCLIBS) -o gpu
 	
 clean:

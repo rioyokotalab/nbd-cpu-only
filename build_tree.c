@@ -239,6 +239,179 @@ void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t l
   *end = low;
 }
 
+int64_t gen_close(int64_t clen, int64_t close[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[], int64_t cpos) {
+  int64_t avail = 0;
+  for (int64_t i = 0; i < ngbs; i++)
+    avail = avail + (i != cpos ? ngbs_len[i] : 0);
+  clen = avail < clen ? avail : clen;
+  for (int64_t i = 0; i < clen; i++)
+    close[i] = (double)(i * avail) / clen;
+  int64_t* begin = close;
+  int64_t slen = 0;
+  for (int64_t i = 0; i < ngbs; i++) 
+    if (i != cpos) {
+      int64_t len = &close[clen] - begin;
+      len = len < ngbs_len[i] ? len : ngbs_len[i];
+      int64_t bound = ngbs_len[i] + slen;
+      int64_t body = ngbs_body[i] - slen;
+      int64_t* next = begin;
+      while (next != begin + len && *next < bound)
+        next = next + 1;
+      for (int64_t* p = begin; p != next; p++)
+        *p = *p + body;
+      begin = next;
+      slen = slen + ngbs_len[i];
+    }
+  return clen;
+}
+
+int64_t gen_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[], int64_t nbody) {
+  int64_t near = 0;
+  for (int64_t i = 0; i < ngbs; i++)
+    near = near + ngbs_len[i];
+  int64_t avail = nbody - near;
+  flen = avail < flen ? avail : flen;
+  for (int64_t i = 0; i < flen; i++)
+    far[i] = (double)(i * avail) / flen;
+  int64_t* begin = far;
+  int64_t slen = 0;
+  for (int64_t i = 0; i < ngbs; i++) {
+    int64_t bound = ngbs_body[i] - slen;
+    int64_t* next = begin;
+    while (next != far + flen && *next < bound)
+      next = next + 1;
+    for (int64_t* p = begin; p != next; p++)
+      *p = *p + slen;
+    begin = next;
+    slen = slen + ngbs_len[i];
+  }
+  for (int64_t* p = begin; p != far + flen; p++)
+    *p = *p + near;
+  return flen;
+}
+
+void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, int64_t nbodies, const struct Body* bodies, const struct CSC* rels, int64_t levels) {
+  for (int64_t l = levels; l >= 0; l--) {
+    int64_t ibegin = 0, iend = ncells;
+    get_level(&ibegin, &iend, cells, l, -1);
+    int64_t nodes = iend - ibegin;
+
+#pragma omp parallel for
+    for (int64_t i = 0; i < nodes; i++) {
+      int64_t ci = i + ibegin;
+      int64_t childi = cells[ci].Child;
+      int64_t ske_len = childi >= 0 ? (basis[childi].N + basis[childi + 1].N) : (cells[ci].Body[1] - cells[ci].Body[0]);
+      int64_t* skeletons = (int64_t*)malloc(sizeof(int64_t) * ske_len);
+
+      if (childi >= 0) {
+        memcpy(skeletons, basis[childi].Multipoles, sizeof(int64_t) * basis[childi].N);
+        memcpy(skeletons + basis[childi].N, basis[childi + 1].Multipoles, sizeof(int64_t) * basis[childi + 1].N);
+      }
+      else
+        for (int64_t j = 0; j < ske_len; j++)
+          skeletons[j] = j + cells[ci].Body[0];
+
+      int64_t nbegin = rels->ColIndex[ci];
+      int64_t nlen = rels->ColIndex[ci + 1] - nbegin;
+      const int64_t* ngbs = &rels->RowIndex[nbegin];
+      int64_t* close = (int64_t*)malloc(sizeof(int64_t) * sp_pts);
+      int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * sp_pts);
+      int64_t* body = (int64_t*)malloc(sizeof(int64_t) * nlen);
+      int64_t* lens = (int64_t*)malloc(sizeof(int64_t) * nlen);
+
+      int64_t cpos = nlen;
+      for (int64_t j = 0; j < nlen; j++) {
+        int64_t cj = ngbs[j];
+        body[j] = cells[cj].Body[0];
+        lens[j] = cells[cj].Body[1] - cells[cj].Body[0];
+        if (ci == cj)
+          cpos = j;
+      }
+      int64_t len_c = gen_close(sp_pts, close, nlen, body, lens, cpos);
+      int64_t len_f = gen_far(sp_pts, remote, nlen, body, lens, nbodies);
+      
+      double* Smat = (double*)malloc(sizeof(double) * ske_len * (ske_len + sp_pts));
+      double* Svec = (double*)malloc(sizeof(double) * ske_len * 2);
+      struct Matrix S_dn = (struct Matrix){ Smat, ske_len, ske_len, ske_len };
+      double nrm_dn = 0.;
+      double nrm_lr = 0.;
+      struct Matrix S_dn_work = (struct Matrix){ &Smat[ske_len * ske_len], ske_len, len_c, ske_len };
+      gen_matrix(ef, ske_len, len_c, bodies, bodies, S_dn_work.A, S_dn_work.LDA, skeletons, close);
+      mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
+      nrm2_A(&S_dn, &nrm_dn);
+
+      struct Matrix S_lr = (struct Matrix){ &Smat[ske_len * ske_len], ske_len, len_f, ske_len };
+      gen_matrix(ef, ske_len, len_f, bodies, bodies, S_lr.A, S_lr.LDA, skeletons, remote);
+      nrm2_A(&S_lr, &nrm_lr);
+      double scale = (nrm_dn == 0. || nrm_lr == 0.) ? 1. : nrm_lr / nrm_dn;
+      scal_A(&S_dn, scale);
+
+      int64_t rank = mrank > 0 ? (mrank < ske_len ? mrank : ske_len) : ske_len;
+      struct Matrix S = (struct Matrix){ Smat, ske_len, ske_len + len_f, ske_len };
+      svd_U(&S, Svec);
+
+      if (epi > 0.) {
+        int64_t r = 0;
+        double sepi = Svec[0] * epi;
+        while(r < rank && Svec[r] > sepi)
+          r += 1;
+        rank = r;
+      }
+
+      double* basis_data = (double*)malloc(sizeof(double) * (ske_len * ske_len + rank * rank));
+      int32_t* pa = (int32_t*)malloc(sizeof(int32_t) * ske_len);
+      struct Matrix Qo = (struct Matrix){ basis_data, ske_len, rank, ske_len };
+      struct Matrix work = (struct Matrix){ Smat, ske_len, rank, ske_len };
+      id_row(&Qo, &work, pa);
+      if (childi >= 0) {
+        struct Matrix reflec[2];
+        reflec[0] = (struct Matrix){ basis[childi].R, basis[childi].N, basis[childi].N, basis[childi].N };
+        reflec[1] = (struct Matrix){ basis[childi + 1].R, basis[childi + 1].N, basis[childi + 1].N, basis[childi + 1].N };
+        upper_tri_reflec_mult('L', 2, reflec, &Qo);
+      }
+
+      if (rank > 0) {
+        struct Matrix Q = (struct Matrix){ basis_data, ske_len, ske_len, ske_len };
+        struct Matrix R = (struct Matrix){ &basis_data[ske_len * ske_len], rank, rank, rank };
+        qr_full(&Q, &R);
+      }
+
+      for (int64_t j = 0; j < rank; j++) {
+        int64_t piv = (int64_t)pa[j] - 1;
+        if (piv != j) {
+          int64_t c = skeletons[piv];
+          skeletons[piv] = skeletons[j];
+          skeletons[j] = c;
+        }
+      }
+
+      basis[ci].M = ske_len;
+      basis[ci].N = rank;
+      basis[ci].Multipoles = (int64_t*)malloc(sizeof(int64_t) * rank);
+      basis[ci].Uo = basis_data;
+      basis[ci].Uc = &basis_data[ske_len * rank];
+      basis[ci].R = &basis_data[ske_len * ske_len];
+      memcpy(basis[ci].Multipoles, skeletons, sizeof(int64_t) * rank);
+
+      free(skeletons);
+      free(close);
+      free(remote);
+      free(body);
+      free(lens);
+      free(Smat);
+      free(Svec);
+      free(pa);
+    }
+  }
+}
+
+void cellBasis_free(struct CellBasis* basis) {
+  if (basis->Multipoles)
+    free(basis->Multipoles);
+  if (basis->Uo)
+    free(basis->Uo);
+}
+
 void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
   int __mpi_rank = 0, __mpi_size = 1;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
@@ -456,6 +629,52 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
   }
 }
 
+void buildBasis(struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
+
+  for (int64_t l = levels; l >= 0; l--) {
+    int64_t xlen = 0;
+    content_length(&xlen, &comm[l]);
+    basis[l].Ulen = xlen;
+    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * xlen * 3);
+    basis[l].Lchild = arr_i;
+    basis[l].Dims = &arr_i[xlen];
+    basis[l].DimsLr = &arr_i[xlen * 2];
+
+    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
+    basis[l].Uo = arr_m;
+    basis[l].Uc = &arr_m[xlen];
+    basis[l].R = &arr_m[xlen * 2];
+    basis[l].Multipoles = (int64_t**)malloc(sizeof(int64_t*) * xlen);
+
+    int64_t lbegin = 0, lend = ncells;
+    get_level(&lbegin, &lend, cells, l, -1);
+
+    for (int64_t i = 0; i < xlen; i++) {
+      int64_t gi = i;
+      i_global(&gi, &comm[l]);
+      int64_t ci = lbegin + gi;
+      int64_t lc = cells[ci].Child;
+
+      if (lc >= 0) {
+        lc = lc - lend;
+        i_local(&lc, &comm[l + 1]);
+      }
+      basis[l].Lchild[i] = lc;
+      basis[l].Dims[i] = cell_basis[ci].M;
+      basis[l].DimsLr[i] = cell_basis[ci].N;
+      basis[l].Uo[i] = (struct Matrix) { cell_basis[ci].Uo, cell_basis[ci].M, cell_basis[ci].N, cell_basis[ci].M };
+      basis[l].Uc[i] = (struct Matrix) { cell_basis[ci].Uc, cell_basis[ci].M, cell_basis[ci].M - cell_basis[ci].N, cell_basis[ci].M };
+      basis[l].R[i] = (struct Matrix) { cell_basis[ci].R, cell_basis[ci].N, cell_basis[ci].N, cell_basis[ci].N };
+      basis[l].Multipoles[i] = cell_basis[ci].Multipoles;
+    }
+  }
+}
+
+void basis_free(struct Base* basis) {
+  free(basis->Multipoles);
+  free(basis->Lchild);
+  free(basis->Uo);
+}
 
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* rels, int64_t level) {
   int __mpi_rank = 0;
@@ -485,6 +704,27 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
       int64_t y_begin = cj->Body[0];
       int64_t m = cj->Body[1] - y_begin;
       gen_matrix(ef, m, n, &bodies[y_begin], &bodies[x_begin], D[offsetD + j].A, D[offsetD + j].LDA, NULL, NULL);
+    }
+  }
+}
+
+void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm) {
+  int64_t ibegin = 0, iend = 0;
+  self_local_range(&ibegin, &iend, comm);
+  //int64_t* multipoles = basis->Multipoles;
+
+#pragma omp parallel for
+  for (int64_t x = 0; x < rels->N; x++) {
+    int64_t n = basis->DimsLr[x + ibegin];
+    //int64_t off_x = basis->dimS * (x + ibegin);
+
+    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
+      int64_t y = rels->RowIndex[yx];
+      int64_t m = basis->DimsLr[y];
+      //int64_t off_y = basis->dimS * y;
+      gen_matrix(ef, m, n, bodies, bodies, S[yx].A, S[yx].LDA, basis->Multipoles[y], basis->Multipoles[x + ibegin]);
+      upper_tri_reflec_mult('L', 1, &basis->R[y], &S[yx]);
+      upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
     }
   }
 }
