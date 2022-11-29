@@ -15,9 +15,18 @@ void alloc_matrices_aligned(double** A_ptr, double** A_buffer, int64_t M, int64_
   *A_buffer = *A_ptr;
 }
 
-void flush_buffer(char dir, double* A_ptr, double* A_buffer, int64_t len) { }
+void flush_buffer(char dir, double* A_ptr, double* A_buffer, int64_t len) {
+  if (A_ptr != A_buffer) {
+    if (dir == 'S')
+      memcpy(A_ptr, A_buffer, sizeof(double) * len);
+    else if (dir == 'G')
+      memcpy(A_buffer, A_ptr, sizeof(double) * len);
+  }
+}
 
 void free_matrices(double* A_ptr, double* A_buffer) {
+  if (A_buffer != A_ptr)
+    MKL_free(A_buffer);
   MKL_free(A_ptr);
 }
 

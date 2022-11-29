@@ -62,7 +62,6 @@ int main(int argc, char* argv[]) {
 
   traverse('N', &cellNear, ncells, cell, theta);
   traverse('F', &cellFar, ncells, cell, theta);
-  //buildCellBasis(epi, rank_max, sp_pts, ef, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
 
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
   relations(rels_near, ncells, cell, &cellNear, levels, cell_comm);
@@ -70,11 +69,10 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  buildCellBasis(epi, rank_max, sp_pts, ef, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
+  buildCellBasis(epi, rank_max, sp_pts, ef, cell_basis, ncells, cell, Nbody, body, &cellNear, levels, cell_comm);
   stopTimer(&construct_time, &construct_comm_time);
 
   buildBasis(basis, ncells, cell, cell_basis, levels, cell_comm);
-  
   allocNodes(nodes, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(ef, nodes[levels].A, ncells, cell, body, &cellNear, levels);

@@ -12,7 +12,7 @@ all:
 	$(CC) $(CFLAGS) -c linalg.c -o linalg.o
 	$(CC) $(CFLAGS) -c batch.c -o batch.o
 	$(CC) $(CFLAGS) -c kernel.c -o kernel.o
-	$(CC) $(CFLAGS) -c build_tree.c -o build_tree.o
+	$(CC) $(CFLAGS) -D_PROF -c build_tree.c -o build_tree.o
 	$(CC) $(CFLAGS) -D_PROF -c umv.c -o umv.o
 	$(CC) $(CFLAGS) -D_PROF -c profile.c -o profile.o
 	$(CC) $(CFLAGS) -c lorasp.c -o lorasp.o

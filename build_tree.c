@@ -1,5 +1,6 @@
 
 #include "nbd.h"
+#include "profile.h"
 
 #include "stdio.h"
 #include "stdlib.h"
@@ -290,10 +291,118 @@ int64_t gen_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_bo
   return flen;
 }
 
-void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, int64_t nbodies, const struct Body* bodies, const struct CSC* rels, int64_t levels) {
+void gather_dims(int64_t dims[], const struct CellComm* comm) {
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  int64_t plen = comm->lenGather;
+  if (plen > 0) {
+    int64_t p = comm->Proc[0];
+    int* offsets = (int*)malloc(sizeof(int) * plen);
+    int* lens = (int*)malloc(sizeof(int) * plen);
+    for (int64_t i = 0; i < plen; i++) {
+      int64_t rank = comm->ProcGather[i];
+      offsets[i] = comm->ProcBoxes[rank];
+      lens[i] = comm->ProcBoxesEnd[rank] - offsets[i];
+    }
+    int64_t pbegin = comm->ProcBoxes[p];
+    int64_t plen = comm->ProcBoxesEnd[p] - pbegin;
+    MPI_Allgatherv(&dims[pbegin], plen, MPI_INT64_T, dims, lens, offsets, MPI_INT64_T, comm->Comm_gather);
+    free(offsets);
+    free(lens);
+  }
+  if (comm->Proc[1] - comm->Proc[0] > 1) {
+    int64_t dlen = comm->ProcBoxesEnd[comm->worldSize - 1];
+    MPI_Bcast(dims, dlen, MPI_INT64_T, 0, comm->Comm_share);
+  }
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
+}
+
+void gather_multipoles(int64_t data[], const int64_t M[], const struct CellComm* comm) {
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  int64_t plen = comm->lenGather;
+  if (plen > 0) {
+    int64_t p = comm->Proc[0];
+    int* offsets = (int*)malloc(sizeof(int) * plen);
+    int* lens = (int*)malloc(sizeof(int) * plen);
+    for (int64_t i = 0; i < plen; i++) {
+      int64_t rank = comm->ProcGather[i];
+      int64_t box = comm->ProcBoxes[rank];
+      int64_t box_end = comm->ProcBoxesEnd[rank];
+      offsets[i] = M[box];
+      lens[i] = M[box_end] - M[box];
+    }
+    int64_t pbox = comm->ProcBoxes[p];
+    int64_t pbox_end = comm->ProcBoxesEnd[p];
+    int64_t pbegin = M[pbox];
+    int64_t plen = M[pbox_end] - M[pbox];
+    MPI_Allgatherv(&data[pbegin], plen, MPI_INT64_T, data, lens, offsets, MPI_INT64_T, comm->Comm_gather);
+    free(offsets);
+    free(lens);
+  }
+  if (comm->Proc[1] - comm->Proc[0] > 1) {
+    int64_t blen = comm->ProcBoxesEnd[comm->worldSize - 1];
+    int64_t dlen = M[blen];
+    MPI_Bcast(data, dlen, MPI_INT64_T, 0, comm->Comm_share);
+  }
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
+}
+
+void gather_matrix(double data[], const int64_t M[], const struct CellComm* comm) {
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  int64_t plen = comm->lenGather;
+  if (plen > 0) {
+    int64_t p = comm->Proc[0];
+    int* offsets = (int*)malloc(sizeof(int) * plen);
+    int* lens = (int*)malloc(sizeof(int) * plen);
+    for (int64_t i = 0; i < plen; i++) {
+      int64_t rank = comm->ProcGather[i];
+      int64_t box = comm->ProcBoxes[rank];
+      int64_t box_end = comm->ProcBoxesEnd[rank];
+      offsets[i] = M[box];
+      lens[i] = M[box_end] - M[box];
+    }
+    int64_t pbox = comm->ProcBoxes[p];
+    int64_t pbox_end = comm->ProcBoxesEnd[p];
+    int64_t pbegin = M[pbox];
+    int64_t plen = M[pbox_end] - M[pbox];
+    MPI_Allgatherv(&data[pbegin], plen, MPI_DOUBLE, data, lens, offsets, MPI_DOUBLE, comm->Comm_gather);
+    free(offsets);
+    free(lens);
+  }
+  if (comm->Proc[1] - comm->Proc[0] > 1) {
+    int64_t blen = comm->ProcBoxesEnd[comm->worldSize - 1];
+    int64_t dlen = M[blen];
+    MPI_Bcast(data, dlen, MPI_DOUBLE, 0, comm->Comm_share);
+  }
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
+}
+
+void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
+  int64_t nbodies, const struct Body* bodies, const struct CSC* rels, int64_t levels, const struct CellComm* comms) {
+  int64_t mpi_rank = comms[0].worldRank;
+  
   for (int64_t l = levels; l >= 0; l--) {
-    int64_t ibegin = 0, iend = ncells;
-    get_level(&ibegin, &iend, cells, l, -1);
+    int64_t lbegin = 0, lend = ncells;
+    get_level(&lbegin, &lend, cells, l, -1);
+    int64_t llen = lend - lbegin;
+    memset(&basis[lbegin], 0, sizeof(struct CellBasis) * llen);
+
+    int64_t ibegin = lbegin, iend = lend;
+    get_level(&ibegin, &iend, cells, l, mpi_rank);
     int64_t nodes = iend - ibegin;
 
 #pragma omp parallel for
@@ -402,6 +511,76 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       free(Svec);
       free(pa);
     }
+
+    int64_t* M_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
+    int64_t* N_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
+    for (int64_t i = 0; i < llen; i++) {
+      int64_t ci = i + lbegin;
+      M_comm[i] = basis[ci].M;
+      N_comm[i] = basis[ci].N;
+    }
+
+    gather_dims(M_comm, &comms[l]);
+    gather_dims(N_comm, &comms[l]);
+
+    int64_t size_multipole = 0;
+    int64_t size_matrix = 0;
+    for (int64_t i = 0; i < llen; i++) {
+      int64_t M = M_comm[i];
+      int64_t N = N_comm[i];
+      M_comm[i] = size_multipole;
+      N_comm[i] = size_matrix;
+      size_multipole = size_multipole + N;
+      size_matrix = size_matrix + (M * M + N * N);
+
+      int64_t ci = i + lbegin;
+      basis[ci].M = M;
+      basis[ci].N = N;
+      if (basis[ci].Multipoles == NULL && N > 0)
+        basis[ci].Multipoles = (int64_t*)malloc(sizeof(int64_t) * N);
+      if (basis[ci].Uo == NULL && (M > 0 || N > 0)) {
+        basis[ci].Uo = (double*)malloc(sizeof(double) * (M * M + N * N));
+        basis[ci].Uc = &(basis[ci].Uo)[M * N];
+        basis[ci].R = &(basis[ci].Uo)[M * M];
+      }
+    }
+    M_comm[llen] = size_multipole;
+    N_comm[llen] = size_matrix;
+
+    int64_t* multipoles = size_multipole > 0 ? (int64_t*)malloc(sizeof(int64_t) * size_multipole) : NULL;
+    double* matrix = size_matrix > 0 ? (double*)malloc(sizeof(double) * size_matrix) : NULL;
+
+    for (int64_t i = 0; i < llen; i++) {
+      int64_t sizeM = M_comm[i + 1] - M_comm[i];
+      int64_t sizeN = N_comm[i + 1] - N_comm[i];
+      int64_t ci = i + lbegin;
+      if (sizeM > 0)
+        memcpy(multipoles + M_comm[i], basis[ci].Multipoles, sizeof(int64_t) * sizeM);
+      if (sizeN > 0)
+        memcpy(matrix + N_comm[i], basis[ci].Uo, sizeof(double) * sizeN);
+    }
+
+    if (multipoles)
+      gather_multipoles(multipoles, M_comm, &comms[l]);
+    if (matrix)
+      gather_matrix(matrix, N_comm, &comms[l]);
+
+    for (int64_t i = 0; i < llen; i++) {
+      int64_t sizeM = M_comm[i + 1] - M_comm[i];
+      int64_t sizeN = N_comm[i + 1] - N_comm[i];
+      int64_t ci = i + lbegin;
+      if (sizeM > 0)
+        memcpy(basis[ci].Multipoles, multipoles + M_comm[i], sizeof(int64_t) * sizeM);
+      if (sizeN > 0)
+        memcpy(basis[ci].Uo, matrix + N_comm[i], sizeof(double) * sizeN);
+    }
+
+    if (multipoles)
+      free(multipoles);
+    if (matrix)
+      free(matrix);
+    free(M_comm);
+    free(N_comm);
   }
 }
 
@@ -423,11 +602,12 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t ibegin = 0, iend = ncells;
     get_level(&ibegin, &iend, cells, i, -1);
 
-    int64_t* arr = (int64_t*)malloc(sizeof(int64_t) * mpi_size * 4);
+    int64_t* arr = (int64_t*)malloc(sizeof(int64_t) * mpi_size * 5);
     comms[i].ProcRootI = arr;
     comms[i].ProcBoxes = &arr[mpi_size];
     comms[i].ProcBoxesEnd = &arr[mpi_size * 2];
     comms[i].ProcTargets = &arr[mpi_size * 3];
+    comms[i].ProcGather = &arr[mpi_size * 4];
 
     int64_t mbegin = ibegin, mend = iend;
     get_level(&mbegin, &mend, cells, i, mpi_rank);
@@ -453,17 +633,17 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
         comms[i].ProcTargets[len_t] = j;
         comms[i].lenTargets = len_t + 1;
       }
-
-      int64_t jbegin = ibegin, jend = iend;
-      get_level(&jbegin, &jend, cells, i, j);
-      comms[i].ProcBoxes[j] = jbegin - ibegin;
-      comms[i].ProcBoxesEnd[j] = jend - ibegin;
     }
 
     int root = -1;
     if (comms[i].Comm_box[mpi_rank] != MPI_COMM_NULL)
       MPI_Comm_rank(comms[i].Comm_box[mpi_rank], &root);
     MPI_Allgather(&root, 1, MPI_INT, comms[i].ProcRootI, 1, MPI_INT64_T, MPI_COMM_WORLD);
+
+    int64_t lbegin = mbegin - ibegin;
+    int64_t lend = mend - ibegin;
+    MPI_Allgather(&lbegin, 1, MPI_INT64_T, comms[i].ProcBoxes, 1, MPI_INT64_T, MPI_COMM_WORLD);
+    MPI_Allgather(&lend, 1, MPI_INT64_T, comms[i].ProcBoxesEnd, 1, MPI_INT64_T, MPI_COMM_WORLD);
 
     int color = MPI_UNDEFINED;
     int64_t cc = cells[mbegin].Child;
@@ -475,6 +655,15 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
   
     color = lenp > 1 ? p : MPI_UNDEFINED;
     MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_share);
+    
+    color = (p == mpi_rank) ? 1 : MPI_UNDEFINED;
+    MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_gather);
+    int gather_size = 0;
+    if (comms[i].Comm_gather != MPI_COMM_NULL) {
+      MPI_Comm_size(comms[i].Comm_gather, &gather_size);
+      MPI_Allgather(&mpi_rank, 1, MPI_INT64_T, comms[i].ProcGather, 1, MPI_INT64_T, comms[i].Comm_gather);
+    }
+    comms[i].lenGather = gather_size > 1 ? gather_size : 0;
   }
 }
 
@@ -487,6 +676,8 @@ void cellComm_free(struct CellComm* comm) {
     MPI_Comm_free(&comm->Comm_share);
   if (comm->Comm_merge != MPI_COMM_NULL)
     MPI_Comm_free(&comm->Comm_merge);
+  if (comm->Comm_gather != MPI_COMM_NULL)
+    MPI_Comm_free(&comm->Comm_gather);
   free(comm->ProcRootI);
   free(comm->Comm_box);
 }
@@ -630,7 +821,7 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
 }
 
 void buildBasis(struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
-
+  
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0;
     content_length(&xlen, &comm[l]);
@@ -711,17 +902,14 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
 void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
-  //int64_t* multipoles = basis->Multipoles;
 
 #pragma omp parallel for
   for (int64_t x = 0; x < rels->N; x++) {
     int64_t n = basis->DimsLr[x + ibegin];
-    //int64_t off_x = basis->dimS * (x + ibegin);
 
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       int64_t m = basis->DimsLr[y];
-      //int64_t off_y = basis->dimS * y;
       gen_matrix(ef, m, n, bodies, bodies, S[yx].A, S[yx].LDA, basis->Multipoles[y], basis->Multipoles[x + ibegin]);
       upper_tri_reflec_mult('L', 1, &basis->R[y], &S[yx]);
       upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
