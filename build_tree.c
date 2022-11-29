@@ -7,7 +7,7 @@
 #include "math.h"
 #include "string.h"
 
-void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels) {
+void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbodies, int64_t levels) {
   int __mpi_size = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
   int64_t mpi_size = __mpi_size;
@@ -37,7 +37,7 @@ void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t
       int64_t i_begin = ci->Body[0];
       int64_t i_end = ci->Body[1];
       int64_t nbody_i = i_end - i_begin;
-      sort_bodies(&bodies[i_begin], nbody_i, sdim);
+      sort_bodies(&bodies[i_begin * 3], nbody_i, sdim);
       int64_t loc = i_begin + nbody_i / 2;
 
       struct Cell* c0 = &cells[len];
@@ -66,15 +66,15 @@ void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t
         c1->Procs[0] = ci->Procs[0];
       }
 
-      get_bounds(&bodies[i_begin], loc - i_begin, c0->R, c0->C);
-      get_bounds(&bodies[loc], i_end - loc, c1->R, c1->C);
+      get_bounds(&bodies[i_begin * 3], loc - i_begin, c0->R, c0->C);
+      get_bounds(&bodies[loc * 3], i_end - loc, c1->R, c1->C);
     }
     i++;
   }
   *ncells = len;
 }
 
-void buildTreeBuckets(struct Cell* cells, const struct Body* bodies, const int64_t buckets[], int64_t levels) {
+void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t buckets[], int64_t levels) {
   int64_t nleaf = (int64_t)1 << levels;
   int64_t count = 0;
   for (int64_t i = 0; i < nleaf; i++) {
@@ -83,7 +83,7 @@ void buildTreeBuckets(struct Cell* cells, const struct Body* bodies, const int64
     cells[ci].Body[0] = count;
     cells[ci].Body[1] = count + buckets[i];
     cells[ci].Level = levels;
-    get_bounds(&bodies[count], buckets[i], cells[ci].R, cells[ci].C);
+    get_bounds(&bodies[count * 3], buckets[i], cells[ci].R, cells[ci].C);
     count = count + buckets[i];
   }
 
@@ -96,7 +96,7 @@ void buildTreeBuckets(struct Cell* cells, const struct Body* bodies, const int64
     cells[i].Body[0] = begin;
     cells[i].Body[1] = begin + len;
     cells[i].Level = cells[c0].Level - 1;
-    get_bounds(&bodies[begin], len, cells[i].R, cells[i].C);
+    get_bounds(&bodies[begin * 3], len, cells[i].R, cells[i].C);
   }
 
   int __mpi_size = 1;
@@ -392,7 +392,7 @@ void gather_matrix(double data[], const int64_t M[], const struct CellComm* comm
 }
 
 void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
-  int64_t nbodies, const struct Body* bodies, const struct CSC* rels, int64_t levels, const struct CellComm* comms) {
+  int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels, const struct CellComm* comms) {
   int64_t mpi_rank = comms[0].worldRank;
   
   for (int64_t l = levels; l >= 0; l--) {
@@ -772,12 +772,11 @@ void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int
   body[1] = cells[iend - 1].Body[1];
 }
 
-void loadX(double* X, int64_t body[], const struct Body* bodies) {
+void loadX(double* X, int64_t body[], const double Xbodies[]) {
   int64_t ibegin = body[0], iend = body[1];
   int64_t iboxes = iend - ibegin;
-  const struct Body* blocal = &bodies[ibegin];
   for (int64_t i = 0; i < iboxes; i++)
-    X[i] = blocal[i].B;
+    X[i] = Xbodies[i + ibegin];
 }
 
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm) {
@@ -867,7 +866,7 @@ void basis_free(struct Base* basis) {
   free(basis->Uo);
 }
 
-void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* rels, int64_t level) {
+void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* rels, int64_t level) {
   int __mpi_rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   int64_t mpi_rank = __mpi_rank;
@@ -894,12 +893,12 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
       const struct Cell* cj = &cells[lj];
       int64_t y_begin = cj->Body[0];
       int64_t m = cj->Body[1] - y_begin;
-      gen_matrix(ef, m, n, &bodies[y_begin], &bodies[x_begin], D[offsetD + j].A, D[offsetD + j].LDA, NULL, NULL);
+      gen_matrix(ef, m, n, &bodies[y_begin * 3], &bodies[x_begin * 3], D[offsetD + j].A, D[offsetD + j].LDA, NULL, NULL);
     }
   }
 }
 
-void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm) {
+void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const double* bodies, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
 

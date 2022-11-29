@@ -6,8 +6,8 @@
 #include "string.h"
 #include "math.h"
 
-void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
-  const int alignment = 16;
+void allocNodes(int alignment, struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
+  alignment = 1 << (int)log2(alignment);
   int64_t* dim_max = (int64_t*)malloc(sizeof(int64_t) * (levels + 1) * 2);
   for (int64_t i = 0; i <= levels; i++) {
     int64_t ibegin = 0, iend = 0;

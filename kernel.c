@@ -1,4 +1,3 @@
-
 #include "nbd.h"
 
 #include "stdio.h"
@@ -30,25 +29,29 @@ void set_kernel_constants(double singularity, double alpha) {
   _alpha = alpha;
 }
 
-void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], int64_t lda, const int64_t sel_i[], const int64_t sel_j[]) {
+void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda, const int64_t sel_i[], const int64_t sel_j[]) {
   if (m > 0)
     for (int64_t x = 0; x < n; x++) {
       int64_t bx = sel_j == NULL ? x : sel_j[x];
-      const double* bjj = bj[bx].X;
+      const double* bjj = &bj[bx * 3];
       for (int64_t y = 0; y < m; y++) {
         int64_t by = sel_i == NULL ? y : sel_i[y];
-        const double* bii = bi[by].X;
+        const double* bii = &bi[by * 3];
         double dX = bii[0] - bjj[0];
         double dY = bii[1] - bjj[1];
         double dZ = bii[2] - bjj[2];
         double r2 = dX * dX + dY * dY + dZ * dZ;
-        ef(&r2);
         Aij[y + x * lda] = r2;
       }
     }
+
+  if (m > 0)
+    for (int64_t x = 0; x < n; x++)
+      for (int64_t y = 0; y < m; y++)
+        ef(&Aij[y + x * lda]);
 }
 
-void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsigned int seed) {
+void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim, unsigned int seed) {
   if (seed > 0)
     srand(seed);
 
@@ -56,13 +59,13 @@ void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsign
     double r0 = dim > 0 ? ((double)rand() / RAND_MAX) : 0.;
     double r1 = dim > 1 ? ((double)rand() / RAND_MAX) : 0.;
     double r2 = dim > 2 ? ((double)rand() / RAND_MAX) : 0.;
-    bodies[i].X[0] = r0;
-    bodies[i].X[1] = r1;
-    bodies[i].X[2] = r2;
+    bodies[i * 3] = r0;
+    bodies[i * 3 + 1] = r1;
+    bodies[i * 3 + 2] = r2;
   }
 }
 
-void mesh_unit_sphere(struct Body* bodies, int64_t nbodies) {
+void mesh_unit_sphere(double* bodies, int64_t nbodies) {
   int64_t mlen = nbodies - 2;
   if (mlen < 0) {
     fprintf(stderr, "Error spherical mesh size (GT/EQ. 2 required): %" PRId64 ".\n", nbodies);
@@ -90,22 +93,22 @@ void mesh_unit_sphere(struct Body* bodies, int64_t nbodies) {
     double cosp = cos(phi);
     double sinp = sin(phi);
 
-    double* x_bi = bodies[i + 1].X;
+    double* x_bi = &bodies[(i + 1) * 3];
     x_bi[0] = sint * cosp;
     x_bi[1] = sint * sinp;
     x_bi[2] = cost;
   }
 
-  bodies[0].X[0] = 0.;
-  bodies[0].X[1] = 0.;
-  bodies[0].X[2] = 1.;
+  bodies[0] = 0.;
+  bodies[1] = 0.;
+  bodies[2] = 1.;
 
-  bodies[nbodies - 1].X[0] = 0.;
-  bodies[nbodies - 1].X[1] = 0.;
-  bodies[nbodies - 1].X[2] = -1.;
+  bodies[nbodies * 3 - 3] = 0.;
+  bodies[nbodies * 3 - 2] = 0.;
+  bodies[nbodies * 3 - 1] = -1.;
 }
 
-void mesh_unit_cube(struct Body* bodies, int64_t nbodies) {
+void mesh_unit_cube(double* bodies, int64_t nbodies) {
   if (nbodies < 0) {
     fprintf(stderr, "Error cubic mesh size (GT/EQ. 0 required): %" PRId64 ".\n", nbodies);
     return;
@@ -121,76 +124,93 @@ void mesh_unit_cube(struct Body* bodies, int64_t nbodies) {
   double seg_sv = 1. / (m + 1);
   double seg_su = 1. / (n + 1);
 
-  for (int64_t i = 0; i < nbodies; i++) {
-    int64_t face = i / mlen;
-    int64_t ii = i - face * mlen;
-    int64_t x = ii / m;
-    int64_t y = ii - x * m;
+  for (int64_t i = 0; i < mlen; i++) {
+    int64_t x = i / m;
+    int64_t y = i - x * m;
     int64_t x2 = y & 1;
+    double* x_bi = &bodies[i * 3];
+    double v = y * seg_fv;
+    double u = (0.5 * x2 + x) * seg_fu;
+    x_bi[0] = 1.;
+    x_bi[1] = 2. * v - 1.;
+    x_bi[2] = -2. * u + 1.;
+  }
 
-    double u, v;
-    double* x_bi = bodies[i].X;
+  for (int64_t i = 0; i < mlen; i++) {
+    int64_t x = i / m;
+    int64_t y = i - x * m;
+    int64_t x2 = y & 1;
+    double* x_bi = &bodies[(i + mlen) * 3];
+    double v = y * seg_fv;
+    double u = (0.5 * x2 + x) * seg_fu;
+    x_bi[0] = -1.;
+    x_bi[1] = 2. * v - 1.;
+    x_bi[2] = 2. * u - 1.;
+  }
 
-    switch (face) {
-      case 0: // POSITIVE X
-        v = y * seg_fv;
-        u = (0.5 * x2 + x) * seg_fu;
-        x_bi[0] = 1.;
-        x_bi[1] = 2. * v - 1.;
-        x_bi[2] = -2. * u + 1.;
-        break;
-      case 1: // NEGATIVE X
-        v = y * seg_fv;
-        u = (0.5 * x2 + x) * seg_fu;
-        x_bi[0] = -1.;
-        x_bi[1] = 2. * v - 1.;
-        x_bi[2] = 2. * u - 1.;
-        break;
-      case 2: // POSITIVE Y
-        v = (y + 1) * seg_sv;
-        u = (0.5 * x2 + x + 1) * seg_su;
-        x_bi[0] = 2. * u - 1.;
-        x_bi[1] = 1.;
-        x_bi[2] = -2. * v + 1.;
-        break;
-      case 3: // NEGATIVE Y
-        v = (y + 1) * seg_sv;
-        u = (0.5 * x2 + x + 1) * seg_su;
-        x_bi[0] = 2. * u - 1.;
-        x_bi[1] = -1.;
-        x_bi[2] = 2. * v - 1.;
-        break;
-      case 4: // POSITIVE Z
-        v = y * seg_fv;
-        u = (0.5 * x2 + x) * seg_fu;
-        x_bi[0] = 2. * u - 1.;
-        x_bi[1] = 2. * v - 1.;
-        x_bi[2] = 1.;
-        break;
-      case 5: // NEGATIVE Z
-        v = y * seg_fv;
-        u = (0.5 * x2 + x) * seg_fu;
-        x_bi[0] = -2. * u + 1.;
-        x_bi[1] = 2. * v - 1.;
-        x_bi[2] = -1.;
-        break;
-    }
+  for (int64_t i = 0; i < mlen; i++) {
+    int64_t x = i / m;
+    int64_t y = i - x * m;
+    int64_t x2 = y & 1;
+    double* x_bi = &bodies[(i + mlen * 2) * 3];
+    double v = (y + 1) * seg_sv;
+    double u = (0.5 * x2 + x + 1) * seg_su;
+    x_bi[0] = 2. * u - 1.;
+    x_bi[1] = 1.;
+    x_bi[2] = -2. * v + 1.;
+  }
+
+  for (int64_t i = 0; i < mlen; i++) {
+    int64_t x = i / m;
+    int64_t y = i - x * m;
+    int64_t x2 = y & 1;
+    double* x_bi = &bodies[(i + mlen * 3) * 3];
+    double v = (y + 1) * seg_sv;
+    double u = (0.5 * x2 + x + 1) * seg_su;
+    x_bi[0] = 2. * u - 1.;
+    x_bi[1] = -1.;
+    x_bi[2] = 2. * v - 1.;
+  }
+
+  for (int64_t i = 0; i < mlen; i++) {
+    int64_t x = i / m;
+    int64_t y = i - x * m;
+    int64_t x2 = y & 1;
+    double* x_bi = &bodies[(i + mlen * 4) * 3];
+    double v = y * seg_fv;
+    double u = (0.5 * x2 + x) * seg_fu;
+    x_bi[0] = 2. * u - 1.;
+    x_bi[1] = 2. * v - 1.;
+    x_bi[2] = 1.;
+  }
+
+  int64_t last = nbodies - mlen * 5;
+  for (int64_t i = 0; i < last; i++) {
+    int64_t x = i / m;
+    int64_t y = i - x * m;
+    int64_t x2 = y & 1;
+    double* x_bi = &bodies[(i + mlen * 5) * 3];
+    double v = y * seg_fv;
+    double u = (0.5 * x2 + x) * seg_fu;
+    x_bi[0] = -2. * u + 1.;
+    x_bi[1] = 2. * v - 1.;
+    x_bi[2] = -1.;
   }
 }
 
-void magnify_reloc(struct Body* bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[]) {
+void magnify_reloc(double* bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[], double alpha) {
+  double Ra[3];
+  for (int64_t i = 0; i < 3; i++)
+    Ra[i] = R[i] * alpha;
   for (int64_t i = 0; i < nbodies; i++) {
-    double* x_bi = bodies[i].X;
-    double v0 = x_bi[0] - Ccur[0];
-    double v1 = x_bi[1] - Ccur[1];
-    double v2 = x_bi[2] - Ccur[2];
-    x_bi[0] = Cnew[0] + R[0] * v0;
-    x_bi[1] = Cnew[1] + R[1] * v1;
-    x_bi[2] = Cnew[2] + R[2] * v2;
+    double* x_bi = &bodies[i * 3];
+    x_bi[0] = Cnew[0] + Ra[0] * (x_bi[0] - Ccur[0]);
+    x_bi[1] = Cnew[1] + Ra[1] * (x_bi[1] - Ccur[1]);
+    x_bi[2] = Cnew[2] + Ra[2] * (x_bi[2] - Ccur[2]);
   }
 }
 
-void body_neutral_charge(struct Body* bodies, int64_t nbodies, double cmax, unsigned int seed) {
+void body_neutral_charge(double X[], int64_t nbodies, double cmax, unsigned int seed) {
   if (seed > 0)
     srand(seed);
 
@@ -198,25 +218,25 @@ void body_neutral_charge(struct Body* bodies, int64_t nbodies, double cmax, unsi
   double cmax2 = cmax * 2;
   for (int64_t i = 0; i < nbodies; i++) {
     double c = ((double)rand() / RAND_MAX) * cmax2 - cmax;
-    bodies[i].B = c;
+    X[i] = c;
     avg = avg + c;
   }
   avg = avg / nbodies;
 
   if (avg != 0.)
     for (int64_t i = 0; i < nbodies; i++)
-      bodies[i].B = bodies[i].B - avg;
+      X[i] = X[i] - avg;
 }
 
-void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C[]) {
+void get_bounds(const double* bodies, int64_t nbodies, double R[], double C[]) {
   double Xmin[3];
   double Xmax[3];
-  Xmin[0] = Xmax[0] = bodies[0].X[0];
-  Xmin[1] = Xmax[1] = bodies[0].X[1];
-  Xmin[2] = Xmax[2] = bodies[0].X[2];
+  Xmin[0] = Xmax[0] = bodies[0];
+  Xmin[1] = Xmax[1] = bodies[1];
+  Xmin[2] = Xmax[2] = bodies[2];
 
   for (int64_t i = 1; i < nbodies; i++) {
-    const double* x_bi = bodies[i].X;
+    const double* x_bi = &bodies[i * 3];
     Xmin[0] = fmin(x_bi[0], Xmin[0]);
     Xmin[1] = fmin(x_bi[1], Xmin[1]);
     Xmin[2] = fmin(x_bi[2], Xmin[2]);
@@ -240,37 +260,37 @@ void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C
 }
 
 int comp_bodies_s0(const void *a, const void *b) {
-  struct Body* body_a = (struct Body*)a;
-  struct Body* body_b = (struct Body*)b;
-  double diff = (body_a->X)[0] - (body_b->X)[0];
+  double* body_a = (double*)a;
+  double* body_b = (double*)b;
+  double diff = body_a[0] - body_b[0];
   return diff < 0. ? -1 : (int)(diff > 0.);
 }
 
 int comp_bodies_s1(const void *a, const void *b) {
-  struct Body* body_a = (struct Body*)a;
-  struct Body* body_b = (struct Body*)b;
-  double diff = (body_a->X)[1] - (body_b->X)[1];
+  double* body_a = (double*)a;
+  double* body_b = (double*)b;
+  double diff = body_a[1] - body_b[1];
   return diff < 0. ? -1 : (int)(diff > 0.);
 }
 
 int comp_bodies_s2(const void *a, const void *b) {
-  struct Body* body_a = (struct Body*)a;
-  struct Body* body_b = (struct Body*)b;
-  double diff = (body_a->X)[2] - (body_b->X)[2];
+  double* body_a = (double*)a;
+  double* body_b = (double*)b;
+  double diff = body_a[2] - body_b[2];
   return diff < 0. ? -1 : (int)(diff > 0.);
 }
 
-void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim) {
-  size_t size = sizeof(struct Body);
+void sort_bodies(double* bodies, int64_t nbodies, int64_t sdim) {
+  size_t size3 = sizeof(double) * 3;
   if (sdim == 0)
-    qsort(bodies, nbodies, size, comp_bodies_s0);
+    qsort(bodies, nbodies, size3, comp_bodies_s0);
   else if (sdim == 1)
-    qsort(bodies, nbodies, size, comp_bodies_s1);
+    qsort(bodies, nbodies, size3, comp_bodies_s1);
   else if (sdim == 2)
-    qsort(bodies, nbodies, size, comp_bodies_s2);
+    qsort(bodies, nbodies, size3, comp_bodies_s2);
 }
 
-void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname) {
+void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, double* bodies, int64_t buckets[], const char* fname) {
   FILE* file = fopen(fname, "r");
   if (file != NULL) {
     int64_t curr = 1, cbegin = 0, iter = 0, len = *nbodies;
@@ -282,9 +302,9 @@ void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, struct Body* bodies,
       if (lbuckets < b)
         len = iter;
       else if (ret != EOF) {
-        bodies[iter].X[0] = x;
-        bodies[iter].X[1] = y;
-        bodies[iter].X[2] = z;
+        bodies[iter * 3] = x;
+        bodies[iter * 3 + 1] = y;
+        bodies[iter * 3 + 2] = z;
         while (curr < b && curr <= lbuckets) {
           buckets[curr - 1] = iter - cbegin;
           cbegin = iter;
@@ -303,21 +323,21 @@ void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, struct Body* bodies,
   }
 }
 
-void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies) {
+void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]) {
   int64_t m = end - begin;
   int64_t n = nbodies;
   for (int64_t i = 0; i < m; i++) {
     int64_t y = begin + i;
-    const double* bi = bodies[y].X;
+    const double* bi = &bodies[y * 3];
     double s = 0.;
     for (int64_t j = 0; j < n; j++) {
-      const double* bj = bodies[j].X;
+      const double* bj = &bodies[j * 3];
       double dX = bi[0] - bj[0];
       double dY = bi[1] - bj[1];
       double dZ = bi[2] - bj[2];
       double r2 = dX * dX + dY * dY + dZ * dZ;
       ef(&r2);
-      s = s + r2 * bodies[j].B;
+      s = s + r2 * Xbodies[j];
     }
     B[i] = s;
   }

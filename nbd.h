@@ -38,7 +38,6 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dims[]);
 void chol_decomp(double* A, int64_t N);
 
-struct Body { double X[3], B; };
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
@@ -56,29 +55,29 @@ void yukawa3d(double* r2);
 
 void set_kernel_constants(double singularity, double alpha);
 
-void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const struct Body* bi, const struct Body* bj, double Aij[], int64_t lda, const int64_t sel_i[], const int64_t sel_j[]);
+void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda, const int64_t sel_i[], const int64_t sel_j[]);
 
-void uniform_unit_cube(struct Body* bodies, int64_t nbodies, int64_t dim, unsigned int seed);
+void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim, unsigned int seed);
 
-void mesh_unit_sphere(struct Body* bodies, int64_t nbodies);
+void mesh_unit_sphere(double* bodies, int64_t nbodies);
 
-void mesh_unit_cube(struct Body* bodies, int64_t nbodies);
+void mesh_unit_cube(double* bodies, int64_t nbodies);
 
-void magnify_reloc(struct Body* bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[]);
+void magnify_reloc(double* bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[], double alpha);
 
-void body_neutral_charge(struct Body* bodies, int64_t nbodies, double cmax, unsigned int seed);
+void body_neutral_charge(double X[], int64_t nbodies, double cmax, unsigned int seed);
 
-void get_bounds(const struct Body* bodies, int64_t nbodies, double R[], double C[]);
+void get_bounds(const double* bodies, int64_t nbodies, double R[], double C[]);
 
-void sort_bodies(struct Body* bodies, int64_t nbodies, int64_t sdim);
+void sort_bodies(double* bodies, int64_t nbodies, int64_t sdim);
 
-void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, struct Body* bodies, int64_t buckets[], const char* fname);
+void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, double* bodies, int64_t buckets[], const char* fname);
 
-void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const struct Body* bodies);
+void mat_vec_reference(void(*ef)(double*), int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]);
 
-void buildTree(int64_t* ncells, struct Cell* cells, struct Body* bodies, int64_t nbodies, int64_t levels);
+void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbodies, int64_t levels);
 
-void buildTreeBuckets(struct Cell* cells, const struct Body* bodies, const int64_t buckets[], int64_t levels);
+void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t buckets[], int64_t levels);
 
 void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cells, double theta);
 
@@ -87,7 +86,7 @@ void csc_free(struct CSC* csc);
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank);
 
 void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
-  int64_t nbodies, const struct Body* bodies, const struct CSC* rels, int64_t levels, const struct CellComm* comms);
+  int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels, const struct CellComm* comms);
 
 void cellBasis_free(struct CellBasis* basis);
 
@@ -107,19 +106,19 @@ void content_length(int64_t* len, const struct CellComm* comm);
 
 void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int64_t levels);
 
-void loadX(double* X, int64_t body[], const struct Body* bodies);
+void loadX(double* X, int64_t body[], const double Xbodies[]);
 
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
 
-void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const struct Body* bodies, const struct CSC* csc, int64_t level);
+void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* csc, int64_t level);
 
 void buildBasis(struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm);
 
 void basis_free(struct Base* basis);
 
-void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct Body* bodies, const struct CSC* rels, const struct CellComm* comm);
+void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const double* bodies, const struct CSC* rels, const struct CellComm* comm);
 
-void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
+void allocNodes(int alignment, struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
 void node_free(struct Node* node);
 
