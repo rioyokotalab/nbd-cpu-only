@@ -73,8 +73,8 @@ int main(int argc, char* argv[]) {
   buildCellBasis(epi, rank_max, sp_pts, ef, cell_basis, ncells, cell, Nbody, body, &cellNear, levels, cell_comm);
   stopTimer(&construct_time, &construct_comm_time);
 
-  buildBasis(basis, ncells, cell, cell_basis, levels, cell_comm);
-  allocNodes(8, nodes, basis, rels_near, rels_far, cell_comm, levels);
+  buildBasis(8, basis, ncells, cell, cell_basis, levels, cell_comm);
+  allocNodes(nodes, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(ef, nodes[levels].A, ncells, cell, body, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++)
@@ -90,15 +90,19 @@ int main(int argc, char* argv[]) {
   else 
     mat_vec_reference(ef, body_local[0], body_local[1], X1, Nbody, body, Xbody);
   
-  factorA_mov_mem('S', nodes, levels);
+  factorA_mov_mem('S', nodes, basis, levels);
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
   factorA(nodes, basis, rels_near, cell_comm, levels);
   stopTimer(&factor_time, &factor_comm_time);
-  factorA_mov_mem('G', nodes, levels);
+  factorA_mov_mem('G', nodes, basis, levels);
 
-  int64_t factor_flops;
-  get_factor_flops(&factor_flops);
+  int64_t factor_flops[3];
+  get_factor_flops(factor_flops);
+  int64_t sum_flops = factor_flops[0] + factor_flops[1] + factor_flops[2];
+  double percent[3];
+  for (int i = 0; i < 3; i++)
+    percent[i] = (double)factor_flops[i] / (double)sum_flops * (double)100;
 
   allocRightHandSides('S', rhs, basis, levels);
 
@@ -129,14 +133,15 @@ int main(int argc, char* argv[]) {
       "Factorize: %lf s. COMM: %lf s.\n"
       "Solution: %lf s. COMM: %lf s.\n"
       "Factorization GFLOPS: %lf GFLOPS/s.\n"
+      "GEMM: %lf%%, POTRF: %lf%%, TRSM: %lf%%\n"
       "Basis Memory: %lf GiB.\n"
       "Matrix Memory: %lf GiB.\n"
       "Vector Memory: %lf GiB.\n"
       "Err: %e\n"
       "Program: %lf s. COMM: %lf s.\n",
       (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size, omp_get_max_threads(),
-      construct_time, construct_comm_time, factor_time, factor_comm_time, solve_time, solve_comm_time, (double)factor_flops * 1.e-9 / factor_time,
-      (double)mem_basis * 1.e-9, (double)mem_A * 1.e-9, (double)mem_X * 1.e-9, err, prog_time, cm_time);
+      construct_time, construct_comm_time, factor_time, factor_comm_time, solve_time, solve_comm_time, (double)sum_flops * 1.e-9 / factor_time,
+      percent[0], percent[1], percent[2], (double)mem_basis * 1.e-9, (double)mem_A * 1.e-9, (double)mem_X * 1.e-9, err, prog_time, cm_time);
 
   for (int64_t i = 0; i <= levels; i++) {
     csc_free(&rels_far[i]);

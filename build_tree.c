@@ -819,53 +819,6 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
   }
 }
 
-void buildBasis(struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
-  
-  for (int64_t l = levels; l >= 0; l--) {
-    int64_t xlen = 0;
-    content_length(&xlen, &comm[l]);
-    basis[l].Ulen = xlen;
-    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * xlen * 3);
-    basis[l].Lchild = arr_i;
-    basis[l].Dims = &arr_i[xlen];
-    basis[l].DimsLr = &arr_i[xlen * 2];
-
-    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
-    basis[l].Uo = arr_m;
-    basis[l].Uc = &arr_m[xlen];
-    basis[l].R = &arr_m[xlen * 2];
-    basis[l].Multipoles = (int64_t**)malloc(sizeof(int64_t*) * xlen);
-
-    int64_t lbegin = 0, lend = ncells;
-    get_level(&lbegin, &lend, cells, l, -1);
-
-    for (int64_t i = 0; i < xlen; i++) {
-      int64_t gi = i;
-      i_global(&gi, &comm[l]);
-      int64_t ci = lbegin + gi;
-      int64_t lc = cells[ci].Child;
-
-      if (lc >= 0) {
-        lc = lc - lend;
-        i_local(&lc, &comm[l + 1]);
-      }
-      basis[l].Lchild[i] = lc;
-      basis[l].Dims[i] = cell_basis[ci].M;
-      basis[l].DimsLr[i] = cell_basis[ci].N;
-      basis[l].Uo[i] = (struct Matrix) { cell_basis[ci].Uo, cell_basis[ci].M, cell_basis[ci].N, cell_basis[ci].M };
-      basis[l].Uc[i] = (struct Matrix) { cell_basis[ci].Uc, cell_basis[ci].M, cell_basis[ci].M - cell_basis[ci].N, cell_basis[ci].M };
-      basis[l].R[i] = (struct Matrix) { cell_basis[ci].R, cell_basis[ci].N, cell_basis[ci].N, cell_basis[ci].N };
-      basis[l].Multipoles[i] = cell_basis[ci].Multipoles;
-    }
-  }
-}
-
-void basis_free(struct Base* basis) {
-  free(basis->Multipoles);
-  free(basis->Lchild);
-  free(basis->Uo);
-}
-
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* rels, int64_t level) {
   int __mpi_rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);

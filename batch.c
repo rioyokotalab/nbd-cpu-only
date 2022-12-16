@@ -38,20 +38,20 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
 
-  const double** A_lis_diag = (const double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
-  const double** U_lis_diag = (const double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
-  const double** U_lis = (const double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
-  const double** V_lis = (const double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
-  const double** ARS_lis = (const double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
+  const double** A_lis_diag = (const double**)malloc(sizeof(double*) * N_cols);
+  const double** U_lis_diag = (const double**)malloc(sizeof(double*) * N_cols);
+  const double** U_lis = (const double**)malloc(sizeof(double*) * NNZ);
+  const double** V_lis = (const double**)malloc(sizeof(double*) * NNZ);
+  const double** ARS_lis = (const double**)malloc(sizeof(double*) * N_cols);
 
-  double** D_lis = (double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
-  double** UD_lis = (double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
-  double** A_lis = (double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
-  double** B_lis = (double**)MKL_malloc(sizeof(double*) * NNZ, ALIGN);
-  double** ASS_lis = (double**)MKL_malloc(sizeof(double*) * N_cols, ALIGN);
+  double** D_lis = (double**)malloc(sizeof(double*) * N_cols);
+  double** UD_lis = (double**)malloc(sizeof(double*) * N_cols);
+  double** A_lis = (double**)malloc(sizeof(double*) * NNZ);
+  double** B_lis = (double**)malloc(sizeof(double*) * NNZ);
+  double** ASS_lis = (double**)malloc(sizeof(double*) * N_cols);
 
-  double* UD_data = (double*)MKL_malloc(sizeof(double) * N_cols * stride, ALIGN);
-  double* B_data = (double*)MKL_malloc(sizeof(double) * NNZ * stride, ALIGN);
+  double* UD_data = (double*)malloc(sizeof(double) * N_cols * stride);
+  double* B_data = (double*)malloc(sizeof(double) * NNZ * stride);
 
   for (int64_t x = 0; x < N_cols; x++) {
     int64_t diag_id = 0;
@@ -118,20 +118,20 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
       LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', m, n, A, N_dim, B, N_up);
     }
 
-  MKL_free(A_lis_diag);
-  MKL_free(U_lis_diag);
-  MKL_free(U_lis);
-  MKL_free(V_lis);
-  MKL_free(ARS_lis);
+  free(A_lis_diag);
+  free(U_lis_diag);
+  free(U_lis);
+  free(V_lis);
+  free(ARS_lis);
 
-  MKL_free(D_lis);
-  MKL_free(UD_lis);
-  MKL_free(A_lis);
-  MKL_free(B_lis);
-  MKL_free(ASS_lis);
+  free(D_lis);
+  free(UD_lis);
+  free(A_lis);
+  free(B_lis);
+  free(ASS_lis);
 
-  MKL_free(UD_data);
-  MKL_free(B_data);
+  free(UD_data);
+  free(B_data);
 }
 
 void chol_decomp(double* A, int64_t N) {

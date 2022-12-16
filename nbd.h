@@ -45,8 +45,8 @@ struct CellComm {
   int64_t Proc[2], worldRank, worldSize, lenTargets, lenGather, *ProcTargets, *ProcGather, *ProcRootI, *ProcBoxes, *ProcBoxesEnd;
   MPI_Comm Comm_share, Comm_merge, Comm_gather, *Comm_box; 
 };
-struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, **Multipoles; struct Matrix *Uo, *Uc, *R; };
-struct Node { int64_t lenA, lenS, dimR, dimS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf, *U_ptr, *U_buf; };
+struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, dimR, dimS, **Multipoles; struct Matrix *Uo, *Uc, *R; double *U_ptr, *U_buf; };
+struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
 
 void laplace3d(double* r2);
@@ -112,17 +112,17 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
 
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* csc, int64_t level);
 
-void buildBasis(struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm);
+void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm);
 
 void basis_free(struct Base* basis);
 
 void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const double* bodies, const struct CSC* rels, const struct CellComm* comm);
 
-void allocNodes(int alignment, struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
+void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
 void node_free(struct Node* node);
 
-void factorA_mov_mem(char dir, struct Node A[], int64_t levels);
+void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels);
 
 void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CellComm comm[], int64_t levels);
 

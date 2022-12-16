@@ -50,11 +50,13 @@ void rightHandSides_mem(int64_t* bytes, const struct RightHandSides* rhs, int64_
   *bytes = count;
 }
 
-int64_t factor_flops = 0;
+int64_t gemm_flops = 0;
+int64_t potrf_flops = 0;
+int64_t trsm_flops = 0;
 
 void record_factor_flops(int64_t dimr, int64_t dims, int64_t nnz, int64_t ndiag) {
   if (dims == 0 && nnz == 1)
-    factor_flops = factor_flops + dimr * dimr * dimr / 3;
+    potrf_flops = potrf_flops + dimr * dimr * dimr / 3;
   else {
     int64_t dimn = dimr + dims;
     int64_t fgemm = 4 * dimn * dimn * dimn * nnz;
@@ -62,14 +64,20 @@ void record_factor_flops(int64_t dimr, int64_t dims, int64_t nnz, int64_t ndiag)
     int64_t fchol = dimr * dimr * dimr * ndiag / 3;
     int64_t ftrsm = dimn * dimr * dimr * ndiag;
     int64_t fschur = 2 * dims * dims * dimr * ndiag;
-    factor_flops = factor_flops + fgemm + fsplit + fchol + ftrsm + fschur;
+    gemm_flops = gemm_flops + fgemm + fsplit + fschur;
+    potrf_flops = potrf_flops + fchol;
+    trsm_flops = trsm_flops + ftrsm;
   }
 }
 
-void get_factor_flops(int64_t* flops) {
-  *flops = factor_flops;
-  MPI_Allreduce(MPI_IN_PLACE, flops, 1, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
-  factor_flops = 0;
+void get_factor_flops(int64_t flops[3]) {
+  flops[0] = gemm_flops;
+  flops[1] = potrf_flops;
+  flops[2] = trsm_flops;
+  MPI_Allreduce(MPI_IN_PLACE, flops, 3, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
+  gemm_flops = 0;
+  potrf_flops = 0;
+  trsm_flops = 0;
 }
 
 double tot_cm_time = 0.;
