@@ -31,7 +31,7 @@ void free_matrices(double* A_ptr, double* A_buffer) {
 }
 
 void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
-  int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dims[]) {
+  int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], const int64_t dims[]) {
   
   *(&N_rows) = -1; // not used param to get rid of warning.
   int64_t N_dim = R_dim + S_dim;
@@ -94,9 +94,10 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   cblas_dcopy(stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
 
   for (int64_t i = 0; i < N_cols; i++) {
-    int64_t info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_dim);
-    if (info > 0)
-      cblas_dcopy(R_dim - info + 1, &one, 0, D_lis[i] + (N_dim + 1) * (info - 1), N_dim + 1);
+    int64_t dimc = dimr[i + col_offset];
+    if (dimc < R_dim)
+      cblas_dcopy(R_dim - dimc, &one, 0, D_lis[i] + (N_dim + 1) * dimc, N_dim + 1);
+    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, D_lis[i], N_dim);      
   }
   cblas_dtrsm_batch(CblasColMajor, &right, &lower, &trans, &non_unit, &N, &R, &one, 
     (const double**)D_lis, &N, UD_lis, &N, 1, &D);
@@ -134,9 +135,20 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   free(B_data);
 }
 
-void chol_decomp(double* A, int64_t N) {
-  double one = 1.;
-  int64_t info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', N, A, N);
-  if (info > 0)
-    cblas_dcopy(N - info + 1, &one, 0, A + (N + 1) * (info - 1), N + 1);
+void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]) {
+  int64_t lda = Nblocks * block_dim;
+  double* B = (double*)calloc(lda * lda, sizeof(double));
+  int64_t row = 0;
+  for (int64_t i = 0; i < Nblocks; i++) {
+    int64_t col = 0;
+    for (int64_t j = 0; j < Nblocks; j++) {
+      LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', dims[i], dims[j], &A[i * block_dim + (j * block_dim * lda)], lda,
+        &B[row + col * lda], lda);
+      col = col + dims[j];
+    }
+    row = row + dims[i];
+  }
+  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', row, row, B, lda, A, lda);
+  LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', row, A, lda);
+  free(B);
 }

@@ -64,17 +64,32 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
   MPI_Allreduce(MPI_IN_PLACE, dim_max, (levels + 1) * 2, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
 
   for (int64_t l = levels; l >= 0; l--) {
-    basis[l].dimR = dim_max[l * 2];
+    const int64_t NCHILD = 2;
+    int64_t child_s = l < levels ? dim_max[l * 2 + 3] * NCHILD : 0;
     basis[l].dimS = dim_max[l * 2 + 1];
-    int64_t dimn = basis[l].dimR + basis[l].dimS;
+    int64_t dimn = dim_max[l * 2] + basis[l].dimS;
+    dimn = dimn < child_s ? child_s : dimn;
+    basis[l].dimR = dimn - basis[l].dimS;
     int64_t stride = dimn * dimn;
     alloc_matrices_aligned(&basis[l].U_ptr, &basis[l].U_buf, dimn, dimn, basis[l].Ulen);
 
     for (int64_t i = 0; i < basis[l].Ulen; i++) {
       struct Matrix Uc = (struct Matrix) { basis[l].U_buf + i * stride, dimn, basis[l].dimR, dimn };
       struct Matrix Uo = (struct Matrix) { basis[l].U_buf + i * stride + basis[l].dimR * dimn, dimn, basis[l].dimS, dimn };
-      mat_cpy(basis[l].Uc[i].M, basis[l].Uc[i].N, &basis[l].Uc[i], &Uc, 0, 0, 0, 0);
-      mat_cpy(basis[l].Uo[i].M, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, 0, 0, 0, 0);
+      if (l < levels) {
+        int64_t row = 0;
+        int64_t child = basis[l].Lchild[i];
+        for (int64_t j = 0; j < NCHILD; j++) {
+          int64_t m = basis[l + 1].DimsLr[child + j];
+          mat_cpy(m, basis[l].Uc[i].N, &basis[l].Uc[i], &Uc, row, 0, j * basis[l + 1].dimS, 0);
+          mat_cpy(m, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, row, 0, j * basis[l + 1].dimS, 0);
+          row = row + m;
+        }
+      }
+      else {
+        mat_cpy(basis[l].Uc[i].M, basis[l].Uc[i].N, &basis[l].Uc[i], &Uc, 0, 0, 0, 0);
+        mat_cpy(basis[l].Uo[i].M, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, 0, 0, 0, 0);
+      }
     }
     flush_buffer('S', basis[l].U_ptr, basis[l].U_buf, stride * basis[l].Ulen);
   }
@@ -153,13 +168,13 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
         int64_t cj = lchild[lj];
         int64_t x0 = cj - nloc;
         for (int64_t x = 0; x < NCHILD - 1; x++)
-          offset_x[x + 1] = offset_x[x] + dims_lr[x + cj];
+          offset_x[x + 1] = offset_x[x] + basis[i].dimS; //dims_lr[x + cj];
 
         for (int64_t ij = rels_up->ColIndex[j]; ij < rels_up->ColIndex[j + 1]; ij++) {
           int64_t li = rels_up->RowIndex[ij];
           int64_t y0 = lchild[li];
           for (int64_t y = 0; y < NCHILD - 1; y++)
-            offset_y[y + 1] = offset_y[y] + dims_lr[y + y0];
+            offset_y[y + 1] = offset_y[y] + basis[i].dimS; //dims_lr[y + y0];
 
           for (int64_t x = 0; x < NCHILD; x++)
             if ((x + x0) >= 0 && (x + x0) < rels_near[i].N)
@@ -221,21 +236,29 @@ void factorA(struct Node A[], const struct Base basis[], const struct CSC rels[]
     int64_t dimr = basis[i].dimS;
 
     double** A_next = (double**)malloc(sizeof(double*) * nnz);
+    int64_t* dimc_lis = (int64_t*)malloc(sizeof(int64_t) * llen);
     int64_t n_next = basis[i - 1].dimR + basis[i - 1].dimS;
     int64_t nnz_next = A[i - 1].lenA;
 
     for (int64_t x = 0; x < nnz; x++)
       A_next[x] = A[i - 1].A_ptr + (A[i].A_oo[x].A - A[i - 1].A_buf);
+    for (int64_t x = 0; x < llen; x++)
+      dimc_lis[x] = basis[i].Dims[x] - basis[i].DimsLr[x];
 
-    batch_cholesky_factor(dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, llen, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex, basis[i].DimsLr);
+    batch_cholesky_factor(dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, llen, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex, dimc_lis, basis[i].DimsLr);
 
     merge_double(A[i - 1].A_ptr, n_next * n_next * nnz_next, &comm[i - 1]);
     free(A_next);
+    free(dimc_lis);
 #ifdef _PROF
     record_factor_flops(dimc, dimr, nnz, iend - ibegin);
 #endif
   }
-  chol_decomp(A[0].A_ptr, basis[0].dimR);
+  const int64_t NCHILD = 2;
+  if (levels > 0)
+    chol_decomp(A[0].A_ptr, NCHILD, basis[1].dimS, basis[1].DimsLr);
+  else
+    chol_decomp(A[0].A_ptr, 1, basis[0].dimR, basis[0].Dims);
 #ifdef _PROF
   record_factor_flops(0, basis[0].dimR, 1, 1);
 #endif

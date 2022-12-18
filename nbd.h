@@ -35,8 +35,8 @@ void flush_buffer(char dir, double* A_ptr, double* A_buffer, int64_t len);
 void free_matrices(double* A_ptr, double* A_buffer);
 
 void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
-  int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dims[]);
-void chol_decomp(double* A, int64_t N);
+  int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], const int64_t dims[]);
+void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]);
 
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };

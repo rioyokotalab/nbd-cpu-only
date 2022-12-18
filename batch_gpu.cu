@@ -12,6 +12,7 @@
 
 #include <thrust/copy.h>
 #include <thrust/tabulate.h>
+#include <thrust/sequence.h>
 #include <thrust/transform.h>
 #include <thrust/distance.h>
 #include <thrust/iterator/permutation_iterator.h>
@@ -70,48 +71,6 @@ void flush_buffer(char dir, double* A_ptr, double* A_buffer, int64_t len) {
 void free_matrices(double* A_ptr, double* A_buffer) {
   cudaFree(A_ptr);
   free(A_buffer);
-}
-
-__global__ void diag_process_kernel(double* D_data, int64_t N_dim, int64_t N) {
-  int64_t stride_m = N_dim * N_dim;
-  int64_t stride_row = N_dim + 1;
-  int64_t rem = N_dim & 3;
-  int64_t N_dim_rem = N_dim - rem;
-
-  for (int64_t b = blockIdx.x; b < N; b += gridDim.x) {
-    double* data = D_data + stride_m * b;
-    double d[4];
-    int id[4];
-
-    for (int64_t i = threadIdx.x * 4; i < N_dim_rem; i += blockDim.x * 4) {
-      int64_t l0 = i * stride_row;
-      int64_t l1 = (i + 1) * stride_row;
-      int64_t l2 = (i + 2) * stride_row;
-      int64_t l3 = (i + 3) * stride_row;
-
-      d[0] = data[l0];
-      d[1] = data[l1];
-      d[2] = data[l2];
-      d[3] = data[l3];
-
-      id[0] = d[0] == 0.;
-      id[1] = d[1] == 0.;
-      id[2] = d[2] == 0.;
-      id[3] = d[3] == 0.;
-
-      data[l0] = d[0] + id[0];
-      data[l1] = d[1] + id[1];
-      data[l2] = d[2] + id[2];
-      data[l3] = d[3] + id[3];
-    }
-
-    if (threadIdx.x < rem) {
-      int64_t loc = (N_dim_rem + threadIdx.x) * stride_row; 
-      d[0] = data[loc];
-      id[0] = d[0] == 0.;
-      data[loc] = d[0] + id[0];
-    }
-  }
 }
 
 __global__ void Aup_kernel(const int64_t row_dims[], const int64_t col_dims[], const double* A, int64_t lda, int64_t stride_a, double** B, int64_t ldb, int64_t N) {
@@ -222,7 +181,7 @@ struct cmp_int {
 };
 
 void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
-  int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dims[]) {
+  int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], const int64_t dims[]) {
   
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols];
@@ -237,10 +196,16 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
 
   thrust::host_vector<int64_t> col_coo(NNZ, 0);
   thrust::host_vector<int64_t> diag_idx(N_cols);
+  thrust::host_vector<int64_t> diag_fills(0);
 
   for (int64_t i = 0; i < N_cols; i++) {
     thrust::fill(col_coo.begin() + col_A[i], col_coo.begin() + col_A[i + 1], i);
     diag_idx[i] = thrust::distance(row_A, thrust::find_if(row_A + col_A[i], row_A + col_A[i + 1], cmp_int(i + col_offset)));
+    int64_t dimc = dimr[i + col_offset];
+    int64_t size_old = diag_fills.size();
+    int64_t size_new = size_old + R_dim - dimc;
+    diag_fills.resize(size_new);
+    thrust::sequence(diag_fills.begin() + size_old, diag_fills.begin() + size_new, i * stride + (N_dim + 1) * dimc, N_dim + 1);
   }
 
   thrust::device_vector<int64_t> dims_arr(N_rows);
@@ -249,6 +214,7 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   thrust::device_vector<int64_t> col_dims(NNZ);
   thrust::device_vector<int64_t> row_dims(NNZ);
   thrust::device_vector<int64_t> diag_arr(N_cols);
+  thrust::device_vector<int64_t> diag_fill_dev(diag_fills.size());
 
   thrust::device_vector<double*> A_lis(NNZ);
   thrust::device_vector<double*> B_lis(NNZ);
@@ -262,6 +228,7 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   thrust::copy(row_A, &row_A[NNZ], row_arr.begin());
   thrust::copy(A_up, &A_up[NNZ], A_up_dev.begin());
   thrust::copy(diag_idx.begin(), diag_idx.end(), diag_arr.begin());
+  thrust::copy(diag_fills.begin(), diag_fills.end(), diag_fill_dev.begin());
 
   thrust::tabulate(thrust::cuda::par.on(stream), B_lis.begin(), B_lis.end(), set_double_ptr(B_data, stride));
   thrust::tabulate(thrust::cuda::par.on(stream), UD_lis.begin(), UD_lis.end(), set_double_ptr(UD_data, stride));
@@ -275,9 +242,9 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
     &U_ptr[stride * col_offset], N_dim, stride, UD_data, N_dim, stride, &zero, B_data, N_dim, stride, N_cols);
   cublasDcopy(cublasH, stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
   
-  int grid = N_cols >= 16 ? 16 : N_cols;
-  int block = N_dim >= 128 ? 512 : 64;
-  diag_process_kernel<<<grid, block, 0, stream>>>(B_data, N_dim, N_cols);
+  thrust::fill(thrust::cuda::par.on(stream), thrust::make_permutation_iterator(B_data, diag_fill_dev.begin()), 
+    thrust::make_permutation_iterator(B_data, diag_fill_dev.end()), 1.);
+
   cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R_dim, thrust::raw_pointer_cast(B_lis.data()), N_dim, info_array, N_cols);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
     N_dim, R_dim, &one, thrust::raw_pointer_cast(B_lis.data()), N_dim, thrust::raw_pointer_cast(UD_lis.data()), N_dim, N_cols);
@@ -286,10 +253,10 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   thrust::transform(thrust::cuda::par.on(stream), col_arr.begin(), col_arr.end(), V_lis.begin(), set_const_double_ptr(UD_data, stride));
   thrust::tabulate(thrust::cuda::par.on(stream), A_lis.begin(), A_lis.end(), set_double_ptr(A_ptr, stride));
 
-  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, N_dim, N_dim, N_dim, &one, 
-    thrust::raw_pointer_cast(U_lis.data()), N_dim, (const double**)thrust::raw_pointer_cast(A_lis.data()), N_dim, &zero, thrust::raw_pointer_cast(B_lis.data()), N_dim, NNZ);
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N_dim, N_dim, N_dim, &one, 
-    (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, thrust::raw_pointer_cast(V_lis.data()), N_dim, &zero, thrust::raw_pointer_cast(A_lis.data()), N_dim, NNZ);
+    (const double**)thrust::raw_pointer_cast(A_lis.data()), N_dim, thrust::raw_pointer_cast(V_lis.data()), N_dim, &zero, thrust::raw_pointer_cast(B_lis.data()), N_dim, NNZ);
+  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, N_dim, N_dim, N_dim, &one, 
+    thrust::raw_pointer_cast(U_lis.data()), N_dim, (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, &zero, thrust::raw_pointer_cast(A_lis.data()), N_dim, NNZ);
 
   thrust::transform(thrust::cuda::par.on(stream), diag_arr.begin(), diag_arr.end(), B_lis.begin(), set_double_ptr(&A_ptr[R_dim], stride));
   thrust::transform(thrust::cuda::par.on(stream), diag_arr.begin(), diag_arr.end(), A_lis.begin(), set_double_ptr(&A_ptr[R_dim * (N_dim + 1)], stride));
@@ -306,8 +273,8 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
     thrust::make_permutation_iterator(dims_arr.begin() + col_offset, col_arr.end()),
     col_dims.begin());
 
-  grid = NNZ >= 32 ? 32 : NNZ;
-  block = R_dim >= 64 ? 512 : 128;
+  int64_t grid = NNZ >= 32 ? 32 : NNZ;
+  int64_t block = R_dim >= 64 ? 512 : 128;
   Aup_kernel<<<grid, block, 0, stream>>>(thrust::raw_pointer_cast(row_dims.data()), thrust::raw_pointer_cast(col_dims.data()),
     A_ptr + (N_dim + 1) * R_dim, N_dim, stride, thrust::raw_pointer_cast(A_up_dev.data()), N_up, NNZ);
 
@@ -316,16 +283,30 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   cudaFree(info_array);
 }
 
-void chol_decomp(double* A, int64_t N) {
+void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]) {
+  int64_t lda = Nblocks * block_dim;
+  double* B;
+  cudaMalloc((void**)&B, sizeof(double) * lda * lda);
+  cudaMemset(B, 0, sizeof(double) * lda * lda);
+  int64_t row = 0;
+  for (int64_t i = 0; i < Nblocks; i++) {
+    int64_t col = 0;
+    for (int64_t j = 0; j < Nblocks; j++) {
+      cudaMemcpy2D(&B[row + col * lda], sizeof(double) * lda,
+        &A[i * block_dim + (j * block_dim * lda)], sizeof(double) * lda, sizeof(double) * dims[i], dims[j], cudaMemcpyDeviceToDevice);
+      col = col + dims[j];
+    }
+    row = row + dims[i];
+  }
+  cudaMemcpy(A, B, sizeof(double) * lda * lda, cudaMemcpyDeviceToDevice);
+
   int* info, Lwork;
-  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, &Lwork);
+  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, &Lwork);
   double* Workspace;
   cudaMalloc((void**)&info, sizeof(int));
   cudaMalloc((void**)&Workspace, sizeof(double) * Lwork);
-
-  diag_process_kernel<<<1, 256, 0, stream>>>(A, N, 1);
-  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, Workspace, Lwork, info);
-
+  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, Workspace, Lwork, info);
   cudaFree(info);
   cudaFree(Workspace);
+  cudaFree(B);
 }
