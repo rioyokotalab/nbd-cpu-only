@@ -73,95 +73,6 @@ void free_matrices(double* A_ptr, double* A_buffer) {
   free(A_buffer);
 }
 
-__global__ void Aup_kernel(const int64_t row_dims[], const int64_t col_dims[], const double* A, int64_t lda, int64_t stride_a, double** B, int64_t ldb, int64_t N) {
-  
-  for (int64_t i = blockIdx.x; i < N; i += gridDim.x) {
-    const double* A_ptr = &A[i * stride_a];
-    double* B_ptr = B[i];
-    int64_t m = row_dims[i];
-    int64_t n = col_dims[i];
-    int64_t m8 = m >> 3;
-    int64_t iters = m8 * n;
-    double data[8];
-
-    for (int64_t j = threadIdx.x; j < iters; j += blockDim.x) {
-      int64_t col = j / m8;
-      int64_t row = (j - col * m8) << 3;
-      int64_t ja = col * lda;
-      int64_t jb = col * ldb;
-
-      int64_t i0 = row;
-      int64_t i1 = row + 1;
-      int64_t i2 = row + 2;
-      int64_t i3 = row + 3;
-      int64_t i4 = row + 4;
-      int64_t i5 = row + 5;
-      int64_t i6 = row + 6;
-      int64_t i7 = row + 7;
-
-      data[0] = A_ptr[i0 + ja];
-      data[1] = A_ptr[i1 + ja];
-      data[2] = A_ptr[i2 + ja];
-      data[3] = A_ptr[i3 + ja];
-      data[4] = A_ptr[i4 + ja];
-      data[5] = A_ptr[i5 + ja];
-      data[6] = A_ptr[i6 + ja];
-      data[7] = A_ptr[i7 + ja];
-
-      B_ptr[i0 + jb] = data[0];
-      B_ptr[i1 + jb] = data[1];
-      B_ptr[i2 + jb] = data[2];
-      B_ptr[i3 + jb] = data[3];
-      B_ptr[i4 + jb] = data[4];
-      B_ptr[i5 + jb] = data[5];
-      B_ptr[i6 + jb] = data[6];
-      B_ptr[i7 + jb] = data[7];
-    }
-
-    for (int64_t j = threadIdx.x; j < n; j += blockDim.x) {
-      int64_t ja = j * lda;
-      int64_t jb = j * ldb;
-      int64_t row = m8 << 3;
-
-      int64_t i0 = row;
-      int64_t i1 = row + 1;
-      int64_t i2 = row + 2;
-      int64_t i3 = row + 3;
-      int64_t i4 = row + 4;
-      int64_t i5 = row + 5;
-      int64_t i6 = row + 6;
-      int64_t i7 = row + 7;
-
-      i0 = i0 < m ? i0 : m - 1;
-      i1 = i1 < m ? i1 : m - 1;
-      i2 = i2 < m ? i2 : m - 1;
-      i3 = i3 < m ? i3 : m - 1;
-      i4 = i4 < m ? i4 : m - 1;
-      i5 = i5 < m ? i5 : m - 1;
-      i6 = i6 < m ? i6 : m - 1;
-      i7 = i7 < m ? i7 : m - 1;
-
-      data[0] = A_ptr[i0 + ja];
-      data[1] = A_ptr[i1 + ja];
-      data[2] = A_ptr[i2 + ja];
-      data[3] = A_ptr[i3 + ja];
-      data[4] = A_ptr[i4 + ja];
-      data[5] = A_ptr[i5 + ja];
-      data[6] = A_ptr[i6 + ja];
-      data[7] = A_ptr[i7 + ja];
-
-      B_ptr[i0 + jb] = data[0];
-      B_ptr[i1 + jb] = data[1];
-      B_ptr[i2 + jb] = data[2];
-      B_ptr[i3 + jb] = data[3];
-      B_ptr[i4 + jb] = data[4];
-      B_ptr[i5 + jb] = data[5];
-      B_ptr[i6 + jb] = data[6];
-      B_ptr[i7 + jb] = data[7];
-    }
-  }
-}
-
 struct set_double_ptr {
   double* _A; int64_t _stride;
   set_double_ptr(double* A, int64_t stride) { _A = A; _stride = stride; };
@@ -208,11 +119,8 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
     thrust::sequence(diag_fills.begin() + size_old, diag_fills.begin() + size_new, i * stride + (N_dim + 1) * dimc, N_dim + 1);
   }
 
-  thrust::device_vector<int64_t> dims_arr(N_rows);
   thrust::device_vector<int64_t> col_arr(NNZ);
   thrust::device_vector<int64_t> row_arr(NNZ);
-  thrust::device_vector<int64_t> col_dims(NNZ);
-  thrust::device_vector<int64_t> row_dims(NNZ);
   thrust::device_vector<int64_t> diag_arr(N_cols);
   thrust::device_vector<int64_t> diag_fill_dev(diag_fills.size());
 
@@ -223,7 +131,6 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   thrust::device_vector<const double*> U_lis(NNZ);
   thrust::device_vector<const double*> V_lis(NNZ);
 
-  thrust::copy(dims, &dims[N_rows], dims_arr.begin());
   thrust::copy(col_coo.begin(), col_coo.end(), col_arr.begin());
   thrust::copy(row_A, &row_A[NNZ], row_arr.begin());
   thrust::copy(A_up, &A_up[NNZ], A_up_dev.begin());
@@ -255,28 +162,22 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
 
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N_dim, N_dim, N_dim, &one, 
     (const double**)thrust::raw_pointer_cast(A_lis.data()), N_dim, thrust::raw_pointer_cast(V_lis.data()), N_dim, &zero, thrust::raw_pointer_cast(B_lis.data()), N_dim, NNZ);
-  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, N_dim, N_dim, N_dim, &one, 
+  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, N_dim, R_dim, N_dim, &one, 
     thrust::raw_pointer_cast(U_lis.data()), N_dim, (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, &zero, thrust::raw_pointer_cast(A_lis.data()), N_dim, NNZ);
 
+  thrust::transform(thrust::cuda::par.on(stream), row_arr.begin(), row_arr.end(), U_lis.begin(), set_const_double_ptr(&U_ptr[R_dim * N_dim], stride));
+  thrust::tabulate(thrust::cuda::par.on(stream), B_lis.begin(), B_lis.end(), set_double_ptr(&B_data[R_dim * N_dim], stride));
+
+  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, S_dim, S_dim, N_dim, &one, 
+    thrust::raw_pointer_cast(U_lis.data()), N_dim, (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, &zero, thrust::raw_pointer_cast(A_up_dev.data()), N_up, NNZ);
+  
   thrust::transform(thrust::cuda::par.on(stream), diag_arr.begin(), diag_arr.end(), B_lis.begin(), set_double_ptr(&A_ptr[R_dim], stride));
-  thrust::transform(thrust::cuda::par.on(stream), diag_arr.begin(), diag_arr.end(), A_lis.begin(), set_double_ptr(&A_ptr[R_dim * (N_dim + 1)], stride));
-
+  thrust::copy(thrust::cuda::par.on(stream), 
+    thrust::make_permutation_iterator(A_up_dev.begin(), diag_arr.begin()),
+    thrust::make_permutation_iterator(A_up_dev.begin(), diag_arr.end()),
+    A_lis.begin());
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_T, S_dim, S_dim, R_dim, &minus_one, 
-    (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, &one, thrust::raw_pointer_cast(A_lis.data()), N_dim, N_cols);
-
-  thrust::copy(thrust::cuda::par.on(stream), 
-    thrust::make_permutation_iterator(dims_arr.begin(), row_arr.begin()),
-    thrust::make_permutation_iterator(dims_arr.begin(), row_arr.end()),
-    row_dims.begin());
-  thrust::copy(thrust::cuda::par.on(stream), 
-    thrust::make_permutation_iterator(dims_arr.begin() + col_offset, col_arr.begin()),
-    thrust::make_permutation_iterator(dims_arr.begin() + col_offset, col_arr.end()),
-    col_dims.begin());
-
-  int64_t grid = NNZ >= 32 ? 32 : NNZ;
-  int64_t block = R_dim >= 64 ? 512 : 128;
-  Aup_kernel<<<grid, block, 0, stream>>>(thrust::raw_pointer_cast(row_dims.data()), thrust::raw_pointer_cast(col_dims.data()),
-    A_ptr + (N_dim + 1) * R_dim, N_dim, stride, thrust::raw_pointer_cast(A_up_dev.data()), N_up, NNZ);
+    (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, &one, thrust::raw_pointer_cast(A_lis.data()), N_up, N_cols);
 
   cudaFree(UD_data);
   cudaFree(B_data);

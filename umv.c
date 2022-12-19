@@ -155,33 +155,26 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
     if (i > 0) {
       const struct CSC* rels_up = &rels_near[i - 1];
       const struct Matrix* Mup = A[i - 1].A;
-      const int64_t* dims_lr = basis[i].DimsLr;
       const int64_t* lchild = basis[i - 1].Lchild;
       int64_t ploc = 0, pend = 0;
       self_local_range(&ploc, &pend, &comm[i - 1]);
-      int64_t offset_x[2] = {0};
-      int64_t offset_y[2] = {0};
       const int64_t NCHILD = 2;
 
       for (int64_t j = 0; j < rels_up->N; j++) {
         int64_t lj = j + ploc;
         int64_t cj = lchild[lj];
         int64_t x0 = cj - nloc;
-        for (int64_t x = 0; x < NCHILD - 1; x++)
-          offset_x[x + 1] = offset_x[x] + basis[i].dimS; //dims_lr[x + cj];
 
         for (int64_t ij = rels_up->ColIndex[j]; ij < rels_up->ColIndex[j + 1]; ij++) {
           int64_t li = rels_up->RowIndex[ij];
           int64_t y0 = lchild[li];
-          for (int64_t y = 0; y < NCHILD - 1; y++)
-            offset_y[y + 1] = offset_y[y] + basis[i].dimS; //dims_lr[y + y0];
 
           for (int64_t x = 0; x < NCHILD; x++)
             if ((x + x0) >= 0 && (x + x0) < rels_near[i].N)
               for (int64_t yx = rels_near[i].ColIndex[x + x0]; yx < rels_near[i].ColIndex[x + x0 + 1]; yx++)
                 for (int64_t y = 0; y < NCHILD; y++)
                   if (rels_near[i].RowIndex[yx] == (y + y0)) {
-                    arr_m[yx + nnz * 3].A = Mup[ij].A + Mup[ij].LDA * offset_x[x] + offset_y[y];
+                    arr_m[yx + nnz * 3].A = Mup[ij].A + Mup[ij].LDA * x * basis[i].dimS + y * basis[i].dimS;
                     arr_m[yx + nnz * 3].LDA = Mup[ij].LDA;
                   }
           
@@ -190,7 +183,7 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
               for (int64_t yx = rels_far[i].ColIndex[x + x0]; yx < rels_far[i].ColIndex[x + x0 + 1]; yx++)
                 for (int64_t y = 0; y < NCHILD; y++)
                   if (rels_far[i].RowIndex[yx] == (y + y0)) {
-                    arr_m[yx + nnz * 4].A = Mup[ij].A + Mup[ij].LDA * offset_x[x] + offset_y[y];
+                    arr_m[yx + nnz * 4].A = Mup[ij].A + Mup[ij].LDA * x * basis[i].dimS + y * basis[i].dimS;
                     arr_m[yx + nnz * 4].LDA = Mup[ij].LDA;
                   }
         }
