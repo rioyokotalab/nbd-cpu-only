@@ -2,6 +2,7 @@
 #include "nbd.h"
 #include "profile.h"
 
+#include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
 #include "math.h"
@@ -76,16 +77,15 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     for (int64_t i = 0; i < basis[l].Ulen; i++) {
       struct Matrix Uc = (struct Matrix) { basis[l].U_buf + i * stride, dimn, basis[l].dimR, dimn };
       struct Matrix Uo = (struct Matrix) { basis[l].U_buf + i * stride + basis[l].dimR * dimn, dimn, basis[l].dimS, dimn };
-      if (l < levels) {
-        int64_t row = 0;
-        int64_t child = basis[l].Lchild[i];
+      int64_t row = 0;
+      int64_t child = basis[l].Lchild[i];
+      if (child >= 0 && l < levels)
         for (int64_t j = 0; j < NCHILD; j++) {
           int64_t m = basis[l + 1].DimsLr[child + j];
           mat_cpy(m, basis[l].Uc[i].N, &basis[l].Uc[i], &Uc, row, 0, j * basis[l + 1].dimS, 0);
           mat_cpy(m, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, row, 0, j * basis[l + 1].dimS, 0);
           row = row + m;
         }
-      }
       else {
         mat_cpy(basis[l].Uc[i].M, basis[l].Uc[i].N, &basis[l].Uc[i], &Uc, 0, 0, 0, 0);
         mat_cpy(basis[l].Uo[i].M, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, 0, 0, 0, 0);
@@ -238,7 +238,7 @@ void factorA(struct Node A[], const struct Base basis[], const struct CSC rels[]
     for (int64_t x = 0; x < llen; x++)
       dimc_lis[x] = basis[i].Dims[x] - basis[i].DimsLr[x];
 
-    batch_cholesky_factor(dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, llen, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex, dimc_lis, basis[i].DimsLr);
+    batch_cholesky_factor(dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex, dimc_lis);
 
     merge_double(A[i - 1].A_ptr, n_next * n_next * nnz_next, &comm[i - 1]);
     free(A_next);
