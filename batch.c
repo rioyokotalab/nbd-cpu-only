@@ -52,6 +52,8 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
 
   double* UD_data = (double*)malloc(sizeof(double) * N_cols * stride);
   double* B_data = (double*)malloc(sizeof(double) * N_cols * stride);
+  int64_t* diag_fill = (int64_t*)malloc(sizeof(int64_t) * N_cols * R_dim);
+  int64_t fill_len = 0;
 
   for (int64_t x = 0; x < N_cols; x++) {
     int64_t diag_id = 0;
@@ -72,6 +74,12 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
     UD_lis[x] = UD_data + stride * x;
     ASS_lis[x] = A_up[diag_id];
     A_sx[x] = B_data + stride * x + R_dim * N_dim;
+
+    int64_t dimc = dimr[x + col_offset];
+    int64_t fill_new = R_dim - dimc;
+    for (int64_t i = 0; i < fill_new; i++)
+      diag_fill[fill_len + i] = x * stride + (N_dim + 1) * (dimc + i);
+    fill_len = fill_len + fill_new;
   }
 
   CBLAS_SIDE right = CblasRight;
@@ -93,13 +101,11 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
   cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &R, &R, &N, &one, 
     U_lis_diag, &N, (const double**)UD_lis, &N, &zero, B_lis, &N, 1, &D);
   cblas_dcopy(stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
+  for (int64_t i = 0; i < fill_len; i++)
+    B_data[diag_fill[i]] = 1.;
 
-  for (int64_t i = 0; i < N_cols; i++) {
-    int64_t dimc = dimr[i + col_offset];
-    if (dimc < R_dim)
-      cblas_dcopy(R_dim - dimc, &one, 0, B_lis[i] + (N_dim + 1) * dimc, N_dim + 1);
-    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, B_lis[i], N_dim);      
-  }
+  for (int64_t i = 0; i < N_cols; i++)
+    LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R_dim, B_lis[i], N_dim);
   cblas_dtrsm_batch(CblasColMajor, &right, &lower, &trans, &non_unit, &N, &R, &one, 
     (const double**)B_lis, &N, UD_lis, &N, 1, &D);
 
@@ -130,22 +136,22 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
 
   free(UD_data);
   free(B_data);
+  free(diag_fill);
 }
 
 void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]) {
   int64_t lda = Nblocks * block_dim;
-  double* B = (double*)calloc(lda * lda, sizeof(double));
   int64_t row = 0;
   for (int64_t i = 0; i < Nblocks; i++) {
-    int64_t col = 0;
-    for (int64_t j = 0; j < Nblocks; j++) {
-      LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', dims[i], dims[j], &A[i * block_dim + (j * block_dim * lda)], lda,
-        &B[row + col * lda], lda);
-      col = col + dims[j];
-    }
+    int64_t Arow = i * block_dim;
+    if (row < Arow)
+      for (int64_t j = 0; j < dims[i]; j++) {
+        int64_t rj = row + j;
+        int64_t arj = Arow + j;
+        cblas_dswap(lda - rj, &A[rj * (lda + 1)], 1, &A[arj * lda + rj], 1);
+        cblas_dswap(rj + 1, &A[rj], lda, &A[arj], lda);
+      }
     row = row + dims[i];
   }
-  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', row, row, B, lda, A, lda);
   LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', row, A, lda);
-  free(B);
 }

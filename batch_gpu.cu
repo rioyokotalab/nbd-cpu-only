@@ -216,20 +216,18 @@ void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, do
 
 void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]) {
   int64_t lda = Nblocks * block_dim;
-  double* B;
-  cudaMalloc((void**)&B, sizeof(double) * lda * lda);
-  cudaMemset(B, 0, sizeof(double) * lda * lda);
   int64_t row = 0;
   for (int64_t i = 0; i < Nblocks; i++) {
-    int64_t col = 0;
-    for (int64_t j = 0; j < Nblocks; j++) {
-      cudaMemcpy2D(&B[row + col * lda], sizeof(double) * lda,
-        &A[i * block_dim + (j * block_dim * lda)], sizeof(double) * lda, sizeof(double) * dims[i], dims[j], cudaMemcpyDeviceToDevice);
-      col = col + dims[j];
-    }
+    int64_t Arow = i * block_dim;
+    if (row < Arow)
+      for (int64_t j = 0; j < dims[i]; j++) {
+        int64_t rj = row + j;
+        int64_t arj = Arow + j;
+        cublasDswap(cublasH, lda - rj, &A[rj * (lda + 1)], 1, &A[arj * lda + rj], 1);
+        cublasDswap(cublasH, rj + 1, &A[rj], lda, &A[arj], lda);
+      }
     row = row + dims[i];
   }
-  cudaMemcpy(A, B, sizeof(double) * lda * lda, cudaMemcpyDeviceToDevice);
 
   int* info, Lwork;
   cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, &Lwork);
@@ -239,5 +237,4 @@ void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t di
   cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, Workspace, Lwork, info);
   cudaFree(info);
   cudaFree(Workspace);
-  cudaFree(B);
 }
