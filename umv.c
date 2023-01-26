@@ -72,7 +72,7 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     dimn = dimn < child_s ? child_s : dimn;
     basis[l].dimR = dimn - basis[l].dimS;
     int64_t stride = dimn * dimn;
-    alloc_matrices_aligned(&basis[l].U_ptr, &basis[l].U_buf, dimn, dimn, basis[l].Ulen);
+    allocBufferedList((void**)&basis[l].U_ptr, (void**)&basis[l].U_buf, sizeof(double), stride * basis[l].Ulen);
 
     for (int64_t i = 0; i < basis[l].Ulen; i++) {
       struct Matrix Uc = (struct Matrix) { basis[l].U_buf + i * stride, dimn, basis[l].dimR, dimn };
@@ -91,7 +91,7 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
         mat_cpy(basis[l].Uo[i].M, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, 0, 0, 0, 0);
       }
     }
-    flush_buffer('S', basis[l].U_ptr, basis[l].U_buf, stride * basis[l].Ulen);
+    flushBuffer('S', basis[l].U_ptr, basis[l].U_buf, sizeof(double), stride * basis[l].Ulen);
   }
   free(dim_max);
 }
@@ -100,10 +100,12 @@ void basis_free(struct Base* basis) {
   free(basis->Multipoles);
   free(basis->Lchild);
   free(basis->Uo);
-  free_matrices(basis->U_ptr, basis->U_buf);
+  freeBufferedList(basis->U_ptr, basis->U_buf);
 }
 
-void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
+void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
+  int64_t work_size = 0;
+
   for (int64_t i = 0; i <= levels; i++) {
     int64_t n_i = rels_near[i].N;
     int64_t nnz = rels_near[i].ColIndex[n_i];
@@ -122,7 +124,9 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
 
     int64_t dimn = basis[i].dimR + basis[i].dimS;
     int64_t stride = dimn * dimn;
-    alloc_matrices_aligned(&A[i].A_ptr, &A[i].A_buf, dimn, dimn, nnz);
+    allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), stride * nnz);
+    int64_t work_required = nnz * stride * 2;
+    work_size = work_size < work_required ? work_required : work_size;
 
     int64_t nloc = 0, nend = 0;
     self_local_range(&nloc, &nend, &comm[i]);
@@ -190,11 +194,37 @@ void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rel
       }
     }
   }
+  
+  set_work_size(work_size, Workspace, Lwork);
+  for (int64_t i = 1; i <= levels; i++) {
+    int64_t ibegin = 0, iend = 0;
+    self_local_range(&ibegin, &iend, &comm[i]);
+    int64_t llen = basis[i].Ulen;
+    int64_t nnz = A[i].lenA;
+    int64_t dimc = basis[i].dimR;
+    int64_t dimr = basis[i].dimS;
+
+    double** A_next = (double**)malloc(sizeof(double*) * nnz);
+    int64_t* dimc_lis = (int64_t*)malloc(sizeof(int64_t) * llen);
+    int64_t n_next = basis[i - 1].dimR + basis[i - 1].dimS;
+
+    for (int64_t x = 0; x < nnz; x++)
+      A_next[x] = A[i - 1].A_ptr + (A[i].A_oo[x].A - A[i - 1].A_buf);
+    for (int64_t x = 0; x < llen; x++)
+      dimc_lis[x] = basis[i].Dims[x] - basis[i].DimsLr[x];
+
+    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, *Workspace, rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex, dimc_lis);
+    free(A_next);
+    free(dimc_lis);
+  }
+  A[0].params = NULL;
 }
 
 void node_free(struct Node* node) {
-  free_matrices(node->A_ptr, node->A_buf);
+  freeBufferedList(node->A_ptr, node->A_buf);
   free(node->A);
+  if (node->params != NULL)
+    batchParamsDestory(node->params);
 }
 
 void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
@@ -214,37 +244,24 @@ void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
 void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t stride = (basis[i].dimR + basis[i].dimS) * (basis[i].dimR + basis[i].dimS);
-    flush_buffer(dir, A[i].A_ptr, A[i].A_buf, stride * A[i].lenA);
+    flushBuffer(dir, A[i].A_ptr, A[i].A_buf, sizeof(double), stride * A[i].lenA);
   }
 }
 
-void factorA(struct Node A[], const struct Base basis[], const struct CSC rels[], const struct CellComm comm[], int64_t levels) {
+void factorA(struct Node A[], const struct Base basis[], const struct CellComm comm[], int64_t levels) {
 
   for (int64_t i = levels; i > 0; i--) {
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
-    int64_t llen = basis[i].Ulen;
     int64_t nnz = A[i].lenA;
-    int64_t dimc = basis[i].dimR;
-    int64_t dimr = basis[i].dimS;
 
-    double** A_next = (double**)malloc(sizeof(double*) * nnz);
-    int64_t* dimc_lis = (int64_t*)malloc(sizeof(int64_t) * llen);
     int64_t n_next = basis[i - 1].dimR + basis[i - 1].dimS;
     int64_t nnz_next = A[i - 1].lenA;
 
-    for (int64_t x = 0; x < nnz; x++)
-      A_next[x] = A[i - 1].A_ptr + (A[i].A_oo[x].A - A[i - 1].A_buf);
-    for (int64_t x = 0; x < llen; x++)
-      dimc_lis[x] = basis[i].Dims[x] - basis[i].DimsLr[x];
-
-    batch_cholesky_factor(dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, rels[i].N, ibegin, rels[i].RowIndex, rels[i].ColIndex, dimc_lis);
-
+    batchCholeskyFactor(A[i].params);
     merge_double(A[i - 1].A_ptr, n_next * n_next * nnz_next, &comm[i - 1]);
-    free(A_next);
-    free(dimc_lis);
 #ifdef _PROF
-    record_factor_flops(dimc, dimr, nnz, iend - ibegin);
+    record_factor_flops(basis[i].dimR, basis[i].dimS, nnz, iend - ibegin);
 #endif
   }
   const int64_t NCHILD = 2;

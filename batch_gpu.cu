@@ -5,19 +5,9 @@
 #include "cusolverDn.h"
 #include "mkl.h"
 
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-#include <thrust/execution_policy.h>
 #include <thrust/functional.h>
-
 #include <thrust/copy.h>
-#include <thrust/tabulate.h>
-#include <thrust/sequence.h>
-#include <thrust/transform.h>
-#include <thrust/distance.h>
 #include <thrust/iterator/permutation_iterator.h>
-#include <thrust/iterator/zip_iterator.h>
-#include <thrust/tuple.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,8 +16,6 @@
 cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
 cusolverDnHandle_t cusolverH = NULL;
-double *D_DATA = NULL;
-int64_t D_DATA_SIZE = 0;
 
 void init_batch_lib() {
   int mpi_rank;
@@ -45,11 +33,6 @@ void init_batch_lib() {
 
   cusolverDnCreate(&cusolverH);
   cusolverDnSetStream(cusolverH, stream);
-
-  size_t free, total;
-  cudaMemGetInfo(&free, &total);
-  D_DATA_SIZE = (free >> 4) / sizeof(double);
-  cudaMalloc((void**)&D_DATA, sizeof(double) * D_DATA_SIZE);
 }
 
 void finalize_batch_lib() {
@@ -59,159 +42,233 @@ void finalize_batch_lib() {
     cublasDestroy(cublasH);
   if (cusolverH)
     cusolverDnDestroy(cusolverH);
-  if (D_DATA)
-    cudaFree(D_DATA);
+  stream = NULL;
+  cublasH = NULL;
+  cusolverH = NULL;
 }
 
-void alloc_matrices_aligned(double** A_ptr, double** A_buffer, int64_t M, int64_t N, int64_t count) {
-  int64_t stride = M * N;
-  int64_t bytes = sizeof(double) * count * stride;
+void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {
+  if (Lwork > *D_DATA_SIZE) {
+    *D_DATA_SIZE = Lwork;
+    if (*D_DATA)
+      cudaFree(*D_DATA);
+    cudaMalloc((void**)D_DATA, sizeof(double) * Lwork);
+  }
+  else if (Lwork <= 0) {
+    *D_DATA_SIZE = 0;
+    if (*D_DATA)
+      cudaFree(*D_DATA);
+  }
+}
+
+void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int64_t count) {
+  int64_t bytes = element_size * count;
   cudaMalloc((void**)A_ptr, bytes);
-  *A_buffer = (double*)malloc(bytes);
+  *A_buffer = malloc(bytes);
   memset((void*)*A_buffer, 0, bytes);
 }
 
-void flush_buffer(char dir, double* A_ptr, double* A_buffer, int64_t len) {
-  int64_t bytes = sizeof(double) * len;
-  if (dir == 'G')
+void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, int64_t count) {
+  int64_t bytes = element_size * count;
+  if (dir == 'G' || dir == 'g')
     cudaMemcpy(A_buffer, A_ptr, bytes, cudaMemcpyDeviceToHost);
-  else if (dir == 'S')
-    cudaMemcpyAsync(A_ptr, A_buffer, bytes, cudaMemcpyHostToDevice, stream);
+  else if (dir == 'S' || dir == 's')
+    cudaMemcpy(A_ptr, A_buffer, bytes, cudaMemcpyHostToDevice);
 }
 
-void free_matrices(double* A_ptr, double* A_buffer) {
+void freeBufferedList(void* A_ptr, void* A_buffer) {
   cudaFree(A_ptr);
   free(A_buffer);
 }
 
-struct set_double_ptr {
-  double* _A; int64_t _stride;
-  set_double_ptr(double* A, int64_t stride) { _A = A; _stride = stride; };
-  __host__ __device__ double* operator()(int64_t i) const { return &_A[_stride * i]; }
+struct BatchedFactorParams { 
+  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, *F_d;
+  const double** A_d, **U_d, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_d0;
+  double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *B_data;
+  int* info;
 };
 
-struct set_const_double2_ptr {
-  const double* _A, *_B; int64_t _stride;
-  set_const_double2_ptr(const double* A, const double* B, int64_t stride) { _A = A; _B = B; _stride = stride; };
-  __host__ __device__ thrust::tuple<const double*, const double*> operator()(int64_t i) const 
-  { return thrust::make_tuple(&_A[_stride * i], &_B[_stride * i]); }
-};
-
-struct set_double4_ptr {
-  double* _A, *_B; const double* _C, *_D; int64_t _stride;
-  set_double4_ptr(double* A, double* B, const double* C, const double* D, int64_t stride) 
-  { _A = A; _B = B; _C = C; _D = D; _stride = stride; };
-  __host__ __device__ thrust::tuple<double*, double*, const double*, const double*> operator()(int64_t i) const
-  { return thrust::make_tuple(&_A[_stride * i], &_B[_stride * i], &_C[_stride * i], &_D[_stride * i]); }
-};
-
-void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
+void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace,
   int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[]) {
   
   int64_t N_dim = R_dim + S_dim;
-  int64_t NNZ = col_A[N_cols];
+  int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
 
-  double *UD_data, *B_data;
-  if (N_cols * stride * 2 > D_DATA_SIZE) {
-    cudaMalloc((void**)&UD_data, sizeof(double) * N_cols * stride);
-    cudaMalloc((void**)&B_data, sizeof(double) * N_cols * stride);
+  const double** _A_d, **_U_d, **_U_r, **_U_s, **_V_x, **_A_rs, **_A_sx;
+  double** _U_dx, **_A_x, **_B_x, **_A_ss, **_A_upper;
+  _A_d = (const double**)malloc(sizeof(double*) * N_cols);
+  _U_d = (const double**)malloc(sizeof(double*) * N_cols);
+  _U_r = (const double**)malloc(sizeof(double*) * NNZ);
+  _U_s = (const double**)malloc(sizeof(double*) * NNZ);
+  _V_x = (const double**)malloc(sizeof(double*) * NNZ);
+  _A_rs = (const double**)malloc(sizeof(double*) * N_cols);
+  _A_sx = (const double**)malloc(sizeof(double*) * N_cols);
+
+  _U_dx = (double**)malloc(sizeof(double*) * N_cols);
+  _A_x = (double**)malloc(sizeof(double*) * NNZ);
+  _B_x = (double**)malloc(sizeof(double*) * N_cols);
+  _A_ss = (double**)malloc(sizeof(double*) * N_cols);
+  _A_upper = (double**)malloc(sizeof(double*) * NNZ);
+
+  double* _UD_data = Workspace;
+  double* _B_data = &Workspace[N_cols * stride];
+  const double* _U_d0 = U_ptr + stride * col_offset;
+  int64_t* _F_d = (int64_t*)malloc(sizeof(int64_t) * N_cols * R_dim);
+  int64_t _F_len = 0;
+
+  for (int64_t x = 0; x < N_cols; x++) {
+    int64_t diag_id = 0;
+    for (int64_t yx = col_A[x]; yx < col_A[x + 1]; yx++) {
+      int64_t y = row_A[yx];
+      if (x + col_offset == y)
+        diag_id = yx;
+      _U_r[yx] = U_ptr + stride * y;
+      _U_s[yx] = U_ptr + stride * y + R_dim * N_dim;
+      _V_x[yx] = _UD_data + stride * x;
+      _A_x[yx] = A_ptr + stride * yx;
+      _A_upper[yx] = A_up[yx];
+    }
+
+    _A_d[x] = A_ptr + stride * diag_id;
+    _B_x[x] = _B_data + stride * x;
+    _U_d[x] = U_ptr + stride * (x + col_offset);
+    _A_rs[x] = A_ptr + stride * diag_id + R_dim;
+    _U_dx[x] = _UD_data + stride * x;
+    _A_ss[x] = A_up[diag_id];
+    _A_sx[x] = _B_data + stride * x + R_dim * N_dim;
+
+    int64_t dimc = dimr[x + col_offset];
+    int64_t fill_new = R_dim - dimc;
+    for (int64_t i = 0; i < fill_new; i++)
+      _F_d[_F_len + i] = x * stride + (N_dim + 1) * (dimc + i);
+    _F_len = _F_len + fill_new;
   }
-  else {
-    UD_data = D_DATA;
-    B_data = &D_DATA[N_cols * stride];
-  }
-
-  int* info_array;
-  cudaMalloc((void**)&info_array, sizeof(int) * N_cols);
-
-  thrust::host_vector<const double*> V_host(NNZ);
-  thrust::host_vector<int64_t> diag_host(N_cols);
-  thrust::host_vector<int64_t> diag_fill_host(0);
-  thrust::host_vector<double*> A_ss_host(N_cols);
-  diag_fill_host.reserve(N_cols * R_dim);
-
-  for (int64_t i = 0; i < N_cols; i++) {
-    thrust::fill(V_host.begin() + col_A[i], V_host.begin() + col_A[i + 1], &UD_data[i * stride]);
-    int64_t diag_idx = thrust::distance(row_A, thrust::find(row_A + col_A[i], row_A + col_A[i + 1], i + col_offset));
-    diag_host[i] = diag_idx;
-    A_ss_host[i] = A_up[diag_idx];
-    int64_t dimc = dimr[i + col_offset];
-    int64_t size_old = diag_fill_host.size();
-    int64_t size_new = size_old + R_dim - dimc;
-    diag_fill_host.resize(size_new);
-    thrust::sequence(diag_fill_host.begin() + size_old, diag_fill_host.begin() + size_new, i * stride + (N_dim + 1) * dimc, N_dim + 1);
-  }
-
-  thrust::device_vector<int64_t> row_arr(NNZ);
-  thrust::device_vector<int64_t> diag_arr(N_cols);
-
-  thrust::device_vector<double*> A_lis(NNZ);
-  thrust::device_vector<double*> A_up_dev(NNZ);
-  thrust::device_vector<const double*> V_lis(NNZ);
-  thrust::device_vector<const double*> U_r(NNZ);
-  thrust::device_vector<const double*> U_s(NNZ);
-
-  thrust::device_vector<double*> B_lis(N_cols);
-  thrust::device_vector<const double*> D_lis(N_cols);
-  thrust::device_vector<double*> UD_lis(N_cols);
-  thrust::device_vector<const double*> U_lis(N_cols);
-  thrust::device_vector<const double*> A_sx(N_cols);
-  thrust::device_vector<const double*> A_sr(N_cols);
-  thrust::device_vector<double*> A_ss(N_cols);
-  thrust::device_vector<int64_t> diag_fill_dev(diag_fill_host.size());
-
-  thrust::copy(row_A, &row_A[NNZ], row_arr.begin());
-  thrust::copy(A_up, &A_up[NNZ], A_up_dev.begin());
-  thrust::copy(A_ss_host.begin(), A_ss_host.end(), A_ss.begin());
-  thrust::copy(V_host.begin(), V_host.end(), V_lis.begin());
-  thrust::copy(diag_host.begin(), diag_host.end(), diag_arr.begin());
-  thrust::copy(diag_fill_host.begin(), diag_fill_host.end(), diag_fill_dev.begin());
-
-  thrust::tabulate(A_lis.begin(), A_lis.end(), set_double_ptr(A_ptr, stride));
-  auto zip_iter = thrust::make_zip_iterator(thrust::make_tuple(B_lis.begin(), UD_lis.begin(), U_lis.begin(), A_sx.begin()));
-  thrust::tabulate(zip_iter, zip_iter + N_cols, set_double4_ptr(B_data, UD_data, &U_ptr[stride * col_offset], &B_data[R_dim * N_dim], stride));
-
-  thrust::transform(row_arr.begin(), row_arr.end(), thrust::make_zip_iterator(thrust::make_tuple(U_r.begin(), U_s.begin())),
-    set_const_double2_ptr(U_ptr, &U_ptr[R_dim * N_dim], stride));
-  thrust::transform(diag_arr.begin(), diag_arr.end(), thrust::make_zip_iterator(thrust::make_tuple(D_lis.begin(), A_sr.begin())),
-    set_const_double2_ptr(A_ptr, &A_ptr[R_dim], stride));
-
-  double one = 1., zero = 0., minus_one = -1.;
-  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N_dim, R_dim, N_dim, &one, 
-    thrust::raw_pointer_cast(D_lis.data()), N_dim, thrust::raw_pointer_cast(U_lis.data()), N_dim, &zero, thrust::raw_pointer_cast(UD_lis.data()), N_dim, N_cols);
-  cublasDgemmStridedBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R_dim, R_dim, N_dim, &one, 
-    &U_ptr[stride * col_offset], N_dim, stride, UD_data, N_dim, stride, &zero, B_data, N_dim, stride, N_cols);
   
-  thrust::fill(thrust::cuda::par.on(stream), thrust::make_permutation_iterator(B_data, diag_fill_dev.begin()), 
-    thrust::make_permutation_iterator(B_data, diag_fill_dev.end()), 1.);
-  cublasDcopy(cublasH, stride * N_cols, U_ptr + stride * col_offset, 1, UD_data, 1);
-  cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R_dim, thrust::raw_pointer_cast(B_lis.data()), N_dim, info_array, N_cols);
+  struct BatchedFactorParams* params_ptr = (struct BatchedFactorParams*)malloc(sizeof(struct BatchedFactorParams));
+  params_ptr->N_r = R_dim;
+  params_ptr->N_s = S_dim;
+  params_ptr->N_upper = N_up;
+  params_ptr->L_diag = N_cols;
+  params_ptr->L_nnz = NNZ;
+  params_ptr->L_fill = _F_len;
+  cudaMalloc((void**)&(params_ptr->F_d), sizeof(int64_t) * N_cols * R_dim);
+
+  cudaMalloc((void**)&(params_ptr->A_d), sizeof(double*) * N_cols);
+  cudaMalloc((void**)&(params_ptr->U_d), sizeof(double*) * N_cols);
+  cudaMalloc((void**)&(params_ptr->U_r), sizeof(double*) * NNZ);
+  cudaMalloc((void**)&(params_ptr->U_s), sizeof(double*) * NNZ);
+  cudaMalloc((void**)&(params_ptr->V_x), sizeof(double*) * NNZ);
+  cudaMalloc((void**)&(params_ptr->A_rs), sizeof(double*) * N_cols);
+  cudaMalloc((void**)&(params_ptr->A_sx), sizeof(double*) * N_cols);
+
+  cudaMalloc((void**)&(params_ptr->U_dx), sizeof(double*) * N_cols);
+  cudaMalloc((void**)&(params_ptr->A_x), sizeof(double*) * NNZ);
+  cudaMalloc((void**)&(params_ptr->B_x), sizeof(double*) * N_cols);
+  cudaMalloc((void**)&(params_ptr->A_ss), sizeof(double*) * N_cols);
+  cudaMalloc((void**)&(params_ptr->A_upper), sizeof(double*) * NNZ);
+
+  params_ptr->U_d0 = _U_d0;
+  params_ptr->UD_data = _UD_data;
+  params_ptr->B_data = _B_data;
+
+  cudaMalloc((void**)&(params_ptr->info), sizeof(int) * N_cols);
+  *params = params_ptr;
+
+  cudaMemcpy(params_ptr->F_d, _F_d, sizeof(int64_t) * N_cols * R_dim, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->A_d, _A_d, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->U_d, _U_d, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->U_r, _U_r, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->U_s, _U_s, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->V_x, _V_x, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->A_rs, _A_rs, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->A_sx, _A_sx, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+
+  cudaMemcpy(params_ptr->U_dx, _U_dx, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->A_x, _A_x, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->B_x, _B_x, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->A_ss, _A_ss, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->A_upper, _A_upper, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
+
+  free(_F_d);
+  free(_A_d);
+  free(_U_d);
+  free(_U_r);
+  free(_U_s);
+  free(_V_x);
+  free(_A_rs);
+  free(_A_sx);
+  free(_U_dx);
+  free(_A_x);
+  free(_B_x);
+  free(_A_ss);
+  free(_A_upper);
+}
+
+void batchParamsDestory(void* params) {
+  struct BatchedFactorParams* params_ptr = (struct BatchedFactorParams*)params;
+  if (params_ptr->F_d)
+    cudaFree(params_ptr->F_d);
+  if (params_ptr->A_d)
+    cudaFree(params_ptr->A_d);
+  if (params_ptr->U_d)
+    cudaFree(params_ptr->U_d);
+  if (params_ptr->U_r)
+    cudaFree(params_ptr->U_r);
+  if (params_ptr->U_s)
+    cudaFree(params_ptr->U_s);
+  if (params_ptr->V_x)
+    cudaFree(params_ptr->V_x);
+  if (params_ptr->A_rs)
+    cudaFree(params_ptr->A_rs);
+  if (params_ptr->A_sx)
+    cudaFree(params_ptr->A_sx);
+  if (params_ptr->U_dx)
+    cudaFree(params_ptr->U_dx);
+  if (params_ptr->A_x)
+    cudaFree(params_ptr->A_x);
+  if (params_ptr->B_x)
+    cudaFree(params_ptr->B_x);
+  if (params_ptr->A_ss)
+    cudaFree(params_ptr->A_ss);
+  if (params_ptr->A_upper)
+    cudaFree(params_ptr->A_upper);
+  if (params_ptr->info)
+    cudaFree(params_ptr->info);
+
+  free(params);
+}
+
+void batchCholeskyFactor(void* params_ptr) {
+  struct BatchedFactorParams* params = (struct BatchedFactorParams*)params_ptr;
+  int64_t U = params->N_upper, R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag;
+  double one = 1., zero = 0., minus_one = -1.;
+
+  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, R, N, &one, 
+    params->A_d, N, params->U_d, N, &zero, params->U_dx, N, D);
+  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, R, N, &one, 
+    params->U_d, N, (const double**)(params->U_dx), N, &zero, params->B_x, N, D);
+  cublasDcopy(cublasH, N * N * D, params->U_d0, 1, params->UD_data, 1);
+  thrust::fill(thrust::cuda::par.on(stream), thrust::make_permutation_iterator(params->B_data, params->F_d), 
+    thrust::make_permutation_iterator(params->B_data, params->F_d + params->L_fill), 1.);
+
+  cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R, params->B_x, N, params->info, D);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
-    N_dim, R_dim, &one, thrust::raw_pointer_cast(B_lis.data()), N_dim, thrust::raw_pointer_cast(UD_lis.data()), N_dim, N_cols);
+    N, R, &one, (const double**)(params->B_x), N, params->U_dx, N, D);
 
-  for (int64_t i = 0; i < NNZ; i += N_cols) {
-    int64_t len = NNZ - i > N_cols ? N_cols : NNZ - i;
-    cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N_dim, N_dim, N_dim, &one, 
-      (const double**)thrust::raw_pointer_cast(A_lis.data()) + i, N_dim, thrust::raw_pointer_cast(V_lis.data()) + i, N_dim, 
-      &zero, thrust::raw_pointer_cast(B_lis.data()), N_dim, len);
-    cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, N_dim, R_dim, N_dim, &one, 
-      thrust::raw_pointer_cast(U_r.data()) + i, N_dim, (const double**)thrust::raw_pointer_cast(B_lis.data()), N_dim, 
-      &zero, thrust::raw_pointer_cast(A_lis.data()) + i, N_dim, len);
-    cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, S_dim, S_dim, N_dim, &one, 
-      thrust::raw_pointer_cast(U_s.data()) + i, N_dim, thrust::raw_pointer_cast(A_sx.data()), N_dim, 
-      &zero, thrust::raw_pointer_cast(A_up_dev.data()) + i, N_up, len);
+  for (int64_t i = 0; i < params->L_nnz; i += D) {
+    int64_t len = params->L_nnz - i > D ? D : params->L_nnz - i;
+    cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &one, 
+      (const double**)(&params->A_x[i]), N, &params->V_x[i], N, &zero, params->B_x, N, len);
+    cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, N, R, N, &one, 
+      &params->U_r[i], N, (const double**)(params->B_x), N, &zero, &params->A_x[i], N, len);
+    cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, S, S, N, &one, 
+      &params->U_s[i], N, params->A_sx, N, &zero, &params->A_upper[i], U, len);
   }
-  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_T, S_dim, S_dim, R_dim, &minus_one, 
-    thrust::raw_pointer_cast(A_sr.data()), N_dim, thrust::raw_pointer_cast(A_sr.data()), N_dim, 
-    &one, thrust::raw_pointer_cast(A_ss.data()), N_up, N_cols);
-
+  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_T, S, S, R, &minus_one, 
+    params->A_rs, N, params->A_rs, N, &one, params->A_ss, U, D);
+  
   cudaStreamSynchronize(stream);
-  if (N_cols * stride * 2 > D_DATA_SIZE) {
-    cudaFree(UD_data);
-    cudaFree(B_data);
-  }
-  cudaFree(info_array);
 }
 
 void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]) {
@@ -230,11 +287,12 @@ void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t di
   }
 
   int* info, Lwork;
-  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, &Lwork);
   double* Workspace;
-  cudaMalloc((void**)&info, sizeof(int));
+  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, &Lwork);
   cudaMalloc((void**)&Workspace, sizeof(double) * Lwork);
+  cudaMalloc((void**)&info, sizeof(int));
   cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, Workspace, Lwork, info);
-  cudaFree(info);
+  cudaStreamSynchronize(stream);
   cudaFree(Workspace);
+  cudaFree(info);
 }

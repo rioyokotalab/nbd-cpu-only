@@ -29,13 +29,17 @@ void scal_A(struct Matrix* A, double alpha);
 
 void init_batch_lib();
 void finalize_batch_lib();
+void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
-void alloc_matrices_aligned(double** A_ptr, double** A_buffer, int64_t M, int64_t N, int64_t count);
-void flush_buffer(char dir, double* A_ptr, double* A_buffer, int64_t len);
-void free_matrices(double* A_ptr, double* A_buffer);
-
-void batch_cholesky_factor(int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, 
+void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace,
   int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[]);
+void batchParamsDestory(void* params);
+
+void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int64_t count);
+void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, int64_t count);
+void freeBufferedList(void* A_ptr, void* A_buffer);
+
+void batchCholeskyFactor(void* params);
 void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]);
 
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
@@ -46,7 +50,7 @@ struct CellComm {
   MPI_Comm Comm_share, Comm_merge, Comm_gather, *Comm_box; 
 };
 struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, dimR, dimS, **Multipoles; struct Matrix *Uo, *Uc, *R; double *U_ptr, *U_buf; };
-struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; };
+struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; void* params; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
 
 void laplace3d(double* r2);
@@ -118,13 +122,13 @@ void basis_free(struct Base* basis);
 
 void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const double* bodies, const struct CSC* rels, const struct CellComm* comm);
 
-void allocNodes(struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
+void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
 void node_free(struct Node* node);
 
 void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels);
 
-void factorA(struct Node A[], const struct Base B[], const struct CSC rels_near[], const struct CellComm comm[], int64_t levels);
+void factorA(struct Node A[], const struct Base B[], const struct CellComm comm[], int64_t levels);
 
 void allocRightHandSides(char mvsv, struct RightHandSides st[], const struct Base base[], int64_t levels);
 

@@ -73,8 +73,10 @@ int main(int argc, char* argv[]) {
   buildCellBasis(epi, rank_max, sp_pts, ef, cell_basis, ncells, cell, Nbody, body, &cellNear, levels, cell_comm);
   stopTimer(&construct_time, &construct_comm_time);
 
+  double* Workspace = NULL;
+  int64_t Lwork = 0;
   buildBasis(8, basis, ncells, cell, cell_basis, levels, cell_comm);
-  allocNodes(nodes, basis, rels_near, rels_far, cell_comm, levels);
+  allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(ef, nodes[levels].A, ncells, cell, body, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++)
@@ -93,7 +95,7 @@ int main(int argc, char* argv[]) {
   factorA_mov_mem('S', nodes, basis, levels);
   double factor_time, factor_comm_time;
   startTimer(&factor_time, &factor_comm_time);
-  factorA(nodes, basis, rels_near, cell_comm, levels);
+  factorA(nodes, basis, cell_comm, levels);
   stopTimer(&factor_time, &factor_comm_time);
   factorA_mov_mem('G', nodes, basis, levels);
 
@@ -168,6 +170,7 @@ int main(int argc, char* argv[]) {
   free(rhs);
   free(X1);
   free(X2);
+  set_work_size(0, &Workspace, &Lwork);
 
   finalize_batch_lib();
   MPI_Finalize();
