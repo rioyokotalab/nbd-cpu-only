@@ -213,7 +213,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     for (int64_t x = 0; x < llen; x++)
       dimc_lis[x] = basis[i].Dims[x] - basis[i].DimsLr[x];
 
-    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, *Workspace, 
+    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, *Workspace, *Lwork,
       rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex, dimc_lis, comm[i].Comm_merge, comm[i].Comm_share);
     free(A_next);
     free(dimc_lis);
@@ -246,7 +246,7 @@ void factorA(struct Node A[], const struct Base basis[], const struct CellComm c
 
   for (int64_t i = levels; i > 0; i--) {
     batchCholeskyFactor(A[i].params);
-    
+
 #ifdef _PROF
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);

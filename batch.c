@@ -46,18 +46,19 @@ void freeBufferedList(void* A_ptr, void* A_buffer) {
 }
 
 struct BatchedFactorParams { 
-  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, *F_d;
+  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, L_tmp, *F_d;
   const double** A_d, **U_d, **U_r, **U_s, **V_x, **A_rs, **A_sx;
   double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
   MPI_Comm comm_merge, comm_share;
 };
 
-void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace,
+void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
   int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share) {
   
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
+  int64_t lenB = (Lwork / stride) - N_cols;
 
   const double** _A_d = (const double**)malloc(sizeof(double*) * N_cols);
   const double** _U_d = (const double**)malloc(sizeof(double*) * N_cols);
@@ -65,11 +66,11 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   const double** _U_s = (const double**)malloc(sizeof(double*) * NNZ);
   const double** _V_x = (const double**)malloc(sizeof(double*) * NNZ);
   const double** _A_rs = (const double**)malloc(sizeof(double*) * N_cols);
-  const double** _A_sx = (const double**)malloc(sizeof(double*) * N_cols);
+  const double** _A_sx = (const double**)malloc(sizeof(double*) * lenB);
 
   double** _U_dx = (double**)malloc(sizeof(double*) * N_cols);
   double** _A_x = (double**)malloc(sizeof(double*) * NNZ);
-  double** _B_x = (double**)malloc(sizeof(double*) * N_cols);
+  double** _B_x = (double**)malloc(sizeof(double*) * lenB);
   double** _A_ss = (double**)malloc(sizeof(double*) * N_cols);
   double** _A_upper = (double**)malloc(sizeof(double*) * NNZ);
 
@@ -92,18 +93,21 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
     }
 
     _A_d[x] = A_ptr + stride * diag_id;
-    _B_x[x] = _B_data + stride * x;
     _U_d[x] = U_ptr + stride * (x + col_offset);
     _A_rs[x] = A_ptr + stride * diag_id + R_dim;
     _U_dx[x] = _UD_data + stride * x;
     _A_ss[x] = A_up[diag_id];
-    _A_sx[x] = _B_data + stride * x + R_dim * N_dim;
 
     int64_t dimc = dimr[x + col_offset];
     int64_t fill_new = R_dim - dimc;
     for (int64_t i = 0; i < fill_new; i++)
       _F_d[_F_len + i] = x * stride + (N_dim + 1) * (dimc + i);
     _F_len = _F_len + fill_new;
+  }
+
+  for (int64_t x = 0; x < lenB; x++) {
+    _B_x[x] = _B_data + stride * x;
+    _A_sx[x] = _B_data + stride * x + R_dim * N_dim;
   }
   
   struct BatchedFactorParams* params_ptr = (struct BatchedFactorParams*)malloc(sizeof(struct BatchedFactorParams));
@@ -113,6 +117,7 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   params_ptr->L_diag = N_cols;
   params_ptr->L_nnz = NNZ;
   params_ptr->L_fill = _F_len;
+  params_ptr->L_tmp = lenB;
   params_ptr->F_d = _F_d;
 
   params_ptr->A_d = _A_d;
@@ -212,8 +217,8 @@ void batchCholeskyFactor(void* params_ptr) {
   cblas_dtrsm_batch(CblasColMajor, &right, &lower, &trans, &non_unit, &N, &R, &one, 
     (const double**)(params->B_x), &N, params->U_dx, &N, 1, &D);
 
-  for (int64_t i = 0; i < params->L_nnz; i += D) {
-    MKL_INT len = params->L_nnz - i > D ? D : params->L_nnz - i;
+  for (int64_t i = 0; i < params->L_nnz; i += params->L_tmp) {
+    MKL_INT len = params->L_nnz - i > params->L_tmp ? params->L_tmp : params->L_nnz - i;
     cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N, &N, &N, &one,
       (const double**)(&params->A_x[i]), &N, &params->V_x[i], &N, &zero, params->B_x, &N, 1, &len);
     cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &N, &R, &N, &one, 

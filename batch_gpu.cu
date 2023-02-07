@@ -83,19 +83,20 @@ void freeBufferedList(void* A_ptr, void* A_buffer) {
 }
 
 struct BatchedFactorParams { 
-  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, *F_d;
+  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, L_tmp, *F_d;
   const double** A_d, **U_d, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_d0;
   double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
   int* info;
   ncclComm_t comm_merge, comm_share;
 };
 
-void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace,
+void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
   int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share) {
   
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
+  int64_t lenB = (Lwork / stride) - N_cols;
 
   const double** _A_d, **_U_d, **_U_r, **_U_s, **_V_x, **_A_rs, **_A_sx;
   double** _U_dx, **_A_x, **_B_x, **_A_ss, **_A_upper;
@@ -105,11 +106,11 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   _U_s = (const double**)malloc(sizeof(double*) * NNZ);
   _V_x = (const double**)malloc(sizeof(double*) * NNZ);
   _A_rs = (const double**)malloc(sizeof(double*) * N_cols);
-  _A_sx = (const double**)malloc(sizeof(double*) * N_cols);
+  _A_sx = (const double**)malloc(sizeof(double*) * lenB);
 
   _U_dx = (double**)malloc(sizeof(double*) * N_cols);
   _A_x = (double**)malloc(sizeof(double*) * NNZ);
-  _B_x = (double**)malloc(sizeof(double*) * N_cols);
+  _B_x = (double**)malloc(sizeof(double*) * lenB);
   _A_ss = (double**)malloc(sizeof(double*) * N_cols);
   _A_upper = (double**)malloc(sizeof(double*) * NNZ);
 
@@ -133,18 +134,21 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
     }
 
     _A_d[x] = A_ptr + stride * diag_id;
-    _B_x[x] = _B_data + stride * x;
     _U_d[x] = U_ptr + stride * (x + col_offset);
     _A_rs[x] = A_ptr + stride * diag_id + R_dim;
     _U_dx[x] = _UD_data + stride * x;
     _A_ss[x] = A_up[diag_id];
-    _A_sx[x] = _B_data + stride * x + R_dim * N_dim;
 
     int64_t dimc = dimr[x + col_offset];
     int64_t fill_new = R_dim - dimc;
     for (int64_t i = 0; i < fill_new; i++)
       _F_d[_F_len + i] = x * stride + (N_dim + 1) * (dimc + i);
     _F_len = _F_len + fill_new;
+  }
+
+  for (int64_t x = 0; x < lenB; x++) {
+    _B_x[x] = _B_data + stride * x;
+    _A_sx[x] = _B_data + stride * x + R_dim * N_dim;
   }
   
   struct BatchedFactorParams* params_ptr = (struct BatchedFactorParams*)malloc(sizeof(struct BatchedFactorParams));
@@ -154,6 +158,7 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   params_ptr->L_diag = N_cols;
   params_ptr->L_nnz = NNZ;
   params_ptr->L_fill = _F_len;
+  params_ptr->L_tmp = lenB;
   cudaMalloc((void**)&(params_ptr->F_d), sizeof(int64_t) * N_cols * R_dim);
 
   cudaMalloc((void**)&(params_ptr->A_d), sizeof(double*) * N_cols);
@@ -162,11 +167,11 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   cudaMalloc((void**)&(params_ptr->U_s), sizeof(double*) * NNZ);
   cudaMalloc((void**)&(params_ptr->V_x), sizeof(double*) * NNZ);
   cudaMalloc((void**)&(params_ptr->A_rs), sizeof(double*) * N_cols);
-  cudaMalloc((void**)&(params_ptr->A_sx), sizeof(double*) * N_cols);
+  cudaMalloc((void**)&(params_ptr->A_sx), sizeof(double*) * lenB);
 
   cudaMalloc((void**)&(params_ptr->U_dx), sizeof(double*) * N_cols);
   cudaMalloc((void**)&(params_ptr->A_x), sizeof(double*) * NNZ);
-  cudaMalloc((void**)&(params_ptr->B_x), sizeof(double*) * N_cols);
+  cudaMalloc((void**)&(params_ptr->B_x), sizeof(double*) * lenB);
   cudaMalloc((void**)&(params_ptr->A_ss), sizeof(double*) * N_cols);
   cudaMalloc((void**)&(params_ptr->A_upper), sizeof(double*) * NNZ);
 
@@ -185,11 +190,11 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   cudaMemcpy(params_ptr->U_s, _U_s, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->V_x, _V_x, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->A_rs, _A_rs, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
-  cudaMemcpy(params_ptr->A_sx, _A_sx, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->A_sx, _A_sx, sizeof(double*) * lenB, cudaMemcpyHostToDevice);
 
   cudaMemcpy(params_ptr->U_dx, _U_dx, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->A_x, _A_x, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
-  cudaMemcpy(params_ptr->B_x, _B_x, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
+  cudaMemcpy(params_ptr->B_x, _B_x, sizeof(double*) * lenB, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->A_ss, _A_ss, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->A_upper, _A_upper, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
 
@@ -306,8 +311,8 @@ void batchCholeskyFactor(void* params_ptr) {
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
     N, R, &one, (const double**)(params->B_x), N, params->U_dx, N, D);
 
-  for (int64_t i = 0; i < params->L_nnz; i += D) {
-    int64_t len = params->L_nnz - i > D ? D : params->L_nnz - i;
+  for (int64_t i = 0; i < params->L_nnz; i += params->L_tmp) {
+    int64_t len = params->L_nnz - i > params->L_tmp ? params->L_tmp : params->L_nnz - i;
     cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &one, 
       (const double**)(&params->A_x[i]), N, &params->V_x[i], N, &zero, params->B_x, N, len);
     cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, N, R, N, &one, 
