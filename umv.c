@@ -227,20 +227,6 @@ void node_free(struct Node* node) {
     batchParamsDestory(node->params);
 }
 
-void merge_double(double* arr, int64_t alen, const struct CellComm* comm) {
-#ifdef _PROF
-  double stime = MPI_Wtime();
-#endif
-  if (comm->Comm_merge != MPI_COMM_NULL)
-    MPI_Allreduce(MPI_IN_PLACE, arr, alen, MPI_DOUBLE, MPI_SUM, comm->Comm_merge);
-  if (comm->Proc[1] - comm->Proc[0] > 1)
-    MPI_Bcast(arr, alen, MPI_DOUBLE, 0, comm->Comm_share);
-#ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
-#endif
-}
-
 void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
     int64_t stride = (basis[i].dimR + basis[i].dimS) * (basis[i].dimR + basis[i].dimS);
@@ -259,7 +245,7 @@ void factorA(struct Node A[], const struct Base basis[], const struct CellComm c
     int64_t nnz_next = A[i - 1].lenA;
 
     batchCholeskyFactor(A[i].params);
-    merge_double(A[i - 1].A_ptr, n_next * n_next * nnz_next, &comm[i - 1]);
+    merge_double(A[i - 1].A_ptr, n_next * n_next * nnz_next, comm[i - 1].Comm_merge, comm[i - 1].Comm_share);
 #ifdef _PROF
     record_factor_flops(basis[i].dimR, basis[i].dimS, nnz, iend - ibegin);
 #endif

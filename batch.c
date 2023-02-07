@@ -1,5 +1,7 @@
 
 #include "nbd.h"
+#include "profile.h"
+
 #include "mkl.h"
 #include <string.h>
 
@@ -220,4 +222,18 @@ void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t di
     row = row + dims[i];
   }
   LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', row, A, lda);
+}
+
+void merge_double(double* arr, int64_t alen, MPI_Comm merge, MPI_Comm share) {
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  if (merge != MPI_COMM_NULL)
+    MPI_Allreduce(MPI_IN_PLACE, arr, alen, MPI_DOUBLE, MPI_SUM, merge);
+  if (share != MPI_COMM_NULL)
+    MPI_Bcast(arr, alen, MPI_DOUBLE, 0, share);
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
 }

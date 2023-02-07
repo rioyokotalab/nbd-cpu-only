@@ -130,6 +130,8 @@ void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64
 
 void factorA(struct Node A[], const struct Base B[], const struct CellComm comm[], int64_t levels);
 
+void merge_double(double* arr, int64_t alen, MPI_Comm merge, MPI_Comm share);
+
 void allocRightHandSides(char mvsv, struct RightHandSides st[], const struct Base base[], int64_t levels);
 
 void rightHandSides_free(struct RightHandSides* rhs);

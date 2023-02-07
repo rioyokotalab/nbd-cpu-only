@@ -25,6 +25,6 @@ if(DEFINED ENV{CUDADIR})
   add_executable(gpu lorasp.c kernel.c linalg.c batch_gpu.cu build_tree.c umv.c profile.c)
   target_compile_options(gpu PRIVATE -D_PROF)
   target_include_directories(gpu PRIVATE ./)
-  target_link_libraries(gpu MPI::MPI_C OpenMP::OpenMP_C MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver)
+  target_link_libraries(gpu MPI::MPI_C OpenMP::OpenMP_C MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
 endif()
 

@@ -1,9 +1,11 @@
 
 #include "nbd.h"
+#include "profile.h"
+
 #include "cuda_runtime_api.h"
 #include "cublas_v2.h"
 #include "cusolverDn.h"
-#include "mkl.h"
+#include "nccl.h"
 
 #include <thrust/functional.h>
 #include <thrust/copy.h>
@@ -22,9 +24,8 @@ void init_batch_lib() {
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   int num_device;
   cudaGetDeviceCount(&num_device);
-  const char* env = getenv("PROCS_PER_DEVICE");
-  int procs_per_device = env == NULL ? 1 : atoi(env);
-  int device = (mpi_rank / procs_per_device) % num_device;
+
+  int device = mpi_rank % num_device;
   cudaSetDevice(device);
   
   cudaStreamCreate(&stream);
@@ -295,4 +296,51 @@ void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t di
   cudaStreamSynchronize(stream);
   cudaFree(Workspace);
   cudaFree(info);
+}
+
+
+void merge_double(double* arr, int64_t alen, MPI_Comm merge, MPI_Comm share) {
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  if (merge != MPI_COMM_NULL) {
+    int rank, size;
+    MPI_Comm_rank(merge, &rank);
+    MPI_Comm_size(merge, &size);
+
+    ncclUniqueId id;
+    if (rank == 0) 
+      ncclGetUniqueId(&id);
+
+    ncclComm_t comm;
+    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, merge);
+    ncclCommInitRank(&comm, size, id, rank);
+    ncclAllReduce((const void*)arr, (void*)arr, alen, ncclDouble, ncclSum, comm, stream);
+    cudaStreamSynchronize(stream);
+
+    ncclCommDestroy(comm);
+  }
+
+  if (share != MPI_COMM_NULL) {
+    int rank, size;
+    MPI_Comm_rank(share, &rank);
+    MPI_Comm_size(share, &size);
+
+    ncclUniqueId id;
+    if (rank == 0) 
+      ncclGetUniqueId(&id);
+
+    ncclComm_t comm;
+    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, share);
+    ncclCommInitRank(&comm, size, id, rank);
+    ncclBroadcast((const void*)arr, (void*)arr, alen, ncclDouble, 0, comm, stream);
+    cudaStreamSynchronize(stream);
+
+    ncclCommDestroy(comm);
+  }
+
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
 }
