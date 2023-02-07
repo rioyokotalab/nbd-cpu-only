@@ -105,6 +105,7 @@ void basis_free(struct Base* basis) {
 
 void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
   int64_t work_size = 0;
+  const int64_t NCHILD = 2;
 
   for (int64_t i = 0; i <= levels; i++) {
     int64_t n_i = rels_near[i].N;
@@ -162,7 +163,6 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
       const int64_t* lchild = basis[i - 1].Lchild;
       int64_t ploc = 0, pend = 0;
       self_local_range(&ploc, &pend, &comm[i - 1]);
-      const int64_t NCHILD = 2;
 
       for (int64_t j = 0; j < rels_up->N; j++) {
         int64_t lj = j + ploc;
@@ -213,17 +213,25 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     for (int64_t x = 0; x < llen; x++)
       dimc_lis[x] = basis[i].Dims[x] - basis[i].DimsLr[x];
 
-    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, *Workspace, rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex, dimc_lis);
+    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, *Workspace, 
+      rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex, dimc_lis, comm[i].Comm_merge, comm[i].Comm_share);
     free(A_next);
     free(dimc_lis);
   }
-  A[0].params = NULL;
+
+  if (levels > 0)
+    lastParamsCreate(&A[0].params, A[0].A_ptr, NCHILD, basis[1].dimS, basis[1].DimsLr, comm[0].Comm_merge, comm[0].Comm_share);
+  else
+    lastParamsCreate(&A[0].params, A[0].A_ptr, 1, basis[0].dimR, basis[0].Dims, comm[0].Comm_merge, comm[0].Comm_share);
 }
 
 void node_free(struct Node* node) {
   freeBufferedList(node->A_ptr, node->A_buf);
   free(node->A);
-  if (node->params != NULL)
+  int is_last = (node->lenA == 1) && (node->lenS == 0);
+  if (is_last && node->params != NULL)
+    lastParamsDestory(node->params);
+  if (!is_last && node->params != NULL)
     batchParamsDestory(node->params);
 }
 
@@ -237,24 +245,16 @@ void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64
 void factorA(struct Node A[], const struct Base basis[], const struct CellComm comm[], int64_t levels) {
 
   for (int64_t i = levels; i > 0; i--) {
+    batchCholeskyFactor(A[i].params);
+    
+#ifdef _PROF
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
     int64_t nnz = A[i].lenA;
-
-    int64_t n_next = basis[i - 1].dimR + basis[i - 1].dimS;
-    int64_t nnz_next = A[i - 1].lenA;
-
-    batchCholeskyFactor(A[i].params);
-    merge_double(A[i - 1].A_ptr, n_next * n_next * nnz_next, comm[i - 1].Comm_merge, comm[i - 1].Comm_share);
-#ifdef _PROF
     record_factor_flops(basis[i].dimR, basis[i].dimS, nnz, iend - ibegin);
 #endif
   }
-  const int64_t NCHILD = 2;
-  if (levels > 0)
-    chol_decomp(A[0].A_ptr, NCHILD, basis[1].dimS, basis[1].DimsLr);
-  else
-    chol_decomp(A[0].A_ptr, 1, basis[0].dimR, basis[0].Dims);
+  chol_decomp(A[0].params);
 #ifdef _PROF
   record_factor_flops(0, basis[0].dimR, 1, 1);
 #endif

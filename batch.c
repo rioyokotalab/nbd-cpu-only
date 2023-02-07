@@ -48,11 +48,12 @@ void freeBufferedList(void* A_ptr, void* A_buffer) {
 struct BatchedFactorParams { 
   int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, *F_d;
   const double** A_d, **U_d, **U_r, **U_s, **V_x, **A_rs, **A_sx;
-  double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *B_data;
+  double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
+  MPI_Comm comm_merge, comm_share;
 };
 
 void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace,
-  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[]) {
+  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share) {
   
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
@@ -128,7 +129,11 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   params_ptr->A_ss = _A_ss;
   params_ptr->A_upper = _A_upper;
   params_ptr->UD_data = _UD_data;
+  params_ptr->A_data = A_ptr;
   params_ptr->B_data = _B_data;
+
+  params_ptr->comm_merge = merge;
+  params_ptr->comm_share = share;
 
   *params = params_ptr;
 }
@@ -180,6 +185,19 @@ void batchCholeskyFactor(void* params_ptr) {
   MKL_INT S = params->N_s;
   MKL_INT N = R + S;
   MKL_INT D = params->L_diag;
+  int64_t alen = N * N * params->L_nnz;
+
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  if (params->comm_merge != MPI_COMM_NULL)
+    MPI_Allreduce(MPI_IN_PLACE, params->A_data, alen, MPI_DOUBLE, MPI_SUM, params->comm_merge);
+  if (params->comm_share != MPI_COMM_NULL)
+    MPI_Bcast(params->A_data, alen, MPI_DOUBLE, 0, params->comm_share);
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
 
   cblas_dgemm_batch(CblasColMajor, &no_trans, &no_trans, &N, &R, &N, &one, 
     params->A_d, &N, params->U_d, &N, &zero, params->U_dx, &N, 1, &D);
@@ -207,8 +225,57 @@ void batchCholeskyFactor(void* params_ptr) {
     params->A_rs, &N, params->A_rs, &N, &one, params->A_ss, &U, 1, &D);
 }
 
-void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]) {
+struct LastFactorParams {
+  double* A_ptr;
+  int64_t L_child, N_lower, *child_dims;
+  MPI_Comm comm_merge, comm_share;
+};
+
+void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[], MPI_Comm merge, MPI_Comm share) {
+  struct LastFactorParams* params_ptr = (struct LastFactorParams*)malloc(sizeof(struct LastFactorParams));
+  *params = params_ptr;
+
+  params_ptr->A_ptr = A;
+  params_ptr->L_child = Nblocks;
+  params_ptr->N_lower = block_dim;
+  params_ptr->child_dims = (int64_t*)malloc(sizeof(int64_t) * Nblocks);
+
+  for (int64_t i = 0; i < Nblocks; i++)
+    params_ptr->child_dims[i] = dims[i];
+  
+  params_ptr->comm_merge = merge;
+  params_ptr->comm_share = share;
+}
+
+void lastParamsDestory(void* params) {
+  struct LastFactorParams* params_ptr = (struct LastFactorParams*)params;
+  if (params_ptr->child_dims)
+    free(params_ptr->child_dims);
+  
+  free(params);
+}
+
+void chol_decomp(void* params_ptr) {
+  struct LastFactorParams* params = (struct LastFactorParams*)params_ptr;
+  double* A = params->A_ptr;
+  int64_t Nblocks = params->L_child;
+  int64_t block_dim = params->N_lower;
+  const int64_t* dims = params->child_dims;
   int64_t lda = Nblocks * block_dim;
+  int64_t alen = lda * lda;
+
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  if (params->comm_merge != MPI_COMM_NULL)
+    MPI_Allreduce(MPI_IN_PLACE, params->A_ptr, alen, MPI_DOUBLE, MPI_SUM, params->comm_merge);
+  if (params->comm_share != MPI_COMM_NULL)
+    MPI_Bcast(params->A_ptr, alen, MPI_DOUBLE, 0, params->comm_share);
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
+
   int64_t row = 0;
   for (int64_t i = 0; i < Nblocks; i++) {
     int64_t Arow = i * block_dim;
@@ -222,18 +289,4 @@ void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t di
     row = row + dims[i];
   }
   LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', row, A, lda);
-}
-
-void merge_double(double* arr, int64_t alen, MPI_Comm merge, MPI_Comm share) {
-#ifdef _PROF
-  double stime = MPI_Wtime();
-#endif
-  if (merge != MPI_COMM_NULL)
-    MPI_Allreduce(MPI_IN_PLACE, arr, alen, MPI_DOUBLE, MPI_SUM, merge);
-  if (share != MPI_COMM_NULL)
-    MPI_Bcast(arr, alen, MPI_DOUBLE, 0, share);
-#ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
-#endif
 }

@@ -32,15 +32,17 @@ void finalize_batch_lib();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
 void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace,
-  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[]);
+  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share);
 void batchParamsDestory(void* params);
+void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[], MPI_Comm merge, MPI_Comm share);
+void lastParamsDestory(void* params);
 
 void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int64_t count);
 void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, int64_t count);
 void freeBufferedList(void* A_ptr, void* A_buffer);
 
 void batchCholeskyFactor(void* params);
-void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]);
+void chol_decomp(void* params);
 
 struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
@@ -129,8 +131,6 @@ void node_free(struct Node* node);
 void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels);
 
 void factorA(struct Node A[], const struct Base B[], const struct CellComm comm[], int64_t levels);
-
-void merge_double(double* arr, int64_t alen, MPI_Comm merge, MPI_Comm share);
 
 void allocRightHandSides(char mvsv, struct RightHandSides st[], const struct Base base[], int64_t levels);
 

@@ -85,12 +85,13 @@ void freeBufferedList(void* A_ptr, void* A_buffer) {
 struct BatchedFactorParams { 
   int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, *F_d;
   const double** A_d, **U_d, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_d0;
-  double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *B_data;
+  double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
   int* info;
+  ncclComm_t comm_merge, comm_share;
 };
 
 void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace,
-  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[]) {
+  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share) {
   
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
@@ -171,6 +172,7 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
 
   params_ptr->U_d0 = _U_d0;
   params_ptr->UD_data = _UD_data;
+  params_ptr->A_data = A_ptr;
   params_ptr->B_data = _B_data;
 
   cudaMalloc((void**)&(params_ptr->info), sizeof(int) * N_cols);
@@ -190,6 +192,35 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   cudaMemcpy(params_ptr->B_x, _B_x, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->A_ss, _A_ss, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->A_upper, _A_upper, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
+
+  params_ptr->comm_merge = NULL;
+  params_ptr->comm_share = NULL;
+
+  if (merge != MPI_COMM_NULL) {
+    int rank, size;
+    MPI_Comm_rank(merge, &rank);
+    MPI_Comm_size(merge, &size);
+
+    ncclUniqueId id;
+    if (rank == 0) 
+      ncclGetUniqueId(&id);
+
+    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, merge);
+    ncclCommInitRank(&params_ptr->comm_merge, size, id, rank);
+  }
+
+  if (share != MPI_COMM_NULL) {
+    int rank, size;
+    MPI_Comm_rank(share, &rank);
+    MPI_Comm_size(share, &size);
+
+    ncclUniqueId id;
+    if (rank == 0) 
+      ncclGetUniqueId(&id);
+
+    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, share);
+    ncclCommInitRank(&params_ptr->comm_share, size, id, rank);
+  }
 
   free(_F_d);
   free(_A_d);
@@ -236,6 +267,10 @@ void batchParamsDestory(void* params) {
     cudaFree(params_ptr->A_upper);
   if (params_ptr->info)
     cudaFree(params_ptr->info);
+  if (params_ptr->comm_merge)
+    ncclCommDestroy(params_ptr->comm_merge);
+  if (params_ptr->comm_merge)
+    ncclCommDestroy(params_ptr->comm_share);
 
   free(params);
 }
@@ -243,7 +278,21 @@ void batchParamsDestory(void* params) {
 void batchCholeskyFactor(void* params_ptr) {
   struct BatchedFactorParams* params = (struct BatchedFactorParams*)params_ptr;
   int64_t U = params->N_upper, R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag;
+  int64_t alen = N * N * params->L_nnz;
   double one = 1., zero = 0., minus_one = -1.;
+
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  if (params->comm_merge)
+    ncclAllReduce((const void*)params->A_data, (void*)params->A_data, alen, ncclDouble, ncclSum, params->comm_merge, stream);
+  if (params->comm_share)
+    ncclBroadcast((const void*)params->A_data, (void*)params->A_data, alen, ncclDouble, 0, params->comm_share, stream);
+#ifdef _PROF
+  cudaStreamSynchronize(stream);
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
 
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, R, N, &one, 
     params->A_d, N, params->U_d, N, &zero, params->U_dx, N, D);
@@ -272,8 +321,88 @@ void batchCholeskyFactor(void* params_ptr) {
   cudaStreamSynchronize(stream);
 }
 
-void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[]) {
+struct LastFactorParams {
+  double* A_ptr;
+  int64_t L_child, N_lower, *child_dims;
+  ncclComm_t comm_merge, comm_share;
+};
+
+void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[], MPI_Comm merge, MPI_Comm share) {
+  struct LastFactorParams* params_ptr = (struct LastFactorParams*)malloc(sizeof(struct LastFactorParams));
+  *params = params_ptr;
+
+  params_ptr->A_ptr = A;
+  params_ptr->L_child = Nblocks;
+  params_ptr->N_lower = block_dim;
+  params_ptr->child_dims = (int64_t*)malloc(sizeof(int64_t) * Nblocks);
+
+  for (int64_t i = 0; i < Nblocks; i++)
+    params_ptr->child_dims[i] = dims[i];
+  
+  params_ptr->comm_merge = NULL;
+  params_ptr->comm_share = NULL;
+
+  if (merge != MPI_COMM_NULL) {
+    int rank, size;
+    MPI_Comm_rank(merge, &rank);
+    MPI_Comm_size(merge, &size);
+
+    ncclUniqueId id;
+    if (rank == 0) 
+      ncclGetUniqueId(&id);
+
+    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, merge);
+    ncclCommInitRank(&params_ptr->comm_merge, size, id, rank);
+  }
+
+  if (share != MPI_COMM_NULL) {
+    int rank, size;
+    MPI_Comm_rank(share, &rank);
+    MPI_Comm_size(share, &size);
+
+    ncclUniqueId id;
+    if (rank == 0) 
+      ncclGetUniqueId(&id);
+
+    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, share);
+    ncclCommInitRank(&params_ptr->comm_share, size, id, rank);
+  }
+}
+
+void lastParamsDestory(void* params) {
+  struct LastFactorParams* params_ptr = (struct LastFactorParams*)params;
+  if (params_ptr->child_dims)
+    free(params_ptr->child_dims);
+  if (params_ptr->comm_merge)
+    ncclCommDestroy(params_ptr->comm_merge);
+  if (params_ptr->comm_merge)
+    ncclCommDestroy(params_ptr->comm_share);
+  
+  free(params);
+}
+
+void chol_decomp(void* params_ptr) {
+  struct LastFactorParams* params = (struct LastFactorParams*)params_ptr;
+  double* A = params->A_ptr;
+  int64_t Nblocks = params->L_child;
+  int64_t block_dim = params->N_lower;
+  const int64_t* dims = params->child_dims;
   int64_t lda = Nblocks * block_dim;
+  int64_t alen = lda * lda;
+
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+  if (params->comm_merge)
+    ncclAllReduce((const void*)params->A_ptr, (void*)params->A_ptr, alen, ncclDouble, ncclSum, params->comm_merge, stream);
+  if (params->comm_share)
+    ncclBroadcast((const void*)params->A_ptr, (void*)params->A_ptr, alen, ncclDouble, 0, params->comm_share, stream);
+#ifdef _PROF
+  cudaStreamSynchronize(stream);
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
+
   int64_t row = 0;
   for (int64_t i = 0; i < Nblocks; i++) {
     int64_t Arow = i * block_dim;
@@ -298,49 +427,3 @@ void chol_decomp(double* A, int64_t Nblocks, int64_t block_dim, const int64_t di
   cudaFree(info);
 }
 
-
-void merge_double(double* arr, int64_t alen, MPI_Comm merge, MPI_Comm share) {
-#ifdef _PROF
-  double stime = MPI_Wtime();
-#endif
-  if (merge != MPI_COMM_NULL) {
-    int rank, size;
-    MPI_Comm_rank(merge, &rank);
-    MPI_Comm_size(merge, &size);
-
-    ncclUniqueId id;
-    if (rank == 0) 
-      ncclGetUniqueId(&id);
-
-    ncclComm_t comm;
-    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, merge);
-    ncclCommInitRank(&comm, size, id, rank);
-    ncclAllReduce((const void*)arr, (void*)arr, alen, ncclDouble, ncclSum, comm, stream);
-    cudaStreamSynchronize(stream);
-
-    ncclCommDestroy(comm);
-  }
-
-  if (share != MPI_COMM_NULL) {
-    int rank, size;
-    MPI_Comm_rank(share, &rank);
-    MPI_Comm_size(share, &size);
-
-    ncclUniqueId id;
-    if (rank == 0) 
-      ncclGetUniqueId(&id);
-
-    ncclComm_t comm;
-    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, share);
-    ncclCommInitRank(&comm, size, id, rank);
-    ncclBroadcast((const void*)arr, (void*)arr, alen, ncclDouble, 0, comm, stream);
-    cudaStreamSynchronize(stream);
-
-    ncclCommDestroy(comm);
-  }
-
-#ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
-#endif
-}
