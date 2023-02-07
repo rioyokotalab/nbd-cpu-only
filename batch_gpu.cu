@@ -327,8 +327,9 @@ void batchCholeskyFactor(void* params_ptr) {
 }
 
 struct LastFactorParams {
-  double* A_ptr;
+  double* A_ptr, *Workspace;
   int64_t L_child, N_lower, *child_dims;
+  int Lwork, *info;
   ncclComm_t comm_merge, comm_share;
 };
 
@@ -341,8 +342,15 @@ void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_d
   params_ptr->N_lower = block_dim;
   params_ptr->child_dims = (int64_t*)malloc(sizeof(int64_t) * Nblocks);
 
-  for (int64_t i = 0; i < Nblocks; i++)
+  int64_t sum = 0;
+  for (int64_t i = 0; i < Nblocks; i++) {
     params_ptr->child_dims[i] = dims[i];
+    sum = sum + dims[i];
+  }
+
+  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, sum, A, Nblocks * block_dim, &params_ptr->Lwork);
+  cudaMalloc((void**)&params_ptr->Workspace, sizeof(double) * params_ptr->Lwork);
+  cudaMalloc((void**)&params_ptr->info, sizeof(int));
   
   params_ptr->comm_merge = NULL;
   params_ptr->comm_share = NULL;
@@ -378,6 +386,10 @@ void lastParamsDestory(void* params) {
   struct LastFactorParams* params_ptr = (struct LastFactorParams*)params;
   if (params_ptr->child_dims)
     free(params_ptr->child_dims);
+  if (params_ptr->Workspace)
+    cudaFree(params_ptr->Workspace);
+  if (params_ptr->info)
+    cudaFree(params_ptr->info);
   if (params_ptr->comm_merge)
     ncclCommDestroy(params_ptr->comm_merge);
   if (params_ptr->comm_merge)
@@ -421,14 +433,7 @@ void chol_decomp(void* params_ptr) {
     row = row + dims[i];
   }
 
-  int* info, Lwork;
-  double* Workspace;
-  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, &Lwork);
-  cudaMalloc((void**)&Workspace, sizeof(double) * Lwork);
-  cudaMalloc((void**)&info, sizeof(int));
-  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, Workspace, Lwork, info);
+  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, params->Workspace, params->Lwork, params->info);
   cudaStreamSynchronize(stream);
-  cudaFree(Workspace);
-  cudaFree(info);
 }
 
