@@ -305,11 +305,14 @@ void gather_dims(int64_t dims[], const struct CellComm* comm) {
       offsets[i] = comm->ProcBoxes[rank];
       lens[i] = comm->ProcBoxesEnd[rank] - offsets[i];
     }
-    int64_t pbegin = comm->ProcBoxes[p];
-    int64_t plen = comm->ProcBoxesEnd[p] - pbegin;
-    MPI_Allgatherv(&dims[pbegin], plen, MPI_INT64_T, dims, lens, offsets, MPI_INT64_T, comm->Comm_gather);
+    int64_t dbegin = comm->ProcBoxes[p];
+    int64_t dlen = comm->ProcBoxesEnd[p] - dbegin;
+    int64_t* send_buf = (int64_t*)malloc(sizeof(int64_t) * dlen);
+    memcpy(send_buf, &dims[dbegin], sizeof(int64_t) * dlen);
+    MPI_Allgatherv(send_buf, dlen, MPI_INT64_T, dims, lens, offsets, MPI_INT64_T, comm->Comm_gather);
     free(offsets);
     free(lens);
+    free(send_buf);
   }
   if (comm->Proc[1] - comm->Proc[0] > 1) {
     int64_t dlen = comm->ProcBoxesEnd[comm->worldSize - 1];
@@ -339,11 +342,14 @@ void gather_multipoles(int64_t data[], const int64_t M[], const struct CellComm*
     }
     int64_t pbox = comm->ProcBoxes[p];
     int64_t pbox_end = comm->ProcBoxesEnd[p];
-    int64_t pbegin = M[pbox];
-    int64_t plen = M[pbox_end] - M[pbox];
-    MPI_Allgatherv(&data[pbegin], plen, MPI_INT64_T, data, lens, offsets, MPI_INT64_T, comm->Comm_gather);
+    int64_t dbegin = M[pbox];
+    int64_t dlen = M[pbox_end] - M[pbox];
+    int64_t* send_buf = (int64_t*)malloc(sizeof(int64_t) * dlen);
+    memcpy(send_buf, &data[dbegin], sizeof(int64_t) * dlen);
+    MPI_Allgatherv(send_buf, dlen, MPI_INT64_T, data, lens, offsets, MPI_INT64_T, comm->Comm_gather);
     free(offsets);
     free(lens);
+    free(send_buf);
   }
   if (comm->Proc[1] - comm->Proc[0] > 1) {
     int64_t blen = comm->ProcBoxesEnd[comm->worldSize - 1];
@@ -374,11 +380,14 @@ void gather_matrix(double data[], const int64_t M[], const struct CellComm* comm
     }
     int64_t pbox = comm->ProcBoxes[p];
     int64_t pbox_end = comm->ProcBoxesEnd[p];
-    int64_t pbegin = M[pbox];
-    int64_t plen = M[pbox_end] - M[pbox];
-    MPI_Allgatherv(&data[pbegin], plen, MPI_DOUBLE, data, lens, offsets, MPI_DOUBLE, comm->Comm_gather);
+    int64_t dbegin = M[pbox];
+    int64_t dlen = M[pbox_end] - M[pbox];
+    double* send_buf = (double*)malloc(sizeof(double) * dlen);
+    memcpy(send_buf, &data[dbegin], sizeof(double) * dlen);
+    MPI_Allgatherv(send_buf, dlen, MPI_DOUBLE, data, lens, offsets, MPI_DOUBLE, comm->Comm_gather);
     free(offsets);
     free(lens);
+    free(send_buf);
   }
   if (comm->Proc[1] - comm->Proc[0] > 1) {
     int64_t blen = comm->ProcBoxesEnd[comm->worldSize - 1];
