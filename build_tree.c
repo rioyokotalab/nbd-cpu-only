@@ -291,128 +291,30 @@ int64_t gen_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_bo
   return flen;
 }
 
-void gather_dims(int64_t dims[], const struct CellComm* comm) {
-#ifdef _PROF
-  double stime = MPI_Wtime();
-#endif
-  int64_t plen = comm->lenGather;
-  if (plen > 0) {
-    int64_t p = comm->Proc[0];
-    int* offsets = (int*)malloc(sizeof(int) * plen);
-    int* lens = (int*)malloc(sizeof(int) * plen);
-    for (int64_t i = 0; i < plen; i++) {
-      int64_t rank = comm->ProcGather[i];
-      offsets[i] = comm->ProcBoxes[rank];
-      lens[i] = comm->ProcBoxesEnd[rank] - offsets[i];
-    }
-    int64_t dbegin = comm->ProcBoxes[p];
-    int64_t dlen = comm->ProcBoxesEnd[p] - dbegin;
-    int64_t* send_buf = (int64_t*)malloc(sizeof(int64_t) * dlen);
-    memcpy(send_buf, &dims[dbegin], sizeof(int64_t) * dlen);
-    MPI_Allgatherv(send_buf, dlen, MPI_INT64_T, dims, lens, offsets, MPI_INT64_T, comm->Comm_gather);
-    free(offsets);
-    free(lens);
-    free(send_buf);
-  }
-  if (comm->Proc[1] - comm->Proc[0] > 1) {
-    int64_t dlen = comm->ProcBoxesEnd[comm->worldSize - 1];
-    MPI_Bcast(dims, dlen, MPI_INT64_T, 0, comm->Comm_share);
-  }
-#ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
-#endif
-}
-
-void gather_multipoles(int64_t data[], const int64_t M[], const struct CellComm* comm) {
-#ifdef _PROF
-  double stime = MPI_Wtime();
-#endif
-  int64_t plen = comm->lenGather;
-  if (plen > 0) {
-    int64_t p = comm->Proc[0];
-    int* offsets = (int*)malloc(sizeof(int) * plen);
-    int* lens = (int*)malloc(sizeof(int) * plen);
-    for (int64_t i = 0; i < plen; i++) {
-      int64_t rank = comm->ProcGather[i];
-      int64_t box = comm->ProcBoxes[rank];
-      int64_t box_end = comm->ProcBoxesEnd[rank];
-      offsets[i] = M[box];
-      lens[i] = M[box_end] - M[box];
-    }
-    int64_t pbox = comm->ProcBoxes[p];
-    int64_t pbox_end = comm->ProcBoxesEnd[p];
-    int64_t dbegin = M[pbox];
-    int64_t dlen = M[pbox_end] - M[pbox];
-    int64_t* send_buf = (int64_t*)malloc(sizeof(int64_t) * dlen);
-    memcpy(send_buf, &data[dbegin], sizeof(int64_t) * dlen);
-    MPI_Allgatherv(send_buf, dlen, MPI_INT64_T, data, lens, offsets, MPI_INT64_T, comm->Comm_gather);
-    free(offsets);
-    free(lens);
-    free(send_buf);
-  }
-  if (comm->Proc[1] - comm->Proc[0] > 1) {
-    int64_t blen = comm->ProcBoxesEnd[comm->worldSize - 1];
-    int64_t dlen = M[blen];
-    MPI_Bcast(data, dlen, MPI_INT64_T, 0, comm->Comm_share);
-  }
-#ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
-#endif
-}
-
-void gather_matrix(double data[], const int64_t M[], const struct CellComm* comm) {
-#ifdef _PROF
-  double stime = MPI_Wtime();
-#endif
-  int64_t plen = comm->lenGather;
-  if (plen > 0) {
-    int64_t p = comm->Proc[0];
-    int* offsets = (int*)malloc(sizeof(int) * plen);
-    int* lens = (int*)malloc(sizeof(int) * plen);
-    for (int64_t i = 0; i < plen; i++) {
-      int64_t rank = comm->ProcGather[i];
-      int64_t box = comm->ProcBoxes[rank];
-      int64_t box_end = comm->ProcBoxesEnd[rank];
-      offsets[i] = M[box];
-      lens[i] = M[box_end] - M[box];
-    }
-    int64_t pbox = comm->ProcBoxes[p];
-    int64_t pbox_end = comm->ProcBoxesEnd[p];
-    int64_t dbegin = M[pbox];
-    int64_t dlen = M[pbox_end] - M[pbox];
-    double* send_buf = (double*)malloc(sizeof(double) * dlen);
-    memcpy(send_buf, &data[dbegin], sizeof(double) * dlen);
-    MPI_Allgatherv(send_buf, dlen, MPI_DOUBLE, data, lens, offsets, MPI_DOUBLE, comm->Comm_gather);
-    free(offsets);
-    free(lens);
-    free(send_buf);
-  }
-  if (comm->Proc[1] - comm->Proc[0] > 1) {
-    int64_t blen = comm->ProcBoxesEnd[comm->worldSize - 1];
-    int64_t dlen = M[blen];
-    MPI_Bcast(data, dlen, MPI_DOUBLE, 0, comm->Comm_share);
-  }
-#ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
-#endif
-}
-
 void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
   int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels, const struct CellComm* comms) {
   int64_t mpi_rank = comms[0].worldRank;
+  int64_t mpi_size = comms[0].worldSize;
   
   for (int64_t l = levels; l >= 0; l--) {
     int64_t lbegin = 0, lend = ncells;
     get_level(&lbegin, &lend, cells, l, -1);
     int64_t llen = lend - lbegin;
     memset(&basis[lbegin], 0, sizeof(struct CellBasis) * llen);
-
+    
     int64_t ibegin = lbegin, iend = lend;
     get_level(&ibegin, &iend, cells, l, mpi_rank);
     int64_t nodes = iend - ibegin;
+
+    int* Lens_comm = (int*)malloc(sizeof(int) * mpi_size);
+    int* Offs_comm = (int*)malloc(sizeof(int) * mpi_size);
+    for (int64_t p = 0; p < mpi_size; p++) {
+      Lens_comm[p] = comms[l].ProcBoxesEnd[p] - comms[l].ProcBoxes[p];
+      Offs_comm[p] = comms[l].ProcBoxes[p];
+    }
+
+    int64_t* M_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
+    int64_t* N_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
 
 #pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
@@ -511,6 +413,9 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       basis[ci].R = &basis_data[ske_len * ske_len];
       memcpy(basis[ci].Multipoles, skeletons, sizeof(int64_t) * rank);
 
+      M_comm[ci - lbegin] = ske_len;
+      N_comm[ci - lbegin] = rank;
+
       free(skeletons);
       free(close);
       free(remote);
@@ -521,16 +426,15 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       free(pa);
     }
 
-    int64_t* M_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
-    int64_t* N_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
-    for (int64_t i = 0; i < llen; i++) {
-      int64_t ci = i + lbegin;
-      M_comm[i] = basis[ci].M;
-      N_comm[i] = basis[ci].N;
-    }
-
-    gather_dims(M_comm, &comms[l]);
-    gather_dims(N_comm, &comms[l]);
+#ifdef _PROF
+  double stime = MPI_Wtime();
+#endif
+    int64_t* send_buf = (int64_t*)malloc(sizeof(int64_t) * nodes);
+    memcpy(send_buf, &M_comm[ibegin - lbegin], sizeof(int64_t) * nodes);
+    MPI_Allgatherv(send_buf, nodes, MPI_INT64_T, M_comm, Lens_comm, Offs_comm, MPI_INT64_T, MPI_COMM_WORLD);
+    memcpy(send_buf, &N_comm[ibegin - lbegin], sizeof(int64_t) * nodes);
+    MPI_Allgatherv(send_buf, nodes, MPI_INT64_T, N_comm, Lens_comm, Offs_comm, MPI_INT64_T, MPI_COMM_WORLD);
+    free(send_buf);
 
     int64_t size_multipole = 0;
     int64_t size_matrix = 0;
@@ -569,10 +473,45 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
         memcpy(matrix + N_comm[i], basis[ci].Uo, sizeof(double) * sizeN);
     }
 
-    if (multipoles)
-      gather_multipoles(multipoles, M_comm, &comms[l]);
-    if (matrix)
-      gather_matrix(matrix, N_comm, &comms[l]);
+    if (multipoles) {
+      int64_t pbox, pbox_end;
+      for (int64_t p = 0; p < mpi_size; p++) {
+        pbox = comms[l].ProcBoxes[p];
+        pbox_end = comms[l].ProcBoxesEnd[p];
+        Lens_comm[p] = M_comm[pbox_end] - M_comm[pbox];
+        Offs_comm[p] = M_comm[pbox];
+      }
+      pbox = comms[l].ProcBoxes[mpi_rank];
+      pbox_end = comms[l].ProcBoxesEnd[mpi_rank];
+      int64_t mbegin = M_comm[pbox];
+      int64_t mlen = M_comm[pbox_end] - M_comm[pbox];
+      send_buf = (int64_t*)malloc(sizeof(int64_t) * mlen);
+      memcpy(send_buf, &multipoles[mbegin], sizeof(int64_t) * mlen);
+      MPI_Allgatherv(send_buf, mlen, MPI_INT64_T, multipoles, Lens_comm, Offs_comm, MPI_INT64_T, MPI_COMM_WORLD);
+      free(send_buf);
+    }
+
+    if (matrix) {
+      int64_t pbox, pbox_end;
+      for (int64_t p = 0; p < mpi_size; p++) {
+        pbox = comms[l].ProcBoxes[p];
+        pbox_end = comms[l].ProcBoxesEnd[p];
+        Lens_comm[p] = N_comm[pbox_end] - N_comm[pbox];
+        Offs_comm[p] = N_comm[pbox];
+      }
+      pbox = comms[l].ProcBoxes[mpi_rank];
+      pbox_end = comms[l].ProcBoxesEnd[mpi_rank];
+      int64_t mbegin = N_comm[pbox];
+      int64_t mlen = N_comm[pbox_end] - N_comm[pbox];
+      double* send_buf_double = (double*)malloc(sizeof(double) * mlen);
+      memcpy(send_buf_double, &matrix[mbegin], sizeof(double) * mlen);
+      MPI_Allgatherv(send_buf_double, mlen, MPI_DOUBLE, matrix, Lens_comm, Offs_comm, MPI_DOUBLE, MPI_COMM_WORLD);
+      free(send_buf_double);
+    }
+#ifdef _PROF
+  double etime = MPI_Wtime() - stime;
+  recordCommTime(etime);
+#endif
 
     for (int64_t i = 0; i < llen; i++) {
       int64_t sizeM = M_comm[i + 1] - M_comm[i];
@@ -590,6 +529,8 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       free(matrix);
     free(M_comm);
     free(N_comm);
+    free(Lens_comm);
+    free(Offs_comm);
   }
 }
 
@@ -611,12 +552,11 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t ibegin = 0, iend = ncells;
     get_level(&ibegin, &iend, cells, i, -1);
 
-    int64_t* arr = (int64_t*)malloc(sizeof(int64_t) * mpi_size * 5);
+    int64_t* arr = (int64_t*)malloc(sizeof(int64_t) * mpi_size * 4);
     comms[i].ProcRootI = arr;
     comms[i].ProcBoxes = &arr[mpi_size];
     comms[i].ProcBoxesEnd = &arr[mpi_size * 2];
     comms[i].ProcTargets = &arr[mpi_size * 3];
-    comms[i].ProcGather = &arr[mpi_size * 4];
 
     int64_t mbegin = ibegin, mend = iend;
     get_level(&mbegin, &mend, cells, i, mpi_rank);
@@ -664,15 +604,6 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
   
     color = lenp > 1 ? p : MPI_UNDEFINED;
     MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_share);
-    
-    color = (p == mpi_rank) ? 1 : MPI_UNDEFINED;
-    MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_gather);
-    int gather_size = 0;
-    if (comms[i].Comm_gather != MPI_COMM_NULL) {
-      MPI_Comm_size(comms[i].Comm_gather, &gather_size);
-      MPI_Allgather(&mpi_rank, 1, MPI_INT64_T, comms[i].ProcGather, 1, MPI_INT64_T, comms[i].Comm_gather);
-    }
-    comms[i].lenGather = gather_size > 1 ? gather_size : 0;
   }
 }
 
@@ -685,8 +616,6 @@ void cellComm_free(struct CellComm* comm) {
     MPI_Comm_free(&comm->Comm_share);
   if (comm->Comm_merge != MPI_COMM_NULL)
     MPI_Comm_free(&comm->Comm_merge);
-  if (comm->Comm_gather != MPI_COMM_NULL)
-    MPI_Comm_free(&comm->Comm_gather);
   free(comm->ProcRootI);
   free(comm->Comm_box);
 }

@@ -48,8 +48,8 @@ struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 struct CellComm { 
-  int64_t Proc[2], worldRank, worldSize, lenTargets, lenGather, *ProcTargets, *ProcGather, *ProcRootI, *ProcBoxes, *ProcBoxesEnd;
-  MPI_Comm Comm_share, Comm_merge, Comm_gather, *Comm_box; 
+  int64_t Proc[2], worldRank, worldSize, lenTargets, *ProcTargets, *ProcRootI, *ProcBoxes, *ProcBoxesEnd;
+  MPI_Comm Comm_share, Comm_merge, *Comm_box; 
 };
 struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, dimR, dimS, **Multipoles; struct Matrix *Uo, *Uc, *R; double *U_ptr, *U_buf; };
 struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; void* params; };
