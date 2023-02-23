@@ -75,22 +75,24 @@ int main(int argc, char* argv[]) {
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
-  buildBasis(8, basis, ncells, cell, cell_basis, levels, cell_comm);
+  buildBasis(4, basis, ncells, cell, cell_basis, levels, cell_comm);
   allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(ef, nodes[levels].A, ncells, cell, body, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++)
     evalS(ef, nodes[i].S, &basis[i], body, &rels_far[i], &cell_comm[i]);
 
-  if (Nbody > 10000) {
-    loadX(X1, body_local, Xbody);
-    allocRightHandSides('M', rhs, basis, levels);
-    matVecA(rhs, nodes, basis, rels_near, rels_far, X1, cell_comm, levels);
-    for (int64_t i = 0; i <= levels; i++)
-      rightHandSides_free(&rhs[i]);
+  loadX(X1, body_local, Xbody);
+  allocRightHandSides('M', rhs, basis, levels);
+  matVecA(rhs, nodes, basis, rels_near, rels_far, X1, cell_comm, levels);
+  for (int64_t i = 0; i <= levels; i++)
+    rightHandSides_free(&rhs[i]);
+
+  double cerr = 0.;
+  if (Nbody < 10000) {
+    mat_vec_reference(ef, body_local[0], body_local[1], X2, Nbody, body, Xbody);
+    solveRelErr(&cerr, X1, X2, lenX);
   }
-  else 
-    mat_vec_reference(ef, body_local[0], body_local[1], X1, Nbody, body, Xbody);
   
   factorA_mov_mem('S', nodes, basis, levels);
   double factor_time, factor_comm_time;
@@ -139,11 +141,11 @@ int main(int argc, char* argv[]) {
       "Basis Memory: %lf GiB.\n"
       "Matrix Memory: %lf GiB.\n"
       "Vector Memory: %lf GiB.\n"
-      "Err: %e\n"
+      "Err: Compress %e, Factor %e\n"
       "Program: %lf s. COMM: %lf s.\n",
       (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size, omp_get_max_threads(),
       construct_time, construct_comm_time, factor_time, factor_comm_time, solve_time, solve_comm_time, (double)sum_flops * 1.e-9 / factor_time,
-      percent[0], percent[1], percent[2], (double)mem_basis * 1.e-9, (double)mem_A * 1.e-9, (double)mem_X * 1.e-9, err, prog_time, cm_time);
+      percent[0], percent[1], percent[2], (double)mem_basis * 1.e-9, (double)mem_A * 1.e-9, (double)mem_X * 1.e-9, cerr, err, prog_time, cm_time);
 
   for (int64_t i = 0; i <= levels; i++) {
     csc_free(&rels_far[i]);

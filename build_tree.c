@@ -393,6 +393,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       if (rank > 0) {
         struct Matrix Q = (struct Matrix){ basis_data, ske_len, ske_len, ske_len };
         struct Matrix R = (struct Matrix){ &basis_data[ske_len * ske_len], rank, rank, rank };
+        memset(&basis_data[ske_len * rank], 0, sizeof(double) * (ske_len * (ske_len - rank) + rank * rank));
         qr_full(&Q, &R);
       }
 
