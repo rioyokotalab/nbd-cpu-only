@@ -428,7 +428,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
     }
 
 #ifdef _PROF
-  double stime = MPI_Wtime();
+    double stime = MPI_Wtime();
 #endif
     int64_t* send_buf = (int64_t*)malloc(sizeof(int64_t) * nodes);
     memcpy(send_buf, &M_comm[ibegin - lbegin], sizeof(int64_t) * nodes);
@@ -510,8 +510,8 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       free(send_buf_double);
     }
 #ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
+    double etime = MPI_Wtime() - stime;
+    recordCommTime(etime);
 #endif
 
     for (int64_t i = 0; i < llen; i++) {

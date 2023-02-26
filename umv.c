@@ -126,7 +126,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     int64_t dimn = basis[i].dimR + basis[i].dimS;
     int64_t stride = dimn * dimn;
     allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), stride * nnz);
-    int64_t work_required = nnz * stride * 2;
+    int64_t work_required = n_i * stride * 2;
     work_size = work_size < work_required ? work_required : work_size;
 
     int64_t nloc = 0, nend = 0;

@@ -97,6 +97,7 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
   int64_t lenB = (Lwork / stride) - N_cols;
+  lenB = lenB > NNZ ? NNZ : lenB;
 
   const double** _A_d, **_U_d, **_U_r, **_U_s, **_V_x, **_A_rs, **_A_sx;
   double** _U_dx, **_A_x, **_B_x, **_A_ss, **_A_upper;

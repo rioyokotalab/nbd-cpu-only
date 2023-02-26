@@ -3,6 +3,7 @@
 #include "profile.h"
 
 #include "mkl.h"
+#include "omp.h"
 #include <string.h>
 
 #define ALIGN 16
@@ -59,6 +60,7 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
   int64_t lenB = (Lwork / stride) - N_cols;
+  lenB = lenB > NNZ ? NNZ : lenB;
 
   const double** _A_d = (const double**)malloc(sizeof(double*) * N_cols);
   const double** _U_d = (const double**)malloc(sizeof(double*) * N_cols);
