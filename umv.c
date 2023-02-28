@@ -278,7 +278,7 @@ void allocRightHandSides(char mvsv, struct RightHandSides rhs[], const struct Ba
       int64_t dimc = diml;
       int64_t dimb = dim;
       if (mvsv == 'S' || mvsv == 's')
-      { dimc = dim - diml; dimb = 0; }
+      { dimc = dim - diml; dimb = dimc; }
       arr_m[j] = (struct Matrix) { NULL, dim, 1, dim }; // X
       arr_m[j + len] = (struct Matrix) { NULL, dimc, 1, dimc }; // Xc
       arr_m[j + len * 2] = (struct Matrix) { NULL, diml, 1, diml }; // Xo
@@ -305,46 +305,6 @@ void rightHandSides_free(struct RightHandSides* rhs) {
   free(rhs->X);
 }
 
-void svAccFw(struct Matrix* Xc, struct Matrix* Xo, const struct Matrix* X, const struct Matrix* Uc, const struct Matrix* Uo, const struct Matrix* A_cc, const struct Matrix* A_oc, const struct CSC* rels, const struct CellComm* comm) {
-  int64_t ibegin = 0, iend = 0;
-  self_local_range(&ibegin, &iend, comm);
-
-  for (int64_t x = 0; x < rels->N; x++) {
-    mmult('T', 'N', &Uc[x + ibegin], &X[x + ibegin], &Xc[x + ibegin], 1., 1.);
-    mmult('T', 'N', &Uo[x + ibegin], &X[x + ibegin], &Xo[x + ibegin], 1., 1.);
-    int64_t xx;
-    lookupIJ(&xx, rels, x + ibegin, x);
-    mat_solve('F', &Xc[x + ibegin], &A_cc[xx]);
-
-    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      int64_t y = rels->RowIndex[yx];
-      if (y > x + ibegin)
-        mmult('N', 'N', &A_cc[yx], &Xc[x + ibegin], &Xc[y], -1., 1.);
-      mmult('N', 'N', &A_oc[yx], &Xc[x + ibegin], &Xo[y], -1., 1.);
-    }
-  }
-}
-
-void svAccBk(struct Matrix* Xc, const struct Matrix* Xo, struct Matrix* X, const struct Matrix* Uc, const struct Matrix* Uo, const struct Matrix* A_cc, const struct Matrix* A_oc, const struct CSC* rels, const struct CellComm* comm) {
-  int64_t ibegin = 0, iend = 0;
-  self_local_range(&ibegin, &iend, comm);
-
-  for (int64_t x = rels->N - 1; x >= 0; x--) {
-    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
-      int64_t y = rels->RowIndex[yx];
-      mmult('T', 'N', &A_oc[yx], &Xo[y], &Xc[x + ibegin], -1., 1.);
-      if (y > x + ibegin)
-        mmult('T', 'N', &A_cc[yx], &Xc[y], &Xc[x + ibegin], -1., 1.);
-    }
-
-    int64_t xx;
-    lookupIJ(&xx, rels, x + ibegin, x);
-    mat_solve('B', &Xc[x + ibegin], &A_cc[xx]);
-    mmult('N', 'N', &Uc[x + ibegin], &Xc[x + ibegin], &X[x + ibegin], 1., 0.);
-    mmult('N', 'N', &Uo[x + ibegin], &Xo[x + ibegin], &X[x + ibegin], 1., 1.);
-  }
-}
-
 void permuteAndMerge(char fwbk, struct Matrix* px, struct Matrix* nx, const int64_t* lchild, const struct CellComm* comm) {
   int64_t nloc = 0, nend = 0;
   self_local_range(&nloc, &nend, comm);
@@ -368,44 +328,10 @@ void permuteAndMerge(char fwbk, struct Matrix* px, struct Matrix* nx, const int6
     }
 }
 
-void dist_double_svfw(char fwbk, double* arr[], const struct CellComm* comm) {
+void dist_double(char mode, double* arr[], const struct CellComm* comm) {
   int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
   const int64_t* row = comm->ProcTargets;
   double* data = arr[0];
-  int is_all = fwbk == 'A' || fwbk == 'a';
-  int64_t lbegin = 0;
-#ifdef _PROF
-  double stime = MPI_Wtime();
-#endif
-  for (int64_t i = 0; i < plen; i++) {
-    int64_t p = row[i];
-    int is_fw = (fwbk == 'F' || fwbk == 'f') && p <= comm->worldRank;
-    int is_bk = (fwbk == 'B' || fwbk == 'b') && comm->worldRank < p;
-    int64_t llen = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
-    if (is_all || is_fw || is_bk) {
-      int64_t offset = arr[lbegin] - data;
-      int64_t len = arr[lbegin + llen] - arr[lbegin];
-      MPI_Allreduce(MPI_IN_PLACE, &data[offset], len, MPI_DOUBLE, MPI_SUM, comm->Comm_box[p]);
-    }
-    lbegin = lbegin + llen;
-  }
-
-  int64_t xlen = 0;
-  content_length(&xlen, comm);
-  int64_t alen = arr[xlen] - data;
-  if (comm->Proc[1] - comm->Proc[0] > 1)
-    MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
-#ifdef _PROF
-  double etime = MPI_Wtime() - stime;
-  recordCommTime(etime);
-#endif
-}
-
-void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
-  int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
-  const int64_t* row = comm->ProcTargets;
-  double* data = arr[0];
-  int is_all = fwbk == 'A' || fwbk == 'a';
   int64_t lend;
   content_length(&lend, comm);
 #ifdef _PROF
@@ -413,15 +339,14 @@ void dist_double_svbk(char fwbk, double* arr[], const struct CellComm* comm) {
 #endif
   for (int64_t i = plen - 1; i >= 0; i--) {
     int64_t p = row[i];
-    int is_fw = (fwbk == 'F' || fwbk == 'f') && p <= comm->worldRank;
-    int is_bk = (fwbk == 'B' || fwbk == 'b') && comm->worldRank < p;
     int64_t llen = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
     int64_t lbegin = lend - llen;
-    if (is_all || is_fw || is_bk) {
-      int64_t offset = arr[lbegin] - data;
-      int64_t len = arr[lbegin + llen] - arr[lbegin];
+    int64_t offset = arr[lbegin] - data;
+    int64_t len = arr[lbegin + llen] - arr[lbegin];
+    if (mode == 'B' || mode == 'b')
       MPI_Bcast(&data[offset], len, MPI_DOUBLE, comm->ProcRootI[p], comm->Comm_box[p]);
-    }
+    else if (mode == 'R' || mode == 'r')
+      MPI_Allreduce(MPI_IN_PLACE, &data[offset], len, MPI_DOUBLE, MPI_SUM, comm->Comm_box[p]);
     lend = lbegin;
   }
 
@@ -443,20 +368,45 @@ void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Bas
   memcpy(rhs[levels].X[ibegin].A, X, lenX * sizeof(double));
 
   for (int64_t i = levels; i > 0; i--) {
+    int64_t ibegin = 0, iend = 0;
+    self_local_range(&ibegin, &iend, &comm[i]);
+
+    for (int64_t x = 0; x < rels[i].N; x++) {
+      mmult('T', 'N', &basis[i].Uc[x + ibegin], &rhs[i].X[x + ibegin], &rhs[i].XcM[x + ibegin], 1., 1.);
+      mmult('T', 'N', &basis[i].Uo[x + ibegin], &rhs[i].X[x + ibegin], &rhs[i].XoL[x + ibegin], 1., 1.);
+      int64_t xx;
+      lookupIJ(&xx, &rels[i], x + ibegin, x);
+      memcpy(rhs[i].B[x + ibegin].A, rhs[i].XcM[x + ibegin].A, sizeof(double) * rhs[i].XcM[x + ibegin].M);
+      mat_solve('F', &rhs[i].B[x + ibegin], &A[i].A_cc[xx]);
+
+      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
+        int64_t y = rels[i].RowIndex[yx];
+        if (y > x + ibegin)
+          mmult('N', 'N', &A[i].A_cc[yx], &rhs[i].B[x + ibegin], &rhs[i].XcM[y], -1., 1.);
+      }
+    }
+
     int64_t xlen = rhs[i].Xlen;
     double** arr_comm = (double**)malloc(sizeof(double*) * (xlen + 1));
     for (int64_t j = 0; j < xlen; j++)
       arr_comm[j] = rhs[i].XcM[j].A;
     arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XcM[xlen - 1].M;
-    dist_double_svfw('F', arr_comm, &comm[i]);
+    dist_double('R', arr_comm, &comm[i]);
 
-    svAccFw(rhs[i].XcM, rhs[i].XoL, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], &comm[i]);
-    dist_double_svfw('B', arr_comm, &comm[i]);
+    for (int64_t x = 0; x < rels[i].N; x++) {
+      int64_t xx;
+      lookupIJ(&xx, &rels[i], x + ibegin, x);
+      mat_solve('F', &rhs[i].XcM[x + ibegin], &A[i].A_cc[xx]);
+      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
+        int64_t y = rels[i].RowIndex[yx];
+        mmult('N', 'N', &A[i].A_oc[yx], &rhs[i].XcM[x + ibegin], &rhs[i].XoL[y], -1., 1.);
+      }
+    }
 
     for (int64_t j = 0; j < xlen; j++)
       arr_comm[j] = rhs[i].XoL[j].A;
     arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XoL[xlen - 1].M;
-    dist_double_svfw('A', arr_comm, &comm[i]);
+    dist_double('R', arr_comm, &comm[i]);
 
     free(arr_comm);
     permuteAndMerge('F', rhs[i].XoL, rhs[i - 1].X, basis[i - 1].Lchild, &comm[i - 1]);
@@ -470,15 +420,39 @@ void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Bas
     for (int64_t j = 0; j < xlen; j++)
       arr_comm[j] = rhs[i].XoL[j].A;
     arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XoL[xlen - 1].M;
-    dist_double_svbk('A', arr_comm, &comm[i]);
+    dist_double('B', arr_comm, &comm[i]);
+
+    int64_t ibegin = 0, iend = 0;
+    self_local_range(&ibegin, &iend, &comm[i]);
+    for (int64_t x = 0; x < rels[i].N; x++) {
+      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
+        int64_t y = rels[i].RowIndex[yx];
+        mmult('T', 'N', &A[i].A_oc[yx], &rhs[i].XoL[y], &rhs[i].XcM[x + ibegin], -1., 1.);
+      }
+      int64_t xx;
+      lookupIJ(&xx, &rels[i], x + ibegin, x);
+      memcpy(rhs[i].B[x + ibegin].A, rhs[i].XcM[x + ibegin].A, sizeof(double) * rhs[i].XcM[x + ibegin].M);
+      mat_solve('B', &rhs[i].B[x + ibegin], &A[i].A_cc[xx]);
+    }
 
     for (int64_t j = 0; j < xlen; j++)
-      arr_comm[j] = rhs[i].XcM[j].A;
-    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XcM[xlen - 1].M;
-    dist_double_svbk('B', arr_comm, &comm[i]);
-    
-    svAccBk(rhs[i].XcM, rhs[i].XoL, rhs[i].X, basis[i].Uc, basis[i].Uo, A[i].A_cc, A[i].A_oc, &rels[i], &comm[i]);
-    dist_double_svbk('F', arr_comm, &comm[i]);
+      arr_comm[j] = rhs[i].B[j].A;
+    arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].B[xlen - 1].M;
+    dist_double('B', arr_comm, &comm[i]);
+
+    for (int64_t x = 0; x < rels[i].N; x++) {
+      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
+        int64_t y = rels[i].RowIndex[yx];
+        if (y > x + ibegin)
+          mmult('T', 'N', &A[i].A_cc[yx], &rhs[i].B[y], &rhs[i].XcM[x + ibegin], -1., 1.);
+      }
+
+      int64_t xx;
+      lookupIJ(&xx, &rels[i], x + ibegin, x);
+      mat_solve('B', &rhs[i].XcM[x + ibegin], &A[i].A_cc[xx]);
+      mmult('N', 'N', &basis[i].Uc[x + ibegin], &rhs[i].XcM[x + ibegin], &rhs[i].X[x + ibegin], 1., 0.);
+      mmult('N', 'N', &basis[i].Uo[x + ibegin], &rhs[i].XoL[x + ibegin], &rhs[i].X[x + ibegin], 1., 1.);
+    }
     free(arr_comm);
   }
   memcpy(X, rhs[levels].X[ibegin].A, lenX * sizeof(double));
@@ -506,7 +480,7 @@ void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Ba
   for (int64_t j = 0; j < xlen; j++)
     arr_comm[j] = rhs[levels].X[j].A;
   arr_comm[xlen] = arr_comm[xlen - 1] + rhs[levels].X[xlen - 1].M;
-  dist_double_svbk('A', arr_comm, &comm[levels]);
+  dist_double('B', arr_comm, &comm[levels]);
   free(arr_comm);
 
   for (int64_t i = levels; i > 0; i--) {
@@ -519,7 +493,7 @@ void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Ba
     for (int64_t j = 0; j < xlen; j++)
       arr_comm[j] = rhs[i].XcM[j].A;
     arr_comm[xlen] = arr_comm[xlen - 1] + rhs[i].XcM[xlen - 1].M;
-    dist_double_svbk('A', arr_comm, &comm[i]);
+    dist_double('B', arr_comm, &comm[i]);
     free(arr_comm);
     permuteAndMerge('F', rhs[i].XcM, rhs[i - 1].X, basis[i - 1].Lchild, &comm[i - 1]);
   }
