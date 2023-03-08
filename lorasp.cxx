@@ -8,8 +8,7 @@
 #include <math.h>
 
 int main(int argc, char* argv[]) {
-  MPI_Init(&argc, &argv);
-  init_batch_lib();
+  init_libs(&argc, &argv);
 
   double prog_time = MPI_Wtime();
 
@@ -36,7 +35,7 @@ int main(int argc, char* argv[]) {
   struct CSC cellNear, cellFar;
   struct CSC* rels_far = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
   struct CSC* rels_near = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
-  struct CellComm* cell_comm = (struct CellComm*)malloc(sizeof(struct CellComm) * (levels + 1));
+  struct CellComm* cell_comm = (struct CellComm*)calloc(levels + 1, sizeof(struct CellComm));
   struct Base* basis = (struct Base*)malloc(sizeof(struct Base) * (levels + 1));
   struct Node* nodes = (struct Node*)malloc(sizeof(struct Node) * (levels + 1));
   struct RightHandSides* rhs = (struct RightHandSides*)malloc(sizeof(struct RightHandSides) * (levels + 1));
@@ -174,7 +173,6 @@ int main(int argc, char* argv[]) {
   free(X2);
   set_work_size(0, &Workspace, &Lwork);
 
-  finalize_batch_lib();
-  MPI_Finalize();
+  fin_libs();
   return 0;
 }

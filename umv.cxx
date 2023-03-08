@@ -341,9 +341,9 @@ void dist_double(char mode, double* arr[], const struct CellComm* comm) {
     int64_t offset = arr[lbegin] - data;
     int64_t len = arr[lbegin + llen] - arr[lbegin];
     if (mode == 'B' || mode == 'b')
-      MPI_Bcast(&data[offset], len, MPI_DOUBLE, comm->ProcRootI[p], comm->Comm_box[p]);
+      MPI_Bcast(&data[offset], len, MPI_DOUBLE, std::get<int>(comm->Comm_box[i]), std::get<MPI_Comm>(comm->Comm_box[i]));
     else if (mode == 'R' || mode == 'r')
-      MPI_Allreduce(MPI_IN_PLACE, &data[offset], len, MPI_DOUBLE, MPI_SUM, comm->Comm_box[p]);
+      MPI_Allreduce(MPI_IN_PLACE, &data[offset], len, MPI_DOUBLE, MPI_SUM, std::get<MPI_Comm>(comm->Comm_box[i]));
     lbegin = lbegin + llen;
   }
 

@@ -6,30 +6,30 @@
 #include "cublas_v2.h"
 #include "cusolverDn.h"
 #include "curand.h"
-#include "nccl.h"
 
 #include <vector>
 #include <thrust/functional.h>
 #include <thrust/copy.h>
 #include <thrust/iterator/permutation_iterator.h>
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
 
 cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
 cusolverDnHandle_t cusolverH = NULL;
 curandGenerator_t curandH = NULL;
 
-void init_batch_lib() {
+void init_libs(int* argc, char*** argv) {
+  assert(MPI_Init(argc, argv) == MPI_SUCCESS);
   int mpi_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   int num_device;
-  cudaGetDeviceCount(&num_device);
+  assert(cudaGetDeviceCount(&num_device) == cudaSuccess);
 
   int device = mpi_rank % num_device;
-  cudaSetDevice(device);
+  cudaSetDevice(device) == cudaSuccess;
   
   cudaStreamCreate(&stream);
   cublasCreate(&cublasH);
@@ -43,7 +43,7 @@ void init_batch_lib() {
   curandSetStream(curandH, stream);
 }
 
-void finalize_batch_lib() {
+void fin_libs() {
   if (stream)
     cudaStreamDestroy(stream);
   if (cublasH)
@@ -52,10 +52,7 @@ void finalize_batch_lib() {
     cusolverDnDestroy(cusolverH);
   if (curandH)
     curandDestroyGenerator(curandH);
-  stream = NULL;
-  cublasH = NULL;
-  cusolverH = NULL;
-  curandH = NULL;
+  MPI_Finalize();
 }
 
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {

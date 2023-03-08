@@ -2,12 +2,12 @@
 #pragma once
 
 #include "mpi.h"
-#include "stdint.h"
-#include "stddef.h"
+#include "nccl.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <vector>
+#include <utility>
+#include <cstdint>
+#include <cstddef>
 
 struct Matrix { double* A; int64_t M, N, LDA; };
 
@@ -27,8 +27,8 @@ void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 void nrm2_A(struct Matrix* A, double* nrm);
 void scal_A(struct Matrix* A, double alpha);
 
-void init_batch_lib();
-void finalize_batch_lib();
+void init_libs(int* argc, char*** argv);
+void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
 void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
@@ -48,13 +48,15 @@ struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 struct CellComm { 
-  int64_t Proc[2], worldRank, worldSize, lenTargets, *ProcTargets, *ProcRootI, *ProcBoxes, *ProcBoxesEnd;
-  MPI_Comm Comm_share, Comm_merge, *Comm_box; 
+  int64_t Proc[2], worldRank, worldSize, lenTargets, *ProcTargets, *ProcBoxes, *ProcBoxesEnd;
+  std::vector<std::pair<int, MPI_Comm>> Comm_box;
+  MPI_Comm Comm_share, Comm_merge;
+  std::vector<std::pair<int, ncclComm_t>> NCCL_box;
+  ncclComm_t NCCL_merge, NCCL_share;
 };
 struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, dimR, dimS, **Multipoles; struct Matrix *Uo, *Uc, *R; double *U_ptr, *U_buf; };
 struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; void* params; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
-struct SymmH2MG;
 
 void laplace3d(double* r2);
 
@@ -143,7 +145,4 @@ void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Ba
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 
-#ifdef __cplusplus
-}
-#endif
 

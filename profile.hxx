@@ -5,10 +5,6 @@
 #include "stdint.h"
 #include "stddef.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 struct Matrix;
 struct Base;
 struct Node;
@@ -34,6 +30,3 @@ void recordCommTime(double cmtime);
 
 void getCommTime(double* cmtime);
 
-#ifdef __cplusplus
-}
-#endif

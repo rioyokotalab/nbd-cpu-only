@@ -2,6 +2,7 @@
 #include "nbd.hxx"
 #include "profile.hxx"
 
+#include <cassert>
 #include "stdio.h"
 #include "stdlib.h"
 #include "math.h"
@@ -553,11 +554,10 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t ibegin = 0, iend = ncells;
     get_level(&ibegin, &iend, cells, i, -1);
 
-    int64_t* arr = (int64_t*)malloc(sizeof(int64_t) * mpi_size * 4);
-    comms[i].ProcRootI = arr;
-    comms[i].ProcBoxes = &arr[mpi_size];
-    comms[i].ProcBoxesEnd = &arr[mpi_size * 2];
-    comms[i].ProcTargets = &arr[mpi_size * 3];
+    int64_t* arr = (int64_t*)malloc(sizeof(int64_t) * mpi_size * 3);
+    comms[i].ProcBoxes = arr;
+    comms[i].ProcBoxesEnd = &arr[mpi_size];
+    comms[i].ProcTargets = &arr[mpi_size * 2];
 
     int64_t mbegin = ibegin, mend = iend;
     get_level(&mbegin, &mend, cells, i, mpi_rank);
@@ -568,7 +568,8 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     comms[i].worldRank = mpi_rank;
     comms[i].worldSize = mpi_size;
     comms[i].lenTargets = 0;
-    comms[i].Comm_box = (MPI_Comm*)malloc(sizeof(MPI_Comm) * mpi_size);
+
+    comms[i].Comm_box = std::vector<std::pair<int, MPI_Comm>>();
     for (int64_t j = 0; j < mpi_size; j++) {
       int is_ngb = 0;
       for (int64_t k = cellNear->ColIndex[mbegin]; k < cellNear->ColIndex[mend]; k++)
@@ -577,18 +578,29 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
       for (int64_t k = cellFar->ColIndex[mbegin]; k < cellFar->ColIndex[mend]; k++)
         if (cells[cellFar->RowIndex[k]].Procs[0] == j)
           is_ngb = 1;
-      MPI_Comm_split(MPI_COMM_WORLD, (is_ngb && p == mpi_rank) ? 1 : MPI_UNDEFINED, mpi_rank, &comms[i].Comm_box[j]);
+      
+      int color = (is_ngb && p == mpi_rank) ? 1 : MPI_UNDEFINED;
+      MPI_Comm comm = MPI_COMM_NULL;
+      MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comm);
+
+      if (comm != MPI_COMM_NULL) {
+        int root = 0;
+        if (j == p)
+          MPI_Comm_rank(comm, &root);
+        comms[i].Comm_box.emplace_back(root, comm);
+      }
       if (is_ngb) {
-        int64_t len_t = comms[i].lenTargets;
-        comms[i].ProcTargets[len_t] = j;
-        comms[i].lenTargets = len_t + 1;
+        int64_t len_tar = comms[i].lenTargets;
+        comms[i].ProcTargets[len_tar] = j;
+        comms[i].lenTargets = len_tar + 1;
       }
     }
 
-    int root = -1;
-    if (comms[i].Comm_box[mpi_rank] != MPI_COMM_NULL)
-      MPI_Comm_rank(comms[i].Comm_box[mpi_rank], &root);
-    MPI_Allgather(&root, 1, MPI_INT, comms[i].ProcRootI, 1, MPI_INT64_T, MPI_COMM_WORLD);
+    for (int64_t j = 0; j < (int64_t)comms[i].Comm_box.size(); j++) {
+      int root = std::get<int>(comms[i].Comm_box[j]);
+      MPI_Allreduce(MPI_IN_PLACE, &root, 1, MPI_INT, MPI_SUM, std::get<MPI_Comm>(comms[i].Comm_box[j]));
+      std::get<int>(comms[i].Comm_box[j]) = root;
+    }
 
     int64_t lbegin = mbegin - ibegin;
     int64_t lend = mend - ibegin;
@@ -609,16 +621,13 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
 }
 
 void cellComm_free(struct CellComm* comm) {
-  int64_t mpi_size = comm->worldSize;
-  for (int64_t j = 0; j < mpi_size; j++)
-    if (comm->Comm_box[j] != MPI_COMM_NULL)
-      MPI_Comm_free(&comm->Comm_box[j]);
+  for (int64_t j = 0; j < (int64_t)comm->Comm_box.size(); j++)
+    MPI_Comm_free(&std::get<MPI_Comm>(comm->Comm_box[j]));
   if (comm->Comm_share != MPI_COMM_NULL)
     MPI_Comm_free(&comm->Comm_share);
   if (comm->Comm_merge != MPI_COMM_NULL)
     MPI_Comm_free(&comm->Comm_merge);
-  free(comm->ProcRootI);
-  free(comm->Comm_box);
+  free(comm->ProcBoxes);
 }
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
