@@ -1,5 +1,5 @@
 
-#include "nbd.h"
+#include "nbd.hxx"
 
 #include "mkl.h"
 

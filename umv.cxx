@@ -1,6 +1,6 @@
 
-#include "nbd.h"
-#include "profile.h"
+#include "nbd.hxx"
+#include "profile.hxx"
 
 #include "stdio.h"
 #include "stdlib.h"
@@ -246,7 +246,6 @@ void factorA(struct Node A[], const struct Base basis[], const struct CellComm c
 
   for (int64_t i = levels; i > 0; i--) {
     batchCholeskyFactor(A[i].params);
-
 #ifdef _PROF
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
@@ -332,28 +331,26 @@ void dist_double(char mode, double* arr[], const struct CellComm* comm) {
   int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
   const int64_t* row = comm->ProcTargets;
   double* data = arr[0];
-  int64_t lend;
-  content_length(&lend, comm);
+  int64_t lbegin = 0;
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
-  for (int64_t i = plen - 1; i >= 0; i--) {
+  for (int64_t i = 0; i < plen; i++) {
     int64_t p = row[i];
     int64_t llen = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
-    int64_t lbegin = lend - llen;
     int64_t offset = arr[lbegin] - data;
     int64_t len = arr[lbegin + llen] - arr[lbegin];
     if (mode == 'B' || mode == 'b')
       MPI_Bcast(&data[offset], len, MPI_DOUBLE, comm->ProcRootI[p], comm->Comm_box[p]);
     else if (mode == 'R' || mode == 'r')
       MPI_Allreduce(MPI_IN_PLACE, &data[offset], len, MPI_DOUBLE, MPI_SUM, comm->Comm_box[p]);
-    lend = lbegin;
+    lbegin = lbegin + llen;
   }
 
   int64_t xlen = 0;
   content_length(&xlen, comm);
   int64_t alen = arr[xlen] - data;
-  if (comm->Proc[1] - comm->Proc[0] > 1)
+  if (comm->Comm_share != MPI_COMM_NULL)
     MPI_Bcast(data, alen, MPI_DOUBLE, 0, comm->Comm_share);
 #ifdef _PROF
   double etime = MPI_Wtime() - stime;

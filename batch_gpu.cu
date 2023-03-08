@@ -1,12 +1,14 @@
 
-#include "nbd.h"
-#include "profile.h"
+#include "nbd.hxx"
+#include "profile.hxx"
 
 #include "cuda_runtime_api.h"
 #include "cublas_v2.h"
 #include "cusolverDn.h"
+#include "curand.h"
 #include "nccl.h"
 
+#include <vector>
 #include <thrust/functional.h>
 #include <thrust/copy.h>
 #include <thrust/iterator/permutation_iterator.h>
@@ -18,6 +20,7 @@
 cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
 cusolverDnHandle_t cusolverH = NULL;
+curandGenerator_t curandH = NULL;
 
 void init_batch_lib() {
   int mpi_rank;
@@ -34,6 +37,10 @@ void init_batch_lib() {
 
   cusolverDnCreate(&cusolverH);
   cusolverDnSetStream(cusolverH, stream);
+
+  curandCreateGenerator(&curandH, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(curandH, 999);
+  curandSetStream(curandH, stream);
 }
 
 void finalize_batch_lib() {
@@ -43,9 +50,12 @@ void finalize_batch_lib() {
     cublasDestroy(cublasH);
   if (cusolverH)
     cusolverDnDestroy(cusolverH);
+  if (curandH)
+    curandDestroyGenerator(curandH);
   stream = NULL;
   cublasH = NULL;
   cusolverH = NULL;
+  curandH = NULL;
 }
 
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {
@@ -82,7 +92,7 @@ void freeBufferedList(void* A_ptr, void* A_buffer) {
   free(A_buffer);
 }
 
-struct BatchedFactorParams { 
+struct BatchedFactorParams {
   int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, L_tmp, *F_d;
   const double** A_d, **U_d, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_d0;
   double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
@@ -275,7 +285,7 @@ void batchParamsDestory(void* params) {
     cudaFree(params_ptr->info);
   if (params_ptr->comm_merge)
     ncclCommDestroy(params_ptr->comm_merge);
-  if (params_ptr->comm_merge)
+  if (params_ptr->comm_share)
     ncclCommDestroy(params_ptr->comm_share);
 
   free(params);
@@ -393,7 +403,7 @@ void lastParamsDestory(void* params) {
     cudaFree(params_ptr->info);
   if (params_ptr->comm_merge)
     ncclCommDestroy(params_ptr->comm_merge);
-  if (params_ptr->comm_merge)
+  if (params_ptr->comm_share)
     ncclCommDestroy(params_ptr->comm_share);
   
   free(params);

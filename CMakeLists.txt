@@ -1,11 +1,11 @@
 ﻿
 cmake_minimum_required (VERSION 3.18)
 
-set(CMAKE_C_COMPILER "gcc")
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_FLAGS "-O3 -m64 -Wall -Wextra")
+set(CMAKE_CXX_COMPILER "g++")
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_FLAGS "-O3 -m64 -Wall -Wextra")
 
-project ("shimo" LANGUAGES C CUDA)
+project ("shimo" LANGUAGES CXX CUDA)
 
 set(MKL_ARCH intel64)
 set(MKL_LINK dynamic)
@@ -16,15 +16,13 @@ find_package(MKL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
 
-add_executable(lorasp lorasp.c kernel.c linalg.c batch.c build_tree.c umv.c profile.c)
+add_executable(lorasp lorasp.cxx kernel.cxx linalg.cxx batch.cxx build_tree.cxx umv.cxx profile.cxx)
 target_compile_options(lorasp PRIVATE -D_PROF)
 target_include_directories(lorasp PRIVATE ./)
-target_link_libraries(lorasp MPI::MPI_C OpenMP::OpenMP_C MKL::MKL)
+target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lcurand -lnccl)
 
-if(DEFINED ENV{CUDADIR})
-  add_executable(gpu lorasp.c kernel.c linalg.c batch_gpu.cu build_tree.c umv.c profile.c)
-  target_compile_options(gpu PRIVATE -D_PROF)
-  target_include_directories(gpu PRIVATE ./)
-  target_link_libraries(gpu MPI::MPI_C OpenMP::OpenMP_C MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
-endif()
+add_executable(gpu lorasp.cxx kernel.cxx linalg.cxx batch_gpu.cu build_tree.cxx umv.cxx profile.cxx)
+target_compile_options(gpu PRIVATE -D_PROF)
+target_include_directories(gpu PRIVATE ./)
+target_link_libraries(gpu MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lcurand -lnccl)
 

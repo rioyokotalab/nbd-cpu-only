@@ -1,6 +1,6 @@
 
-#include "nbd.h"
-#include "profile.h"
+#include "nbd.hxx"
+#include "profile.hxx"
 
 #include "stdio.h"
 

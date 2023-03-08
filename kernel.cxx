@@ -1,4 +1,4 @@
-#include "nbd.h"
+#include "nbd.hxx"
 
 #include "stdio.h"
 #include "stdlib.h"
