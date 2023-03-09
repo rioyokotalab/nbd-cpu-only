@@ -2,6 +2,7 @@
 #pragma once
 
 #include "mpi.h"
+#include "cuda_runtime_api.h"
 #include "nccl.h"
 
 #include <vector>
@@ -48,7 +49,10 @@ struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 struct CellComm { 
-  int64_t Proc[2], worldRank, worldSize, lenTargets, *ProcTargets, *ProcBoxes, *ProcBoxesEnd;
+  int64_t Proc[2];
+  std::vector<int64_t> ProcTargets;
+  std::vector<int64_t> LocalChild;
+  std::vector<std::pair<int64_t, int64_t>> ProcBoxes;
   std::vector<std::pair<int, MPI_Comm>> Comm_box;
   MPI_Comm Comm_share, Comm_merge;
   std::vector<std::pair<int, ncclComm_t>> NCCL_box;
@@ -95,7 +99,7 @@ void csc_free(struct CSC* csc);
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank);
 
 void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
-  int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels, const struct CellComm* comms);
+  int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels);
 
 void cellBasis_free(struct CellBasis* basis);
 

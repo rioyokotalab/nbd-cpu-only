@@ -293,9 +293,12 @@ int64_t gen_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_bo
 }
 
 void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
-  int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels, const struct CellComm* comms) {
-  int64_t mpi_rank = comms[0].worldRank;
-  int64_t mpi_size = comms[0].worldSize;
+  int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels) {
+  int __mpi_rank = 0, __mpi_size = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
+  int64_t mpi_rank = __mpi_rank;
+  int64_t mpi_size = __mpi_size;
   
   for (int64_t l = levels; l >= 0; l--) {
     int64_t lbegin = 0, lend = ncells;
@@ -307,11 +310,16 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
     get_level(&ibegin, &iend, cells, l, mpi_rank);
     int64_t nodes = iend - ibegin;
 
+    int64_t pbegin = ibegin - lbegin, pend = iend - lbegin;
+    std::vector<int64_t> pboxes(mpi_size), pboxes_end(mpi_size);
+    MPI_Allgather(&pbegin, 1, MPI_INT64_T, pboxes.data(), 1, MPI_INT64_T, MPI_COMM_WORLD);
+    MPI_Allgather(&pend, 1, MPI_INT64_T, pboxes_end.data(), 1, MPI_INT64_T, MPI_COMM_WORLD);
+
     int* Lens_comm = (int*)malloc(sizeof(int) * mpi_size);
     int* Offs_comm = (int*)malloc(sizeof(int) * mpi_size);
     for (int64_t p = 0; p < mpi_size; p++) {
-      Lens_comm[p] = comms[l].ProcBoxesEnd[p] - comms[l].ProcBoxes[p];
-      Offs_comm[p] = comms[l].ProcBoxes[p];
+      Lens_comm[p] = pboxes_end[p] - pboxes[p];
+      Offs_comm[p] = pboxes[p];
     }
 
     int64_t* M_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
@@ -478,13 +486,13 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
     if (multipoles) {
       int64_t pbox, pbox_end;
       for (int64_t p = 0; p < mpi_size; p++) {
-        pbox = comms[l].ProcBoxes[p];
-        pbox_end = comms[l].ProcBoxesEnd[p];
+        pbox = pboxes[p];
+        pbox_end = pboxes_end[p];
         Lens_comm[p] = M_comm[pbox_end] - M_comm[pbox];
         Offs_comm[p] = M_comm[pbox];
       }
-      pbox = comms[l].ProcBoxes[mpi_rank];
-      pbox_end = comms[l].ProcBoxesEnd[mpi_rank];
+      pbox = pboxes[mpi_rank];
+      pbox_end = pboxes_end[mpi_rank];
       int64_t mbegin = M_comm[pbox];
       int64_t mlen = M_comm[pbox_end] - M_comm[pbox];
       send_buf = (int64_t*)malloc(sizeof(int64_t) * mlen);
@@ -496,13 +504,13 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
     if (matrix) {
       int64_t pbox, pbox_end;
       for (int64_t p = 0; p < mpi_size; p++) {
-        pbox = comms[l].ProcBoxes[p];
-        pbox_end = comms[l].ProcBoxesEnd[p];
+        pbox = pboxes[p];
+        pbox_end = pboxes_end[p];
         Lens_comm[p] = N_comm[pbox_end] - N_comm[pbox];
         Offs_comm[p] = N_comm[pbox];
       }
-      pbox = comms[l].ProcBoxes[mpi_rank];
-      pbox_end = comms[l].ProcBoxesEnd[mpi_rank];
+      pbox = pboxes[mpi_rank];
+      pbox_end = pboxes_end[mpi_rank];
       int64_t mbegin = N_comm[pbox];
       int64_t mlen = N_comm[pbox_end] - N_comm[pbox];
       double* send_buf_double = (double*)malloc(sizeof(double) * mlen);
@@ -550,14 +558,9 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
   int64_t mpi_rank = __mpi_rank;
   int64_t mpi_size = __mpi_size;
 
-  for (int64_t i = 0; i <= levels; i++) {
+  for (int64_t i = levels; i >= 0; i--) {
     int64_t ibegin = 0, iend = ncells;
     get_level(&ibegin, &iend, cells, i, -1);
-
-    int64_t* arr = (int64_t*)malloc(sizeof(int64_t) * mpi_size * 3);
-    comms[i].ProcBoxes = arr;
-    comms[i].ProcBoxesEnd = &arr[mpi_size];
-    comms[i].ProcTargets = &arr[mpi_size * 2];
 
     int64_t mbegin = ibegin, mend = iend;
     get_level(&mbegin, &mend, cells, i, mpi_rank);
@@ -565,11 +568,7 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t lenp = cells[mbegin].Procs[1] - p;
     comms[i].Proc[0] = p;
     comms[i].Proc[1] = p + lenp;
-    comms[i].worldRank = mpi_rank;
-    comms[i].worldSize = mpi_size;
-    comms[i].lenTargets = 0;
 
-    comms[i].Comm_box = std::vector<std::pair<int, MPI_Comm>>();
     for (int64_t j = 0; j < mpi_size; j++) {
       int is_ngb = 0;
       for (int64_t k = cellNear->ColIndex[mbegin]; k < cellNear->ColIndex[mend]; k++)
@@ -589,34 +588,41 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
           MPI_Comm_rank(comm, &root);
         comms[i].Comm_box.emplace_back(root, comm);
       }
-      if (is_ngb) {
-        int64_t len_tar = comms[i].lenTargets;
-        comms[i].ProcTargets[len_tar] = j;
-        comms[i].lenTargets = len_tar + 1;
-      }
+      if (is_ngb)
+        comms[i].ProcTargets.emplace_back(j);
     }
-
-    for (int64_t j = 0; j < (int64_t)comms[i].Comm_box.size(); j++) {
-      int root = std::get<int>(comms[i].Comm_box[j]);
-      MPI_Allreduce(MPI_IN_PLACE, &root, 1, MPI_INT, MPI_SUM, std::get<MPI_Comm>(comms[i].Comm_box[j]));
-      std::get<int>(comms[i].Comm_box[j]) = root;
-    }
-
-    int64_t lbegin = mbegin - ibegin;
-    int64_t lend = mend - ibegin;
-    MPI_Allgather(&lbegin, 1, MPI_INT64_T, comms[i].ProcBoxes, 1, MPI_INT64_T, MPI_COMM_WORLD);
-    MPI_Allgather(&lend, 1, MPI_INT64_T, comms[i].ProcBoxesEnd, 1, MPI_INT64_T, MPI_COMM_WORLD);
 
     int color = MPI_UNDEFINED;
     int64_t cc = cells[mbegin].Child;
+    int64_t clen = (mbegin + 1 < ncells) ? (cells[mbegin + 1].Child - cc) : 0;
     if (lenp > 1 && cc >= 0)
-      for (int64_t j = 0; j < 2; j++)
+      for (int64_t j = 0; j < clen; j++)
         if (cells[cc + j].Procs[0] == mpi_rank)
           color = p;
     MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_merge);
   
     color = lenp > 1 ? p : MPI_UNDEFINED;
     MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_share);
+
+    for (size_t j = 0; j < comms[i].ProcTargets.size(); j++) {
+      int64_t local[2] { mbegin - ibegin, mend - mbegin };
+      if (p == mpi_rank) {
+        MPI_Allreduce(MPI_IN_PLACE, &std::get<int>(comms[i].Comm_box[j]), 1, MPI_INT, MPI_SUM, std::get<MPI_Comm>(comms[i].Comm_box[j]));
+        MPI_Bcast(local, 2, MPI_INT64_T, std::get<int>(comms[i].Comm_box[j]), std::get<MPI_Comm>(comms[i].Comm_box[j]));
+      }
+      if (comms[i].Comm_share != MPI_COMM_NULL)
+        MPI_Bcast(local, 2, MPI_INT64_T, 0, comms[i].Comm_share);
+      comms[i].ProcBoxes.emplace_back(local[0], local[1]);
+
+      for (int64_t k = 0; k < local[1]; k++) {
+        int64_t lc = cells[k + local[0] + ibegin].Child;
+        if (lc >= 0 && i < levels) {
+          lc = lc - iend;
+          i_local(&lc, &comms[i + 1]);
+        }
+        comms[i].LocalChild.emplace_back(lc);
+      }
+    }
   }
 }
 
@@ -627,7 +633,6 @@ void cellComm_free(struct CellComm* comm) {
     MPI_Comm_free(&comm->Comm_share);
   if (comm->Comm_merge != MPI_COMM_NULL)
     MPI_Comm_free(&comm->Comm_merge);
-  free(comm->ProcBoxes);
 }
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
@@ -645,52 +650,43 @@ void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
 
 void i_local(int64_t* ilocal, const struct CellComm* comm) {
   int64_t iglobal = *ilocal;
-  const int64_t* ngbs = comm->ProcTargets;
-  int64_t nend = comm->lenTargets;
-  const int64_t* ngbs_iter = ngbs;
+  size_t iter = 0;
   int64_t slen = 0;
-  while (ngbs_iter != &ngbs[nend] && comm->ProcBoxesEnd[*ngbs_iter] <= iglobal) {
-    slen = slen + comm->ProcBoxesEnd[*ngbs_iter] - comm->ProcBoxes[*ngbs_iter];
-    ngbs_iter = ngbs_iter + 1;
+  while (iter < comm->ProcTargets.size() && 
+  (std::get<0>(comm->ProcBoxes[iter]) + std::get<1>(comm->ProcBoxes[iter])) <= iglobal) {
+    slen = slen + std::get<1>(comm->ProcBoxes[iter]);
+    iter = iter + 1;
   }
-  int64_t k = ngbs_iter - ngbs;
-  if (k < nend)
-    *ilocal = slen + iglobal - comm->ProcBoxes[*ngbs_iter];
+  if (iter < comm->ProcTargets.size())
+    *ilocal = slen + iglobal - std::get<0>(comm->ProcBoxes[iter]);
   else
     *ilocal = -1;
 }
 
 void i_global(int64_t* iglobal, const struct CellComm* comm) {
   int64_t ilocal = *iglobal;
-  const int64_t* ngbs = comm->ProcTargets;
-  int64_t nend = comm->lenTargets;
-  const int64_t* ngbs_iter = ngbs;
-  while (ngbs_iter != &ngbs[nend] && 
-  comm->ProcBoxesEnd[*ngbs_iter] <= (comm->ProcBoxes[*ngbs_iter] + ilocal)) {
-    ilocal = ilocal - comm->ProcBoxesEnd[*ngbs_iter] + comm->ProcBoxes[*ngbs_iter];
-    ngbs_iter = ngbs_iter + 1;
+  size_t iter = 0;
+  while (iter < comm->ProcTargets.size() && std::get<1>(comm->ProcBoxes[iter]) <= ilocal) {
+    ilocal = ilocal - std::get<1>(comm->ProcBoxes[iter]);
+    iter = iter + 1;
   }
-  int64_t k = ngbs_iter - ngbs;
-  if (0 <= ilocal && k < nend)
-    *iglobal = comm->ProcBoxes[*ngbs_iter] + ilocal;
+  if (0 <= ilocal && iter < comm->ProcTargets.size())
+    *iglobal = std::get<0>(comm->ProcBoxes[iter]) + ilocal;
   else
     *iglobal = -1;
 }
 
 void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* comm) {
   int64_t p = comm->Proc[0];
-  const int64_t* ngbs = comm->ProcTargets;
-  int64_t nend = comm->lenTargets;
-  const int64_t* ngbs_iter = ngbs;
+  size_t iter = 0;
   int64_t slen = 0;
-  while (ngbs_iter != &ngbs[nend] && *ngbs_iter != p) {
-    slen = slen + comm->ProcBoxesEnd[*ngbs_iter] - comm->ProcBoxes[*ngbs_iter];
-    ngbs_iter = ngbs_iter + 1;
+  while (iter < comm->ProcTargets.size() && comm->ProcTargets[iter] != p) {
+    slen = slen + std::get<1>(comm->ProcBoxes[iter]);
+    iter = iter + 1;
   }
-  int64_t k = ngbs_iter - ngbs;
-  if (k < nend) {
+  if (iter < comm->ProcTargets.size()) {
     *ibegin = slen;
-    *iend = slen + comm->ProcBoxesEnd[*ngbs_iter] - comm->ProcBoxes[*ngbs_iter];
+    *iend = slen + std::get<1>(comm->ProcBoxes[iter]);
   }
   else {
     *ibegin = -1;
@@ -699,14 +695,9 @@ void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* com
 }
 
 void content_length(int64_t* len, const struct CellComm* comm) {
-  const int64_t* ngbs = comm->ProcTargets;
-  int64_t nend = comm->lenTargets;
-  const int64_t* ngbs_iter = ngbs;
   int64_t slen = 0;
-  while (ngbs_iter != &ngbs[nend]) {
-    slen = slen + comm->ProcBoxesEnd[*ngbs_iter] - comm->ProcBoxes[*ngbs_iter];
-    ngbs_iter = ngbs_iter + 1;
-  }
+  for (size_t i = 0; i < comm->ProcTargets.size(); i++)
+    slen = slen + std::get<1>(comm->ProcBoxes[i]);
   *len = slen;
 }
 

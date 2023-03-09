@@ -33,13 +33,7 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       int64_t gi = i;
       i_global(&gi, &comm[l]);
       int64_t ci = lbegin + gi;
-      int64_t lc = cells[ci].Child;
-
-      if (lc >= 0) {
-        lc = lc - lend;
-        i_local(&lc, &comm[l + 1]);
-      }
-      basis[l].Lchild[i] = lc;
+      basis[l].Lchild[i] = comm[l].LocalChild[i];
       basis[l].Dims[i] = cell_basis[ci].M;
       basis[l].DimsLr[i] = cell_basis[ci].N;
       basis[l].Uo[i] = (struct Matrix) { cell_basis[ci].Uo, cell_basis[ci].M, cell_basis[ci].N, cell_basis[ci].M };
@@ -328,16 +322,14 @@ void permuteAndMerge(char fwbk, struct Matrix* px, struct Matrix* nx, const int6
 }
 
 void dist_double(char mode, double* arr[], const struct CellComm* comm) {
-  int64_t plen = comm->Proc[0] == comm->worldRank ? comm->lenTargets : 0;
-  const int64_t* row = comm->ProcTargets;
+  int64_t plen = comm->Comm_box.size();
   double* data = arr[0];
   int64_t lbegin = 0;
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
   for (int64_t i = 0; i < plen; i++) {
-    int64_t p = row[i];
-    int64_t llen = comm->ProcBoxesEnd[p] - comm->ProcBoxes[p];
+    int64_t llen = std::get<1>(comm->ProcBoxes[i]);
     int64_t offset = arr[lbegin] - data;
     int64_t len = arr[lbegin + llen] - arr[lbegin];
     if (mode == 'B' || mode == 'b')
