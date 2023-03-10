@@ -6,10 +6,13 @@
 #include "stdlib.h"
 #include "string.h"
 #include "math.h"
+#include <algorithm>
 
 void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
   alignment = 1 << (int)log2(alignment);
-  int64_t* dim_max = (int64_t*)malloc(sizeof(int64_t) * (levels + 1) * 2);
+  std::vector<int64_t> dimSmax(levels + 1, 0);
+  std::vector<int64_t> dimRmax(levels + 1, 0);
+  std::vector<int64_t> nchild(levels + 1, 0);
   
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0;
@@ -33,38 +36,26 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       int64_t gi = i;
       i_global(&gi, &comm[l]);
       int64_t ci = lbegin + gi;
-      basis[l].Lchild[i] = comm[l].LocalChild[i];
+      basis[l].Lchild[i] = std::get<0>(comm[l].LocalChild[i]);
       basis[l].Dims[i] = cell_basis[ci].M;
       basis[l].DimsLr[i] = cell_basis[ci].N;
       basis[l].Uo[i] = (struct Matrix) { cell_basis[ci].Uo, cell_basis[ci].M, cell_basis[ci].N, cell_basis[ci].M };
       basis[l].Uc[i] = (struct Matrix) { cell_basis[ci].Uc, cell_basis[ci].M, cell_basis[ci].M - cell_basis[ci].N, cell_basis[ci].M };
       basis[l].R[i] = (struct Matrix) { cell_basis[ci].R, cell_basis[ci].N, cell_basis[ci].N, cell_basis[ci].N };
       basis[l].Multipoles[i] = cell_basis[ci].Multipoles;
-    }
 
-    int64_t ibegin = 0, iend = 0;
-    self_local_range(&ibegin, &iend, &comm[l]);
-    int64_t dimc_max = 0, dimr_max = 0;
-    for (int64_t x = ibegin; x < iend; x++) {
-      int64_t dimr = basis[l].DimsLr[x];
-      int64_t dimc = basis[l].Dims[x] - dimr;
-      dimc_max = dimc_max < dimc ? dimc : dimc_max;
-      dimr_max = dimr_max < dimr ? dimr : dimr_max;
+      dimSmax[l] = std::max(dimSmax[l], basis[l].DimsLr[i]);
+      dimRmax[l] = std::max(dimRmax[l], basis[l].Dims[i] - basis[l].DimsLr[i]);
+      nchild[l] = std::max(nchild[l], std::get<1>(comm[l].LocalChild[i]));
     }
-    int64_t dimc_rem = dimc_max & (alignment - 1);
-    int64_t dimr_rem = dimr_max & (alignment - 1);
-    dim_max[l * 2] = dimc_max - dimc_rem + (dimc_rem ? alignment : 0);
-    dim_max[l * 2 + 1] = dimr_max - dimr_rem + (dimr_rem ? alignment : 0);
   }
-  MPI_Allreduce(MPI_IN_PLACE, dim_max, (levels + 1) * 2, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
+
+  get_segment_sizes(dimSmax.data(), dimRmax.data(), nchild.data(), alignment, levels);
 
   for (int64_t l = levels; l >= 0; l--) {
-    const int64_t NCHILD = 2;
-    int64_t child_s = l < levels ? dim_max[l * 2 + 3] * NCHILD : 0;
-    basis[l].dimS = dim_max[l * 2 + 1];
-    int64_t dimn = dim_max[l * 2] + basis[l].dimS;
-    dimn = dimn < child_s ? child_s : dimn;
-    basis[l].dimR = dimn - basis[l].dimS;
+    basis[l].dimS = dimSmax[l];
+    basis[l].dimR = dimRmax[l];
+    int64_t dimn = basis[l].dimS + basis[l].dimR;
     int64_t stride = dimn * dimn;
     allocBufferedList((void**)&basis[l].U_ptr, (void**)&basis[l].U_buf, sizeof(double), stride * basis[l].Ulen);
 
@@ -72,9 +63,10 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       struct Matrix Uc = (struct Matrix) { basis[l].U_buf + i * stride, dimn, basis[l].dimR, dimn };
       struct Matrix Uo = (struct Matrix) { basis[l].U_buf + i * stride + basis[l].dimR * dimn, dimn, basis[l].dimS, dimn };
       int64_t row = 0;
-      int64_t child = basis[l].Lchild[i];
+      int64_t child = std::get<0>(comm[l].LocalChild[i]);
+      int64_t clen = std::get<1>(comm[l].LocalChild[i]);
       if (child >= 0 && l < levels)
-        for (int64_t j = 0; j < NCHILD; j++) {
+        for (int64_t j = 0; j < clen; j++) {
           int64_t m = basis[l + 1].DimsLr[child + j];
           mat_cpy(m, basis[l].Uc[i].N, &basis[l].Uc[i], &Uc, row, 0, j * basis[l + 1].dimS, 0);
           mat_cpy(m, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, row, 0, j * basis[l + 1].dimS, 0);
@@ -87,7 +79,6 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     }
     flushBuffer('S', basis[l].U_ptr, basis[l].U_buf, sizeof(double), stride * basis[l].Ulen);
   }
-  free(dim_max);
 }
 
 void basis_free(struct Base* basis) {

@@ -8,14 +8,6 @@
 
 #define ALIGN 16
 
-void init_libs(int* argc, char*** argv) {
-  MPI_Init(argc, argv);
-}
-
-void fin_libs() {
-  MPI_Finalize();
-}
-
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {
   if (Lwork > *D_DATA_SIZE) {
     *D_DATA_SIZE = Lwork;

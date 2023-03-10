@@ -16,44 +16,10 @@
 #include <cstdlib>
 #include <cstring>
 
-cudaStream_t stream = NULL;
-cublasHandle_t cublasH = NULL;
-cusolverDnHandle_t cusolverH = NULL;
-curandGenerator_t curandH = NULL;
-
-void init_libs(int* argc, char*** argv) {
-  assert(MPI_Init(argc, argv) == MPI_SUCCESS);
-  int mpi_rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-  int num_device;
-  assert(cudaGetDeviceCount(&num_device) == cudaSuccess);
-
-  int device = mpi_rank % num_device;
-  cudaSetDevice(device) == cudaSuccess;
-  
-  cudaStreamCreate(&stream);
-  cublasCreate(&cublasH);
-  cublasSetStream(cublasH, stream);
-
-  cusolverDnCreate(&cusolverH);
-  cusolverDnSetStream(cusolverH, stream);
-
-  curandCreateGenerator(&curandH, CURAND_RNG_PSEUDO_DEFAULT);
-  curandSetPseudoRandomGeneratorSeed(curandH, 999);
-  curandSetStream(curandH, stream);
-}
-
-void fin_libs() {
-  if (stream)
-    cudaStreamDestroy(stream);
-  if (cublasH)
-    cublasDestroy(cublasH);
-  if (cusolverH)
-    cusolverDnDestroy(cusolverH);
-  if (curandH)
-    curandDestroyGenerator(curandH);
-  MPI_Finalize();
-}
+extern cudaStream_t stream;
+extern cublasHandle_t cublasH;
+extern cusolverDnHandle_t cusolverH;
+extern curandGenerator_t curandH;
 
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {
   if (Lwork > *D_DATA_SIZE) {

@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "comm.hxx"
+
 struct Matrix { double* A; int64_t M, N, LDA; };
 
 void mat_cpy(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
@@ -28,7 +30,7 @@ void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 void nrm2_A(struct Matrix* A, double* nrm);
 void scal_A(struct Matrix* A, double alpha);
 
-void init_libs(int* argc, char*** argv);
+int init_libs(int* argc, char*** argv);
 void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
@@ -45,19 +47,10 @@ void freeBufferedList(void* A_ptr, void* A_buffer);
 void batchCholeskyFactor(void* params);
 void chol_decomp(void* params);
 
-struct Cell { int64_t Child, Body[2], Level, Procs[2]; double R[3], C[3]; };
+struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
-struct CellComm { 
-  int64_t Proc[2];
-  std::vector<int64_t> ProcTargets;
-  std::vector<int64_t> LocalChild;
-  std::vector<std::pair<int64_t, int64_t>> ProcBoxes;
-  std::vector<std::pair<int, MPI_Comm>> Comm_box;
-  MPI_Comm Comm_share, Comm_merge;
-  std::vector<std::pair<int, ncclComm_t>> NCCL_box;
-  ncclComm_t NCCL_merge, NCCL_share;
-};
+
 struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, dimR, dimS, **Multipoles; struct Matrix *Uo, *Uc, *R; double *U_ptr, *U_buf; };
 struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; void* params; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
@@ -103,19 +96,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
 
 void cellBasis_free(struct CellBasis* basis);
 
-void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
-
-void cellComm_free(struct CellComm* comm);
-
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
-
-void i_local(int64_t* ilocal, const struct CellComm* comm);
-
-void i_global(int64_t* iglobal, const struct CellComm* comm);
-
-void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* comm);
-
-void content_length(int64_t* len, const struct CellComm* comm);
 
 void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int64_t levels);
 

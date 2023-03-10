@@ -1,7 +1,56 @@
 
 #include "nbd.hxx"
 
+#include "cuda_runtime_api.h"
+#include "cublas_v2.h"
+#include "cusolverDn.h"
+#include "curand.h"
 #include "mkl.h"
+
+#include <cassert>
+
+cudaStream_t stream = NULL;
+cublasHandle_t cublasH = NULL;
+cusolverDnHandle_t cusolverH = NULL;
+curandGenerator_t curandH = NULL;
+int gpu_avail = 0;
+
+int init_libs(int* argc, char*** argv) {
+  assert(MPI_Init(argc, argv) == MPI_SUCCESS);
+  int mpi_rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  int num_device;
+  gpu_avail = (cudaGetDeviceCount(&num_device) == cudaSuccess);
+
+  if (gpu_avail) {
+    int device = mpi_rank % num_device;
+    cudaSetDevice(device);
+    
+    cudaStreamCreate(&stream);
+    cublasCreate(&cublasH);
+    cublasSetStream(cublasH, stream);
+
+    cusolverDnCreate(&cusolverH);
+    cusolverDnSetStream(cusolverH, stream);
+
+    curandCreateGenerator(&curandH, CURAND_RNG_PSEUDO_DEFAULT);
+    curandSetPseudoRandomGeneratorSeed(curandH, 999);
+    curandSetStream(curandH, stream);
+  }
+  return gpu_avail;
+}
+
+void fin_libs() {
+  if (stream)
+    cudaStreamDestroy(stream);
+  if (cublasH)
+    cublasDestroy(cublasH);
+  if (cusolverH)
+    cusolverDnDestroy(cusolverH);
+  if (curandH)
+    curandDestroyGenerator(curandH);
+  MPI_Finalize();
+}
 
 void mat_cpy(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2) {
   LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', m, n, &m1->A[y1 + x1 * m1->M], m1->LDA, &m2->A[y2 + x2 * m2->M], m2->LDA);

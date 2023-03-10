@@ -1,4 +1,3 @@
-
 #include "nbd.hxx"
 #include "profile.hxx"
 
@@ -25,7 +24,8 @@ void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbod
   int64_t i = 0;
   while (i < len) {
     struct Cell* ci = &cells[i];
-    ci->Child = -1;
+    ci->Child[0] = -1;
+    ci->Child[1] = -1;
 
     if (ci->Level < levels) {
       int64_t sdim = 0;
@@ -43,7 +43,8 @@ void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbod
 
       struct Cell* c0 = &cells[len];
       struct Cell* c1 = &cells[len + 1];
-      ci->Child = len;
+      ci->Child[0] = len;
+      ci->Child[1] = len + 2;
       len = len + 2;
 
       c0->Body[0] = i_begin;
@@ -80,7 +81,8 @@ void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t bu
   int64_t count = 0;
   for (int64_t i = 0; i < nleaf; i++) {
     int64_t ci = i + nleaf - 1;
-    cells[ci].Child = -1;
+    cells[ci].Child[0] = -1;
+    cells[ci].Child[1] = -1;
     cells[ci].Body[0] = count;
     cells[ci].Body[1] = count + buckets[i];
     cells[ci].Level = levels;
@@ -93,7 +95,8 @@ void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t bu
     int64_t c1 = (i << 1) + 2;
     int64_t begin = cells[c0].Body[0];
     int64_t len = cells[c1].Body[1] - begin;
-    cells[i].Child = c0;
+    cells[i].Child[0] = c0;
+    cells[i].Child[1] = c0 + 2;
     cells[i].Body[0] = begin;
     cells[i].Body[1] = begin + len;
     cells[i].Level = cells[c0].Level - 1;
@@ -108,7 +111,7 @@ void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t bu
 
   for (int64_t i = 0; i < nleaf - 1; i++) {
     struct Cell* ci = &cells[i];
-    struct Cell* c0 = &cells[ci->Child];
+    struct Cell* c0 = &cells[ci->Child[0]];
     struct Cell* c1 = c0 + 1;
     int64_t divp = (ci->Procs[1] - ci->Procs[0]) / 2;
     if (divp >= 1) {
@@ -167,14 +170,12 @@ void getList(char NoF, int64_t* len, int64_t rels[], int64_t ncells, const struc
     if (admis)
       return;
   }
-  if (ilevel <= jlevel && Ci->Child >= 0) {
-    getList(NoF, len, rels, ncells, cells, Ci->Child, j, theta);
-    getList(NoF, len, rels, ncells, cells, Ci->Child + 1, j, theta);
-  }
-  else if (jlevel <= ilevel && Cj->Child >= 0) {
-    getList(NoF, len, rels, ncells, cells, i, Cj->Child, theta);
-    getList(NoF, len, rels, ncells, cells, i, Cj->Child + 1, theta);
-  }
+  if (ilevel <= jlevel && Ci->Child[0] >= 0)
+    for (int64_t k = Ci->Child[0]; k < Ci->Child[1]; k++)
+      getList(NoF, len, rels, ncells, cells, k, j, theta);
+  else if (jlevel <= ilevel && Cj->Child[0] >= 0)
+    for (int64_t k = Cj->Child[0]; k < Cj->Child[1]; k++)
+      getList(NoF, len, rels, ncells, cells, i, k, theta);
 }
 
 int comp_int_64(const void *a, const void *b) {
@@ -328,7 +329,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
 #pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ci = i + ibegin;
-      int64_t childi = cells[ci].Child;
+      int64_t childi = cells[ci].Child[0];
       int64_t ske_len = childi >= 0 ? (basis[childi].N + basis[childi + 1].N) : (cells[ci].Body[1] - cells[ci].Body[0]);
       int64_t* skeletons = (int64_t*)malloc(sizeof(int64_t) * ske_len);
 
@@ -551,90 +552,6 @@ void cellBasis_free(struct CellBasis* basis) {
     free(basis->Uo);
 }
 
-void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
-  int __mpi_rank = 0, __mpi_size = 1;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
-  int64_t mpi_rank = __mpi_rank;
-  int64_t mpi_size = __mpi_size;
-
-  for (int64_t i = levels; i >= 0; i--) {
-    int64_t ibegin = 0, iend = ncells;
-    get_level(&ibegin, &iend, cells, i, -1);
-
-    int64_t mbegin = ibegin, mend = iend;
-    get_level(&mbegin, &mend, cells, i, mpi_rank);
-    int64_t p = cells[mbegin].Procs[0];
-    int64_t lenp = cells[mbegin].Procs[1] - p;
-    comms[i].Proc[0] = p;
-    comms[i].Proc[1] = p + lenp;
-
-    for (int64_t j = 0; j < mpi_size; j++) {
-      int is_ngb = 0;
-      for (int64_t k = cellNear->ColIndex[mbegin]; k < cellNear->ColIndex[mend]; k++)
-        if (cells[cellNear->RowIndex[k]].Procs[0] == j)
-          is_ngb = 1;
-      for (int64_t k = cellFar->ColIndex[mbegin]; k < cellFar->ColIndex[mend]; k++)
-        if (cells[cellFar->RowIndex[k]].Procs[0] == j)
-          is_ngb = 1;
-      
-      int color = (is_ngb && p == mpi_rank) ? 1 : MPI_UNDEFINED;
-      MPI_Comm comm = MPI_COMM_NULL;
-      MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comm);
-
-      if (comm != MPI_COMM_NULL) {
-        int root = 0;
-        if (j == p)
-          MPI_Comm_rank(comm, &root);
-        comms[i].Comm_box.emplace_back(root, comm);
-      }
-      if (is_ngb)
-        comms[i].ProcTargets.emplace_back(j);
-    }
-
-    int color = MPI_UNDEFINED;
-    int64_t cc = cells[mbegin].Child;
-    int64_t clen = (mbegin + 1 < ncells) ? (cells[mbegin + 1].Child - cc) : 0;
-    if (lenp > 1 && cc >= 0)
-      for (int64_t j = 0; j < clen; j++)
-        if (cells[cc + j].Procs[0] == mpi_rank)
-          color = p;
-    MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_merge);
-  
-    color = lenp > 1 ? p : MPI_UNDEFINED;
-    MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_share);
-
-    for (size_t j = 0; j < comms[i].ProcTargets.size(); j++) {
-      int64_t local[2] { mbegin - ibegin, mend - mbegin };
-      if (p == mpi_rank) {
-        MPI_Allreduce(MPI_IN_PLACE, &std::get<int>(comms[i].Comm_box[j]), 1, MPI_INT, MPI_SUM, std::get<MPI_Comm>(comms[i].Comm_box[j]));
-        MPI_Bcast(local, 2, MPI_INT64_T, std::get<int>(comms[i].Comm_box[j]), std::get<MPI_Comm>(comms[i].Comm_box[j]));
-      }
-      if (comms[i].Comm_share != MPI_COMM_NULL)
-        MPI_Bcast(local, 2, MPI_INT64_T, 0, comms[i].Comm_share);
-      comms[i].ProcBoxes.emplace_back(local[0], local[1]);
-
-      for (int64_t k = 0; k < local[1]; k++) {
-        int64_t lc = cells[k + local[0] + ibegin].Child;
-        if (lc >= 0 && i < levels) {
-          lc = lc - iend;
-          i_local(&lc, &comms[i + 1]);
-        }
-        comms[i].LocalChild.emplace_back(lc);
-      }
-    }
-  }
-}
-
-void cellComm_free(struct CellComm* comm) {
-  for (int64_t j = 0; j < (int64_t)comm->Comm_box.size(); j++)
-    MPI_Comm_free(&std::get<MPI_Comm>(comm->Comm_box[j]));
-  if (comm->Comm_share != MPI_COMM_NULL)
-    MPI_Comm_free(&comm->Comm_share);
-  if (comm->Comm_merge != MPI_COMM_NULL)
-    MPI_Comm_free(&comm->Comm_merge);
-}
-
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
   if (j < 0 || j >= rels->N)
   { *ij = -1; return; }
@@ -646,59 +563,6 @@ void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
     row_iter = row_iter + 1;
   int64_t k = row_iter - row;
   *ij = (k < jend) ? k : -1;
-}
-
-void i_local(int64_t* ilocal, const struct CellComm* comm) {
-  int64_t iglobal = *ilocal;
-  size_t iter = 0;
-  int64_t slen = 0;
-  while (iter < comm->ProcTargets.size() && 
-  (std::get<0>(comm->ProcBoxes[iter]) + std::get<1>(comm->ProcBoxes[iter])) <= iglobal) {
-    slen = slen + std::get<1>(comm->ProcBoxes[iter]);
-    iter = iter + 1;
-  }
-  if (iter < comm->ProcTargets.size())
-    *ilocal = slen + iglobal - std::get<0>(comm->ProcBoxes[iter]);
-  else
-    *ilocal = -1;
-}
-
-void i_global(int64_t* iglobal, const struct CellComm* comm) {
-  int64_t ilocal = *iglobal;
-  size_t iter = 0;
-  while (iter < comm->ProcTargets.size() && std::get<1>(comm->ProcBoxes[iter]) <= ilocal) {
-    ilocal = ilocal - std::get<1>(comm->ProcBoxes[iter]);
-    iter = iter + 1;
-  }
-  if (0 <= ilocal && iter < comm->ProcTargets.size())
-    *iglobal = std::get<0>(comm->ProcBoxes[iter]) + ilocal;
-  else
-    *iglobal = -1;
-}
-
-void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* comm) {
-  int64_t p = comm->Proc[0];
-  size_t iter = 0;
-  int64_t slen = 0;
-  while (iter < comm->ProcTargets.size() && comm->ProcTargets[iter] != p) {
-    slen = slen + std::get<1>(comm->ProcBoxes[iter]);
-    iter = iter + 1;
-  }
-  if (iter < comm->ProcTargets.size()) {
-    *ibegin = slen;
-    *iend = slen + std::get<1>(comm->ProcBoxes[iter]);
-  }
-  else {
-    *ibegin = -1;
-    *iend = -1;
-  }
-}
-
-void content_length(int64_t* len, const struct CellComm* comm) {
-  int64_t slen = 0;
-  for (size_t i = 0; i < comm->ProcTargets.size(); i++)
-    slen = slen + std::get<1>(comm->ProcBoxes[i]);
-  *len = slen;
 }
 
 void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int64_t levels) {

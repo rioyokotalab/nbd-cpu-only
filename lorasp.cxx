@@ -64,6 +64,7 @@ int main(int argc, char* argv[]) {
   traverse('F', &cellFar, ncells, cell, theta);
 
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
+  buildCommGPU(cell_comm, levels);
   relations(rels_near, ncells, cell, &cellNear, levels, cell_comm);
   relations(rels_far, ncells, cell, &cellFar, levels, cell_comm);
 
