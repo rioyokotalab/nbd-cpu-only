@@ -199,7 +199,7 @@ void content_length(int64_t* len, const struct CellComm* comm) {
   *len = slen;
 }
 
-void get_segment_sizes(int64_t* dimS, int64_t* dimR, const int64_t* nchild, int64_t align, int64_t levels) {
+void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t align, int64_t levels) {
   align = 1 << (int)log2(align);
   std::vector<int64_t> dim_max((levels + 1) * 3);
 
@@ -223,5 +223,6 @@ void get_segment_sizes(int64_t* dimS, int64_t* dimR, const int64_t* nchild, int6
       dimr = child_s - dims;
     dimS[i] = dims;
     dimR[i] = dimr;
+    nchild[i] = dimr + dims - child_s;
   }
 }

@@ -278,8 +278,8 @@ void batchCholeskyFactor(void* params_ptr) {
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, R, N, &one, 
     params->U_d, N, (const double**)(params->U_dx), N, &zero, params->B_x, N, D);
   cublasDcopy(cublasH, N * N * D, params->U_d0, 1, params->UD_data, 1);
-  thrust::fill(thrust::cuda::par.on(stream), thrust::make_permutation_iterator(params->B_data, params->F_d), 
-    thrust::make_permutation_iterator(params->B_data, params->F_d + params->L_fill), 1.);
+  //thrust::fill(thrust::cuda::par.on(stream), thrust::make_permutation_iterator(params->B_data, params->F_d), 
+    //thrust::make_permutation_iterator(params->B_data, params->F_d + params->L_fill), 1.);
 
   cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R, params->B_x, N, params->info, D);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 

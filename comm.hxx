@@ -35,4 +35,4 @@ void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* com
 
 void content_length(int64_t* len, const struct CellComm* comm);
 
-void get_segment_sizes(int64_t* dimS, int64_t* dimR, const int64_t* nchild, int64_t alignment, int64_t levels);
+void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t alignment, int64_t levels);

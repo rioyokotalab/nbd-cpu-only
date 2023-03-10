@@ -5,6 +5,7 @@
 #include "mkl.h"
 #include "omp.h"
 #include <string.h>
+#include <cstdio>
 
 #define ALIGN 16
 
@@ -207,8 +208,9 @@ void batchCholeskyFactor(void* params_ptr) {
   cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &R, &R, &N, &one, 
     params->U_d, &N, (const double**)(params->U_dx), &N, &zero, params->B_x, &N, 1, &D);
   cblas_dcopy(N * N * D, params->U_d[0], 1, params->UD_data, 1);
-  for (int64_t i = 0; i < params->L_fill; i++)
-    params->B_data[params->F_d[i]] = 1.;
+
+  //for (int64_t i = 0; i < params->L_fill; i++)
+    //params->B_data[params->F_d[i]] = 1.;
 
   for (int64_t i = 0; i < D; i++)
     LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R, params->B_x[i], N);

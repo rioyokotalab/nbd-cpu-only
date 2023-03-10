@@ -3,16 +3,31 @@
 #include "profile.hxx"
 
 #include "stdio.h"
-#include "stdlib.h"
 #include "string.h"
 #include "math.h"
+
+#include <cstdlib>
 #include <algorithm>
 
+void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src, size_t elm_size) {
+  for (int64_t i = 0; i < cols; i++) {
+    unsigned char* _dst = (unsigned char*)dst + i * ld_dst * elm_size;
+    const unsigned char* _src = (const unsigned char*)src + i * ld_src * elm_size;
+    memcpy(_dst, _src, elm_size * rows);
+  }
+}
+
+void randomize2d(double* dst, int64_t rows, int64_t cols, int64_t ld) {
+  for (int64_t j = 0; j < cols; j++)
+    for (int64_t i = 0; i < rows; i++)
+      dst[i + j * ld] = ((double)std::rand() + 1) / RAND_MAX;
+}
+
 void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
-  alignment = 1 << (int)log2(alignment);
   std::vector<int64_t> dimSmax(levels + 1, 0);
   std::vector<int64_t> dimRmax(levels + 1, 0);
   std::vector<int64_t> nchild(levels + 1, 0);
+  std::srand(999);
   
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0;
@@ -55,29 +70,61 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
   for (int64_t l = levels; l >= 0; l--) {
     basis[l].dimS = dimSmax[l];
     basis[l].dimR = dimRmax[l];
-    int64_t dimn = basis[l].dimS + basis[l].dimR;
-    int64_t stride = dimn * dimn;
-    allocBufferedList((void**)&basis[l].U_ptr, (void**)&basis[l].U_buf, sizeof(double), stride * basis[l].Ulen);
+    basis[l].dimN = basis[l].dimS + basis[l].dimR;
+    basis[l].padN = nchild[l];
+    int64_t stride = basis[l].dimN * basis[l].dimN;
+    int64_t stride_r = basis[l].dimS * basis[l].dimS;
+    int64_t LD = basis[l].dimN;
+
+    basis[l].U_cpu = (double*)calloc(stride * basis[l].Ulen, sizeof(double));
+    basis[l].R_cpu = (double*)calloc(stride_r * basis[l].Ulen, sizeof(double));
+    if (cudaMalloc(&basis[l].U_gpu, sizeof(double) * stride * basis[l].Ulen) != cudaSuccess)
+      basis[l].U_gpu = NULL;
+    if (cudaMalloc(&basis[l].R_gpu, sizeof(double) * stride_r * basis[l].Ulen) != cudaSuccess)
+      basis[l].R_gpu = NULL;
 
     for (int64_t i = 0; i < basis[l].Ulen; i++) {
-      struct Matrix Uc = (struct Matrix) { basis[l].U_buf + i * stride, dimn, basis[l].dimR, dimn };
-      struct Matrix Uo = (struct Matrix) { basis[l].U_buf + i * stride + basis[l].dimR * dimn, dimn, basis[l].dimS, dimn };
-      int64_t row = 0;
+      double* Uc_ptr = basis[l].U_cpu + i * stride;
+      double* Uo_ptr = Uc_ptr + basis[l].dimR * basis[l].dimN;
+      double* R_ptr = basis[l].R_cpu;
+
+      int64_t Nc = basis[l].Dims[i] - basis[l].DimsLr[i];
+      int64_t No = basis[l].DimsLr[i];
+
       int64_t child = std::get<0>(comm[l].LocalChild[i]);
       int64_t clen = std::get<1>(comm[l].LocalChild[i]);
-      if (child >= 0 && l < levels)
+      if (child >= 0 && l < levels) {
+        int64_t row = 0;
+
         for (int64_t j = 0; j < clen; j++) {
-          int64_t m = basis[l + 1].DimsLr[child + j];
-          mat_cpy(m, basis[l].Uc[i].N, &basis[l].Uc[i], &Uc, row, 0, j * basis[l + 1].dimS, 0);
-          mat_cpy(m, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, row, 0, j * basis[l + 1].dimS, 0);
-          row = row + m;
+          int64_t M = basis[l + 1].DimsLr[child + j];
+          int64_t Urow = j * basis[l + 1].dimS;
+          memcpy2d(&Uc_ptr[Urow], &basis[l].Uc[i].A[row], M, Nc, LD, basis[l].Uc[i].LDA, sizeof(double));
+          memcpy2d(&Uo_ptr[Urow], &basis[l].Uo[i].A[row], M, No, LD, basis[l].Uo[i].LDA, sizeof(double));
+
+          randomize2d(&Uc_ptr[Urow + M + Nc * LD], basis[l + 1].dimS - M, basis[l].dimR - Nc, LD);
+          randomize2d(&Uo_ptr[Urow + M + No * LD], basis[l + 1].dimS - M, basis[l].dimS - No, LD);
+          row = row + M;
         }
+
+        int64_t pad = basis[l].padN;
+        randomize2d(&Uc_ptr[LD - pad + Nc * LD], pad, basis[l].dimR - Nc, LD);
+        randomize2d(&Uo_ptr[LD - pad + No * LD], pad, basis[l].dimS - No, LD);
+      }
       else {
-        mat_cpy(basis[l].Uc[i].M, basis[l].Uc[i].N, &basis[l].Uc[i], &Uc, 0, 0, 0, 0);
-        mat_cpy(basis[l].Uo[i].M, basis[l].Uo[i].N, &basis[l].Uo[i], &Uo, 0, 0, 0, 0);
+        int64_t M = basis[l].Dims[i];
+        memcpy2d(Uc_ptr, basis[l].Uc[i].A, M, Nc, LD, basis[l].Uc[i].LDA, sizeof(double));
+        memcpy2d(Uo_ptr, basis[l].Uo[i].A, M, No, LD, basis[l].Uo[i].LDA, sizeof(double));
+
+        randomize2d(&Uc_ptr[M + Nc * LD], LD - M, basis[l].dimR - Nc, LD);
+        randomize2d(&Uo_ptr[M + No * LD], LD - M, basis[l].dimS - No, LD);
       }
     }
-    flushBuffer('S', basis[l].U_ptr, basis[l].U_buf, sizeof(double), stride * basis[l].Ulen);
+
+    if (basis[l].U_gpu)
+      cudaMemcpy(basis[l].U_gpu, basis[l].U_cpu, sizeof(double) * stride * basis[l].Ulen, cudaMemcpyHostToDevice);
+    if (basis[l].R_gpu)
+      cudaMemcpy(basis[l].R_gpu, basis[l].R_cpu, sizeof(double) * stride_r * basis[l].Ulen, cudaMemcpyHostToDevice);
   }
 }
 
@@ -85,7 +132,14 @@ void basis_free(struct Base* basis) {
   free(basis->Multipoles);
   free(basis->Lchild);
   free(basis->Uo);
-  freeBufferedList(basis->U_ptr, basis->U_buf);
+  if (basis->U_cpu)
+    free(basis->U_cpu);
+  if (basis->U_gpu)
+    cudaFree(basis->U_gpu);
+  if (basis->R_cpu)
+    free(basis->R_cpu);
+  if (basis->R_gpu)
+    cudaFree(basis->R_gpu);
 }
 
 void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
@@ -133,6 +187,10 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
         arr_m[yx + nnz] = (struct Matrix) { A[i].A_buf + yx * stride, dimc_y, dimc_x, dimn }; // A_cc
         arr_m[yx + nnz * 2] = (struct Matrix) { A[i].A_buf + yx * stride + basis[i].dimR, diml_y, dimc_x, dimn }; // A_oc
         arr_m[yx + nnz * 3] = (struct Matrix) { NULL, diml_y, diml_x, 0 }; // A_oo
+
+        if (y == box_x)
+          for (int64_t z = 0; z < basis[i].padN; z++)
+            A[i].A_buf[yx * stride + (z + dimn - basis[i].padN) * (dimn + 1)] = 1.;
       }
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
@@ -198,7 +256,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     for (int64_t x = 0; x < llen; x++)
       dimc_lis[x] = basis[i].Dims[x] - basis[i].DimsLr[x];
 
-    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_ptr, A[i].A_ptr, n_next, A_next, *Workspace, *Lwork,
+    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, n_next, A_next, *Workspace, *Lwork,
       rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex, dimc_lis, comm[i].Comm_merge, comm[i].Comm_share);
     free(A_next);
     free(dimc_lis);

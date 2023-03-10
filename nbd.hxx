@@ -34,7 +34,7 @@ int init_libs(int* argc, char*** argv);
 void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
-void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
+void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_gpu, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
   int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share);
 void batchParamsDestory(void* params);
 void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[], MPI_Comm merge, MPI_Comm share);
@@ -51,7 +51,12 @@ struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 
-struct Base { int64_t Ulen, *Lchild, *Dims, *DimsLr, dimR, dimS, **Multipoles; struct Matrix *Uo, *Uc, *R; double *U_ptr, *U_buf; };
+struct Base { 
+  int64_t Ulen, *Lchild, *Dims, *DimsLr, dimR, dimS, dimN, padN, **Multipoles;
+  struct Matrix *Uo, *Uc, *R;
+  double *U_gpu, *U_cpu, *R_gpu, *R_cpu; 
+};
+
 struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; void* params; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
 
