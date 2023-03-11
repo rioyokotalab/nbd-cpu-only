@@ -58,7 +58,7 @@ struct Base {
 };
 
 struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; void* params; };
-struct RightHandSides { int64_t Xlen; struct Matrix *X, *XcM, *XoL, *B; };
+struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo, *B; };
 
 void laplace3d(double* r2);
 
@@ -125,7 +125,7 @@ void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64
 
 void factorA(struct Node A[], const struct Base B[], const struct CellComm comm[], int64_t levels);
 
-void allocRightHandSides(char mvsv, struct RightHandSides st[], const struct Base base[], int64_t levels);
+void allocRightHandSides(char mvsv, struct RightHandSides st[], const struct Base base[], const struct CellComm comm[], int64_t levels);
 
 void rightHandSides_free(struct RightHandSides* rhs);
 

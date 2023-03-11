@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
     evalS(ef, nodes[i].S, &basis[i], body, &rels_far[i], &cell_comm[i]);
 
   loadX(X1, body_local, Xbody);
-  allocRightHandSides('M', rhs, basis, levels);
+  allocRightHandSides('M', rhs, basis, cell_comm, levels);
   matVecA(rhs, nodes, basis, rels_near, rels_far, X1, cell_comm, levels);
   for (int64_t i = 0; i <= levels; i++)
     rightHandSides_free(&rhs[i]);
@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < 3; i++)
     percent[i] = (double)factor_flops[i] / (double)sum_flops * (double)100;
 
-  allocRightHandSides('S', rhs, basis, levels);
+  allocRightHandSides('S', rhs, basis, cell_comm, levels);
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
