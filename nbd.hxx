@@ -54,7 +54,7 @@ struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 
 struct Base { 
-  int64_t Ulen, *Lchild, *Dims, *DimsLr, dimR, dimS, dimN, padN, **Multipoles;
+  int64_t Ulen, *Dims, *DimsLr, dimR, dimS, dimN, padN, **Multipoles;
   struct Matrix *Uo, *Uc, *R;
   double *U_gpu, *U_cpu, *R_gpu, *R_cpu; 
 };

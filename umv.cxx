@@ -33,10 +33,9 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     int64_t xlen = 0;
     content_length(&xlen, &comm[l]);
     basis[l].Ulen = xlen;
-    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * xlen * 3);
-    basis[l].Lchild = arr_i;
-    basis[l].Dims = &arr_i[xlen];
-    basis[l].DimsLr = &arr_i[xlen * 2];
+    int64_t* arr_i = (int64_t*)malloc(sizeof(int64_t) * xlen * 2);
+    basis[l].Dims = arr_i;
+    basis[l].DimsLr = &arr_i[xlen];
 
     struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
     basis[l].Uo = arr_m;
@@ -51,7 +50,6 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       int64_t gi = i;
       i_global(&gi, &comm[l]);
       int64_t ci = lbegin + gi;
-      basis[l].Lchild[i] = std::get<0>(comm[l].LocalChild[i]);
       basis[l].Dims[i] = cell_basis[ci].M;
       basis[l].DimsLr[i] = cell_basis[ci].N;
       basis[l].Multipoles[i] = cell_basis[ci].Multipoles;
@@ -139,7 +137,7 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
 
 void basis_free(struct Base* basis) {
   free(basis->Multipoles);
-  free(basis->Lchild);
+  free(basis->Dims);
   free(basis->Uo);
   if (basis->U_cpu)
     free(basis->U_cpu);
@@ -153,9 +151,8 @@ void basis_free(struct Base* basis) {
 
 void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
   int64_t work_size = 0;
-  const int64_t NCHILD = 2;
 
-  for (int64_t i = 0; i <= levels; i++) {
+  for (int64_t i = levels; i >= 0; i--) {
     int64_t n_i = rels_near[i].N;
     int64_t nnz = rels_near[i].ColIndex[n_i];
     int64_t nnz_f = rels_far[i].ColIndex[n_i];
@@ -171,7 +168,11 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     A[i].lenA = nnz;
     A[i].lenS = nnz_f;
 
+    int64_t dims = basis[i].dimS;
+    int64_t dimr = basis[i].dimR;
     int64_t dimn = basis[i].dimR + basis[i].dimS;
+    int64_t dimn_up = i > 0 ? basis[i - 1].dimN : 0;
+
     int64_t stride = dimn * dimn;
     allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), stride * nnz);
     int64_t work_required = n_i * stride * 2;
@@ -182,20 +183,16 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
 
     for (int64_t x = 0; x < n_i; x++) {
       int64_t box_x = nloc + x;
-      int64_t dim_x = basis[i].Dims[box_x];
       int64_t diml_x = basis[i].DimsLr[box_x];
-      int64_t dimc_x = dim_x - diml_x;
 
       for (int64_t yx = rels_near[i].ColIndex[x]; yx < rels_near[i].ColIndex[x + 1]; yx++) {
         int64_t y = rels_near[i].RowIndex[yx];
-        int64_t dim_y = basis[i].Dims[y];
         int64_t diml_y = basis[i].DimsLr[y];
-        int64_t dimc_y = dim_y - diml_y;
 
-        arr_m[yx] = (struct Matrix) { A[i].A_buf + yx * stride, dim_y, dim_x, dimn }; // A
-        arr_m[yx + nnz] = (struct Matrix) { A[i].A_buf + yx * stride, dimc_y, dimc_x, dimn }; // A_cc
-        arr_m[yx + nnz * 2] = (struct Matrix) { A[i].A_buf + yx * stride + basis[i].dimR, diml_y, dimc_x, dimn }; // A_oc
-        arr_m[yx + nnz * 3] = (struct Matrix) { NULL, diml_y, diml_x, 0 }; // A_oo
+        arr_m[yx] = (struct Matrix) { &A[i].A_buf[yx * stride], dimn, dimn, dimn }; // A
+        arr_m[yx + nnz] = (struct Matrix) { &A[i].A_buf[yx * stride], dimr, dimr, dimn }; // A_cc
+        arr_m[yx + nnz * 2] = (struct Matrix) { &A[i].A_buf[yx * stride + dimr], dims, dimr, dimn }; // A_oc
+        arr_m[yx + nnz * 3] = (struct Matrix) { NULL, diml_y, diml_x, dimn_up }; // A_oo
 
         if (y == box_x)
           for (int64_t z = 0; z < basis[i].padN; z++)
@@ -205,43 +202,37 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
         int64_t y = rels_far[i].RowIndex[yx];
         int64_t diml_y = basis[i].DimsLr[y];
-        arr_m[yx + nnz * 4] = (struct Matrix) { NULL, diml_y, diml_x, 0 }; // S
+        arr_m[yx + nnz * 4] = (struct Matrix) { NULL, diml_y, diml_x, dimn_up }; // S
       }
     }
 
-    if (i > 0) {
-      const struct CSC* rels_up = &rels_near[i - 1];
-      const struct Matrix* Mup = A[i - 1].A;
-      const int64_t* lchild = basis[i - 1].Lchild;
+    if (i < levels) {
       int64_t ploc = 0, pend = 0;
-      self_local_range(&ploc, &pend, &comm[i - 1]);
+      self_local_range(&ploc, &pend, &comm[i + 1]);
+      int64_t seg = basis[i + 1].dimS;
 
-      for (int64_t j = 0; j < rels_up->N; j++) {
-        int64_t lj = j + ploc;
-        int64_t cj = lchild[lj];
-        int64_t x0 = cj - nloc;
+      for (int64_t j = 0; j < rels_near[i].N; j++) {
+        int64_t x0 = std::get<0>(comm[i].LocalChild[j + nloc]) - ploc;
+        int64_t lenx = std::get<1>(comm[i].LocalChild[j + nloc]);
 
-        for (int64_t ij = rels_up->ColIndex[j]; ij < rels_up->ColIndex[j + 1]; ij++) {
-          int64_t li = rels_up->RowIndex[ij];
-          int64_t y0 = lchild[li];
+        for (int64_t ij = rels_near[i].ColIndex[j]; ij < rels_near[i].ColIndex[j + 1]; ij++) {
+          int64_t li = rels_near[i].RowIndex[ij];
+          int64_t y0 = std::get<0>(comm[i].LocalChild[li]);
+          int64_t leny = std::get<1>(comm[i].LocalChild[li]);
 
-          for (int64_t x = 0; x < NCHILD; x++)
-            if ((x + x0) >= 0 && (x + x0) < rels_near[i].N)
-              for (int64_t yx = rels_near[i].ColIndex[x + x0]; yx < rels_near[i].ColIndex[x + x0 + 1]; yx++)
-                for (int64_t y = 0; y < NCHILD; y++)
-                  if (rels_near[i].RowIndex[yx] == (y + y0)) {
-                    arr_m[yx + nnz * 3].A = Mup[ij].A + Mup[ij].LDA * x * basis[i].dimS + y * basis[i].dimS;
-                    arr_m[yx + nnz * 3].LDA = Mup[ij].LDA;
-                  }
+          for (int64_t x = 0; x < lenx; x++)
+            if ((x + x0) >= 0 && (x + x0) < rels_near[i + 1].N)
+              for (int64_t yx = rels_near[i + 1].ColIndex[x + x0]; yx < rels_near[i + 1].ColIndex[x + x0 + 1]; yx++)
+                for (int64_t y = 0; y < leny; y++)
+                  if (rels_near[i + 1].RowIndex[yx] == (y + y0))
+                    A[i + 1].A_oo[yx].A = &A[i].A[ij].A[(y + dimn * x) * seg];
           
-          for (int64_t x = 0; x < NCHILD; x++)
-            if ((x + x0) >= 0 && (x + x0) < rels_far[i].N)
-              for (int64_t yx = rels_far[i].ColIndex[x + x0]; yx < rels_far[i].ColIndex[x + x0 + 1]; yx++)
-                for (int64_t y = 0; y < NCHILD; y++)
-                  if (rels_far[i].RowIndex[yx] == (y + y0)) {
-                    arr_m[yx + nnz * 4].A = Mup[ij].A + Mup[ij].LDA * x * basis[i].dimS + y * basis[i].dimS;
-                    arr_m[yx + nnz * 4].LDA = Mup[ij].LDA;
-                  }
+          for (int64_t x = 0; x < lenx; x++)
+            if ((x + x0) >= 0 && (x + x0) < rels_far[i + 1].N)
+              for (int64_t yx = rels_far[i + 1].ColIndex[x + x0]; yx < rels_far[i + 1].ColIndex[x + x0 + 1]; yx++)
+                for (int64_t y = 0; y < leny; y++)
+                  if (rels_far[i + 1].RowIndex[yx] == (y + y0))
+                    A[i + 1].S[yx].A = &A[i].A[ij].A[(y + dimn * x) * seg];
         }
       }
     }
