@@ -226,3 +226,33 @@ void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t al
     nchild[i] = dimr + dims - child_s;
   }
 }
+
+void neighbor_bcast_cpu(double* data, int64_t seg, const struct CellComm* comm) {
+  int64_t y = 0;
+  for (size_t p = 0; p < comm->Comm_box.size(); p++) {
+    int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
+    double* loc = &data[y];
+    MPI_Bcast(loc, llen, MPI_DOUBLE, std::get<int>(comm->Comm_box[p]), std::get<MPI_Comm>(comm->Comm_box[p]));
+    y = y + llen;
+  }
+}
+
+void neighbor_reduce_cpu(double* data, int64_t seg, const struct CellComm* comm) {
+  int64_t y = 0;
+  for (size_t p = 0; p < comm->Comm_box.size(); p++) {
+    int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
+    double* loc = &data[y];
+    MPI_Allreduce(MPI_IN_PLACE, loc, llen, MPI_DOUBLE, MPI_SUM, std::get<MPI_Comm>(comm->Comm_box[p]));
+    y = y + llen;
+  }
+}
+
+void level_merge_cpu(double* data, int64_t len, const struct CellComm* comm) {
+  if (comm->Comm_merge != MPI_COMM_NULL)
+    MPI_Allreduce(MPI_IN_PLACE, data, len, MPI_DOUBLE, MPI_SUM, comm->Comm_merge);
+}
+
+void dup_bcast_cpu(double* data, int64_t len, const struct CellComm* comm) {
+  if (comm->Comm_share != MPI_COMM_NULL)
+    MPI_Bcast(data, len, MPI_DOUBLE, 0, comm->Comm_share);
+}

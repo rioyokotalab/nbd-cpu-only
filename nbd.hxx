@@ -125,7 +125,9 @@ void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64
 
 void factorA(struct Node A[], const struct Base B[], const struct CellComm comm[], int64_t levels);
 
-void allocRightHandSides(char mvsv, struct RightHandSides st[], const struct Base base[], const struct CellComm comm[], int64_t levels);
+void allocRightHandSidesSV(struct RightHandSides st[], const struct Base base[], const struct CellComm comm[], int64_t levels);
+
+void allocRightHandSidesMV(struct RightHandSides st[], const struct Base base[], const struct CellComm comm[], int64_t levels);
 
 void rightHandSides_free(struct RightHandSides* rhs);
 
