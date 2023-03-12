@@ -35,8 +35,10 @@ void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
 void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_gpu, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
-  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share);
+  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]);
 void batchParamsDestory(void* params);
+
+void lastParamsCreate(void** params, double* A, int64_t N);
 void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[], MPI_Comm merge, MPI_Comm share);
 void lastParamsDestory(void* params);
 
@@ -44,8 +46,8 @@ void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int6
 void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, int64_t count);
 void freeBufferedList(void* A_ptr, void* A_buffer);
 
-void batchCholeskyFactor(void* params);
-void chol_decomp(void* params);
+void batchCholeskyFactor(void* params, const struct CellComm* comm);
+void chol_decomp(void* params, const struct CellComm* comm);
 
 struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };

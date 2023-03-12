@@ -44,3 +44,11 @@ void neighbor_reduce_cpu(double* data, int64_t seg, const struct CellComm* comm)
 void level_merge_cpu(double* data, int64_t len, const struct CellComm* comm);
 
 void dup_bcast_cpu(double* data, int64_t len, const struct CellComm* comm);
+
+void neighbor_bcast_gpu(double* data, int64_t seg, cudaStream_t stream, const struct CellComm* comm);
+
+void neighbor_reduce_gpu(double* data, int64_t seg, cudaStream_t stream, const struct CellComm* comm);
+
+void level_merge_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm);
+
+void dup_bcast_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm);

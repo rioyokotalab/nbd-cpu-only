@@ -256,3 +256,34 @@ void dup_bcast_cpu(double* data, int64_t len, const struct CellComm* comm) {
   if (comm->Comm_share != MPI_COMM_NULL)
     MPI_Bcast(data, len, MPI_DOUBLE, 0, comm->Comm_share);
 }
+
+void neighbor_bcast_gpu(double* data, int64_t seg, cudaStream_t stream, const struct CellComm* comm) {
+  int64_t y = 0;
+  for (size_t p = 0; p < comm->NCCL_box.size(); p++) {
+    int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
+    double* loc = &data[y];
+    ncclBroadcast((const void*)loc, loc, llen, ncclDouble, std::get<int>(comm->NCCL_box[p]), std::get<ncclComm_t>(comm->NCCL_box[p]), stream);
+    y = y + llen;
+  }
+}
+
+void neighbor_reduce_gpu(double* data, int64_t seg, cudaStream_t stream, const struct CellComm* comm) {
+  int64_t y = 0;
+  for (size_t p = 0; p < comm->NCCL_box.size(); p++) {
+    int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
+    double* loc = &data[y];
+    ncclAllReduce((const void*)loc, loc, llen, ncclDouble, ncclSum, std::get<ncclComm_t>(comm->NCCL_box[p]), stream);
+    y = y + llen;
+  }
+}
+
+void level_merge_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm) {
+  if (comm->NCCL_merge != NULL)
+    ncclAllReduce((const void*)data, data, len, ncclDouble, ncclSum, comm->NCCL_merge, stream);
+}
+
+void dup_bcast_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm) {
+  if (comm->NCCL_share != NULL)
+    ncclBroadcast((const void*)data, data, len, ncclDouble, 0, comm->NCCL_share, stream);
+}
+

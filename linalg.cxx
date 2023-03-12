@@ -4,7 +4,6 @@
 #include "cuda_runtime_api.h"
 #include "cublas_v2.h"
 #include "cusolverDn.h"
-#include "curand.h"
 #include "mkl.h"
 
 #include <cassert>
@@ -12,7 +11,6 @@
 cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
 cusolverDnHandle_t cusolverH = NULL;
-curandGenerator_t curandH = NULL;
 int gpu_avail = 0;
 
 int init_libs(int* argc, char*** argv) {
@@ -32,10 +30,6 @@ int init_libs(int* argc, char*** argv) {
 
     cusolverDnCreate(&cusolverH);
     cusolverDnSetStream(cusolverH, stream);
-
-    curandCreateGenerator(&curandH, CURAND_RNG_PSEUDO_DEFAULT);
-    curandSetPseudoRandomGeneratorSeed(curandH, 999);
-    curandSetStream(curandH, stream);
   }
   return gpu_avail;
 }
@@ -47,8 +41,6 @@ void fin_libs() {
     cublasDestroy(cublasH);
   if (cusolverH)
     cusolverDnDestroy(cusolverH);
-  if (curandH)
-    curandDestroyGenerator(curandH);
   MPI_Finalize();
 }
 

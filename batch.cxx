@@ -44,14 +44,13 @@ void freeBufferedList(void* A_ptr, void* A_buffer) {
 }
 
 struct BatchedFactorParams { 
-  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, L_tmp, *F_d;
+  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_tmp;
   const double** A_d, **U_d, **U_r, **U_s, **V_x, **A_rs, **A_sx;
   double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
-  MPI_Comm comm_merge, comm_share;
 };
 
 void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
-  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share) {
+  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]) {
   
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
@@ -75,8 +74,6 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
 
   double* _UD_data = Workspace;
   double* _B_data = &Workspace[N_cols * stride];
-  int64_t* _F_d = (int64_t*)malloc(sizeof(int64_t) * N_cols * R_dim);
-  int64_t _F_len = 0;
 
   for (int64_t x = 0; x < N_cols; x++) {
     int64_t diag_id = 0;
@@ -96,12 +93,6 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
     _A_rs[x] = A_ptr + stride * diag_id + R_dim;
     _U_dx[x] = _UD_data + stride * x;
     _A_ss[x] = A_up[diag_id];
-
-    int64_t dimc = dimr[x + col_offset];
-    int64_t fill_new = R_dim - dimc;
-    for (int64_t i = 0; i < fill_new; i++)
-      _F_d[_F_len + i] = x * stride + (N_dim + 1) * (dimc + i);
-    _F_len = _F_len + fill_new;
   }
 
   for (int64_t x = 0; x < lenB; x++) {
@@ -115,9 +106,7 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   params_ptr->N_upper = N_up;
   params_ptr->L_diag = N_cols;
   params_ptr->L_nnz = NNZ;
-  params_ptr->L_fill = _F_len;
   params_ptr->L_tmp = lenB;
-  params_ptr->F_d = _F_d;
 
   params_ptr->A_d = _A_d;
   params_ptr->U_d = _U_d;
@@ -136,16 +125,11 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   params_ptr->A_data = A_ptr;
   params_ptr->B_data = _B_data;
 
-  params_ptr->comm_merge = merge;
-  params_ptr->comm_share = share;
-
   *params = params_ptr;
 }
 
 void batchParamsDestory(void* params) {
   struct BatchedFactorParams* params_ptr = (struct BatchedFactorParams*)params;
-  if (params_ptr->F_d)
-    free(params_ptr->F_d);
   if (params_ptr->A_d)
     free(params_ptr->A_d);
   if (params_ptr->U_d)
@@ -174,7 +158,7 @@ void batchParamsDestory(void* params) {
   free(params);
 }
 
-void batchCholeskyFactor(void* params_ptr) {
+void batchCholeskyFactor(void* params_ptr, const struct CellComm* comm) {
   struct BatchedFactorParams* params = (struct BatchedFactorParams*)params_ptr;
   CBLAS_SIDE right = CblasRight;
   CBLAS_UPLO lower = CblasLower;
@@ -194,10 +178,8 @@ void batchCholeskyFactor(void* params_ptr) {
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
-  if (params->comm_merge != MPI_COMM_NULL)
-    MPI_Allreduce(MPI_IN_PLACE, params->A_data, alen, MPI_DOUBLE, MPI_SUM, params->comm_merge);
-  if (params->comm_share != MPI_COMM_NULL)
-    MPI_Bcast(params->A_data, alen, MPI_DOUBLE, 0, params->comm_share);
+  level_merge_cpu(params->A_data, alen, comm);
+  dup_bcast_cpu(params->A_data, alen, comm);
 #ifdef _PROF
   double etime = MPI_Wtime() - stime;
   recordCommTime(etime);
@@ -208,9 +190,6 @@ void batchCholeskyFactor(void* params_ptr) {
   cblas_dgemm_batch(CblasColMajor, &trans, &no_trans, &R, &R, &N, &one, 
     params->U_d, &N, (const double**)(params->U_dx), &N, &zero, params->B_x, &N, 1, &D);
   cblas_dcopy(N * N * D, params->U_d[0], 1, params->UD_data, 1);
-
-  //for (int64_t i = 0; i < params->L_fill; i++)
-    //params->B_data[params->F_d[i]] = 1.;
 
   for (int64_t i = 0; i < D; i++)
     LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', R, params->B_x[i], N);
@@ -232,66 +211,35 @@ void batchCholeskyFactor(void* params_ptr) {
 
 struct LastFactorParams {
   double* A_ptr;
-  int64_t L_child, N_lower, *child_dims;
-  MPI_Comm comm_merge, comm_share;
+  int64_t N_A;
 };
 
-void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[], MPI_Comm merge, MPI_Comm share) {
+void lastParamsCreate(void** params, double* A, int64_t N) {
   struct LastFactorParams* params_ptr = (struct LastFactorParams*)malloc(sizeof(struct LastFactorParams));
   *params = params_ptr;
 
   params_ptr->A_ptr = A;
-  params_ptr->L_child = Nblocks;
-  params_ptr->N_lower = block_dim;
-  params_ptr->child_dims = (int64_t*)malloc(sizeof(int64_t) * Nblocks);
-
-  for (int64_t i = 0; i < Nblocks; i++)
-    params_ptr->child_dims[i] = dims[i];
-  
-  params_ptr->comm_merge = merge;
-  params_ptr->comm_share = share;
+  params_ptr->N_A = N;
 }
 
 void lastParamsDestory(void* params) {
-  struct LastFactorParams* params_ptr = (struct LastFactorParams*)params;
-  if (params_ptr->child_dims)
-    free(params_ptr->child_dims);
-  
   free(params);
 }
 
-void chol_decomp(void* params_ptr) {
+void chol_decomp(void* params_ptr, const struct CellComm* comm) {
   struct LastFactorParams* params = (struct LastFactorParams*)params_ptr;
   double* A = params->A_ptr;
-  int64_t Nblocks = params->L_child;
-  int64_t block_dim = params->N_lower;
-  const int64_t* dims = params->child_dims;
-  int64_t lda = Nblocks * block_dim;
-  int64_t alen = lda * lda;
+  int64_t N = params->N_A;
+  int64_t alen = N * N;
 
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
-  if (params->comm_merge != MPI_COMM_NULL)
-    MPI_Allreduce(MPI_IN_PLACE, params->A_ptr, alen, MPI_DOUBLE, MPI_SUM, params->comm_merge);
-  if (params->comm_share != MPI_COMM_NULL)
-    MPI_Bcast(params->A_ptr, alen, MPI_DOUBLE, 0, params->comm_share);
+  level_merge_cpu(params->A_ptr, alen, comm);
+  dup_bcast_cpu(params->A_ptr, alen, comm);
 #ifdef _PROF
   double etime = MPI_Wtime() - stime;
   recordCommTime(etime);
 #endif
-
-  int64_t row = 0;
-  for (int64_t i = 0; i < Nblocks; i++) {
-    int64_t Arow = i * block_dim;
-    if (row < Arow)
-      for (int64_t j = 0; j < dims[i]; j++) {
-        int64_t rj = row + j;
-        int64_t arj = Arow + j;
-        cblas_dswap(lda - rj, &A[rj * (lda + 1)], 1, &A[arj * lda + rj], 1);
-        cblas_dswap(rj + 1, &A[rj], lda, &A[arj], lda);
-      }
-    row = row + dims[i];
-  }
-  LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', row, A, lda);
+  LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', N, A, N);
 }

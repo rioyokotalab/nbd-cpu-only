@@ -54,9 +54,6 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       basis[l].Lchild[i] = std::get<0>(comm[l].LocalChild[i]);
       basis[l].Dims[i] = cell_basis[ci].M;
       basis[l].DimsLr[i] = cell_basis[ci].N;
-      basis[l].Uo[i] = (struct Matrix) { cell_basis[ci].Uo, cell_basis[ci].M, cell_basis[ci].N, cell_basis[ci].M };
-      basis[l].Uc[i] = (struct Matrix) { cell_basis[ci].Uc, cell_basis[ci].M, cell_basis[ci].M - cell_basis[ci].N, cell_basis[ci].M };
-      basis[l].R[i] = (struct Matrix) { cell_basis[ci].R, cell_basis[ci].N, cell_basis[ci].N, cell_basis[ci].N };
       basis[l].Multipoles[i] = cell_basis[ci].Multipoles;
 
       dimSmax[l] = std::max(dimSmax[l], basis[l].DimsLr[i]);
@@ -83,6 +80,9 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     if (cudaMalloc(&basis[l].R_gpu, sizeof(double) * stride_r * basis[l].Ulen) != cudaSuccess)
       basis[l].R_gpu = NULL;
 
+    int64_t lbegin = 0, lend = ncells;
+    get_level(&lbegin, &lend, cells, l, -1);
+
     for (int64_t i = 0; i < basis[l].Ulen; i++) {
       double* Uc_ptr = basis[l].U_cpu + i * stride;
       double* Uo_ptr = Uc_ptr + basis[l].dimR * basis[l].dimN;
@@ -90,7 +90,15 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
 
       int64_t Nc = basis[l].Dims[i] - basis[l].DimsLr[i];
       int64_t No = basis[l].DimsLr[i];
-      memcpy2d(R_ptr, basis[l].R[i].A, No, No, basis[l].dimS, basis[l].R[i].LDA, sizeof(double));
+      basis[l].Uo[i] = (struct Matrix) { Uo_ptr, basis[l].dimN, basis[l].dimS, basis[l].dimN };
+      basis[l].Uc[i] = (struct Matrix) { Uc_ptr, basis[l].dimN, basis[l].dimR, basis[l].dimN };
+      basis[l].R[i] = (struct Matrix) { R_ptr, No, No, basis[l].dimS };
+
+      int64_t gi = i;
+      i_global(&gi, &comm[l]);
+      int64_t ci = lbegin + gi;
+
+      memcpy2d(R_ptr, cell_basis[ci].R, No, No, basis[l].dimS, No, sizeof(double));
 
       int64_t child = std::get<0>(comm[l].LocalChild[i]);
       int64_t clen = std::get<1>(comm[l].LocalChild[i]);
@@ -100,8 +108,8 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
         for (int64_t j = 0; j < clen; j++) {
           int64_t M = basis[l + 1].DimsLr[child + j];
           int64_t Urow = j * basis[l + 1].dimS;
-          memcpy2d(&Uc_ptr[Urow], &basis[l].Uc[i].A[row], M, Nc, LD, basis[l].Uc[i].LDA, sizeof(double));
-          memcpy2d(&Uo_ptr[Urow], &basis[l].Uo[i].A[row], M, No, LD, basis[l].Uo[i].LDA, sizeof(double));
+          memcpy2d(&Uc_ptr[Urow], &cell_basis[ci].Uc[row], M, Nc, LD, Nc + No, sizeof(double));
+          memcpy2d(&Uo_ptr[Urow], &cell_basis[ci].Uo[row], M, No, LD, Nc + No, sizeof(double));
 
           randomize2d(&Uc_ptr[Urow + M + Nc * LD], basis[l + 1].dimS - M, basis[l].dimR - Nc, LD);
           randomize2d(&Uo_ptr[Urow + M + No * LD], basis[l + 1].dimS - M, basis[l].dimS - No, LD);
@@ -114,8 +122,8 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       }
       else {
         int64_t M = basis[l].Dims[i];
-        memcpy2d(Uc_ptr, basis[l].Uc[i].A, M, Nc, LD, basis[l].Uc[i].LDA, sizeof(double));
-        memcpy2d(Uo_ptr, basis[l].Uo[i].A, M, No, LD, basis[l].Uo[i].LDA, sizeof(double));
+        memcpy2d(Uc_ptr, cell_basis[ci].Uc, M, Nc, LD, Nc + No, sizeof(double));
+        memcpy2d(Uo_ptr, cell_basis[ci].Uo, M, No, LD, Nc + No, sizeof(double));
 
         randomize2d(&Uc_ptr[M + Nc * LD], LD - M, basis[l].dimR - Nc, LD);
         randomize2d(&Uo_ptr[M + No * LD], LD - M, basis[l].dimS - No, LD);
@@ -243,30 +251,22 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
   for (int64_t i = 1; i <= levels; i++) {
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
-    int64_t llen = basis[i].Ulen;
     int64_t nnz = A[i].lenA;
     int64_t dimc = basis[i].dimR;
     int64_t dimr = basis[i].dimS;
 
     double** A_next = (double**)malloc(sizeof(double*) * nnz);
-    int64_t* dimc_lis = (int64_t*)malloc(sizeof(int64_t) * llen);
     int64_t n_next = basis[i - 1].dimR + basis[i - 1].dimS;
 
     for (int64_t x = 0; x < nnz; x++)
       A_next[x] = A[i - 1].A_ptr + (A[i].A_oo[x].A - A[i - 1].A_buf);
-    for (int64_t x = 0; x < llen; x++)
-      dimc_lis[x] = basis[i].Dims[x] - basis[i].DimsLr[x];
 
     batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_cpu, A[i].A_ptr, n_next, A_next, *Workspace, *Lwork,
-      rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex, dimc_lis, comm[i].Comm_merge, comm[i].Comm_share);
+      rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex);
     free(A_next);
-    free(dimc_lis);
   }
 
-  if (levels > 0)
-    lastParamsCreate(&A[0].params, A[0].A_ptr, NCHILD, basis[1].dimS, basis[1].DimsLr, comm[0].Comm_merge, comm[0].Comm_share);
-  else
-    lastParamsCreate(&A[0].params, A[0].A_ptr, 1, basis[0].dimR, basis[0].Dims, comm[0].Comm_merge, comm[0].Comm_share);
+  lastParamsCreate(&A[0].params, A[0].A_ptr, basis[0].dimN);
 }
 
 void node_free(struct Node* node) {
@@ -281,7 +281,7 @@ void node_free(struct Node* node) {
 
 void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels) {
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t stride = (basis[i].dimR + basis[i].dimS) * (basis[i].dimR + basis[i].dimS);
+    int64_t stride = basis[i].dimN * basis[i].dimN;
     flushBuffer(dir, A[i].A_ptr, A[i].A_buf, sizeof(double), stride * A[i].lenA);
   }
 }
@@ -289,7 +289,7 @@ void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64
 void factorA(struct Node A[], const struct Base basis[], const struct CellComm comm[], int64_t levels) {
 
   for (int64_t i = levels; i > 0; i--) {
-    batchCholeskyFactor(A[i].params);
+    batchCholeskyFactor(A[i].params, &comm[i]);
 #ifdef _PROF
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
@@ -297,7 +297,7 @@ void factorA(struct Node A[], const struct Base basis[], const struct CellComm c
     record_factor_flops(basis[i].dimR, basis[i].dimS, nnz, iend - ibegin);
 #endif
   }
-  chol_decomp(A[0].params);
+  chol_decomp(A[0].params, &comm[0]);
 #ifdef _PROF
   record_factor_flops(0, basis[0].dimR, 1, 1);
 #endif
@@ -317,28 +317,19 @@ void allocRightHandSidesSV(struct RightHandSides rhs[], const struct Base base[]
     int64_t len_data = len * (base[l].dimN + base[l].dimR * 2);
     double* data = (double*)calloc(len_data, sizeof(double));
     for (int64_t i = 0; i < len; i++) {
-      int64_t dim = base[l].Dims[i];
-      int64_t diml = base[l].DimsLr[i];
-      int64_t dimc = dim - diml;
-      int64_t dimb = dimc;
-
-      arr_m[i] = (struct Matrix) { &data[i * base[l].dimN], dim, 1, dim }; // X
-      arr_m[i + len] = (struct Matrix) { &data[len * base[l].dimN + i * base[l].dimR], dimb, 1, dimb }; // B
-      arr_m[i + len * 2] = (struct Matrix) { NULL, diml, 1, diml }; // Xo
-      arr_m[i + len * 3] = (struct Matrix) { &data[len * (base[l].dimR + base[l].dimN) + i * base[l].dimR], dimc, 1, dimc }; // Xc
+      arr_m[i] = (struct Matrix) { &data[i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // X
+      arr_m[i + len] = (struct Matrix) { &data[len * base[l].dimN + i * base[l].dimR], base[l].dimR, 1, base[l].dimR }; // B
+      arr_m[i + len * 2] = (struct Matrix) { NULL, base[l].dimS, 1, base[l].dimS }; // Xo
+      arr_m[i + len * 3] = (struct Matrix) { &data[len * (base[l].dimR + base[l].dimN) + i * base[l].dimR], base[l].dimR, 1, base[l].dimR }; // Xc
     }
 
     for (int64_t i = 0; i < len; i++) {
       int64_t child = std::get<0>(comm[l].LocalChild[i]);
       int64_t clen = std::get<1>(comm[l].LocalChild[i]);
       
-      if (child >= 0 && l < levels) {
-        int64_t row = 0;
-        for (int64_t j = 0; j < clen; j++) {
-          rhs[l + 1].Xo[child + j].A = &rhs[l].X[i].A[row];
-          row = row + base[l + 1].DimsLr[child + j];
-        }
-      }
+      if (child >= 0 && l < levels)
+        for (int64_t j = 0; j < clen; j++)
+          rhs[l + 1].Xo[child + j].A = &rhs[l].X[i].A[j * base[l + 1].dimS];
     }
   }
 }
@@ -357,29 +348,21 @@ void allocRightHandSidesMV(struct RightHandSides rhs[], const struct Base base[]
     int64_t len_data = len * base[l].dimN * 2;
     double* data = (double*)calloc(len_data, sizeof(double));
     for (int64_t i = 0; i < len; i++) {
-      int64_t dim = base[l].Dims[i];
-      int64_t diml = base[l].DimsLr[i];
-      int64_t dimc = diml;
-      int64_t dimb = dim;
-
-      arr_m[i] = (struct Matrix) { &data[i * base[l].dimN], dim, 1, dim }; // X
-      arr_m[i + len] = (struct Matrix) { &data[len * base[l].dimN + i * base[l].dimN], dimb, 1, dimb }; // B
-      arr_m[i + len * 2] = (struct Matrix) { NULL, diml, 1, diml }; // Xo
-      arr_m[i + len * 3] = (struct Matrix) { NULL, dimc, 1, dimc }; // Xc
+      arr_m[i] = (struct Matrix) { &data[i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // X
+      arr_m[i + len] = (struct Matrix) { &data[len * base[l].dimN + i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // B
+      arr_m[i + len * 2] = (struct Matrix) { NULL, base[l].dimS, 1, base[l].dimS }; // Xo
+      arr_m[i + len * 3] = (struct Matrix) { NULL, base[l].dimS, 1, base[l].dimS }; // Xc
     }
 
     for (int64_t i = 0; i < len; i++) {
       int64_t child = std::get<0>(comm[l].LocalChild[i]);
       int64_t clen = std::get<1>(comm[l].LocalChild[i]);
       
-      if (child >= 0 && l < levels) {
-        int64_t row = 0;
+      if (child >= 0 && l < levels)
         for (int64_t j = 0; j < clen; j++) {
-          rhs[l + 1].Xo[child + j].A = &rhs[l].X[i].A[row];
-          rhs[l + 1].Xc[child + j].A = &rhs[l].B[i].A[row];
-          row = row + base[l + 1].DimsLr[child + j];
+          rhs[l + 1].Xo[child + j].A = &rhs[l].X[i].A[j * base[l + 1].dimS];
+          rhs[l + 1].Xc[child + j].A = &rhs[l].B[i].A[j * base[l + 1].dimS];
         }
-      }
     }
   }
 }
@@ -441,7 +424,9 @@ void solveA(struct RightHandSides rhs[], const struct Node A[], const struct Bas
 
   level_merge_cpu(rhs[0].X[0].A, basis[0].dimN, &comm[0]);
   dup_bcast_cpu(rhs[0].X[0].A, basis[0].dimN, &comm[0]);
-  mat_solve('A', &rhs[0].X[0], &A[0].A[0]);
+  struct Matrix lastA = (struct Matrix) { A[0].A[0].A, basis[0].dimN, basis[0].dimN, basis[0].dimN };
+  struct Matrix lastX = (struct Matrix) { rhs[0].X[0].A, basis[0].dimN, 1, basis[0].dimN };
+  mat_solve('A', &lastX, &lastA);
   
   for (int64_t i = 1; i <= levels; i++) {
     int64_t ibegin = 0, iend = 0;

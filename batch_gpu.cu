@@ -19,7 +19,6 @@
 extern cudaStream_t stream;
 extern cublasHandle_t cublasH;
 extern cusolverDnHandle_t cusolverH;
-extern curandGenerator_t curandH;
 
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {
   if (Lwork > *D_DATA_SIZE) {
@@ -56,15 +55,14 @@ void freeBufferedList(void* A_ptr, void* A_buffer) {
 }
 
 struct BatchedFactorParams {
-  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_fill, L_tmp, *F_d;
+  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_tmp;
   const double** A_d, **U_d, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_d0;
   double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
   int* info;
-  ncclComm_t comm_merge, comm_share;
 };
 
 void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
-  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[], const int64_t dimr[], MPI_Comm merge, MPI_Comm share) {
+  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]) {
   
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
@@ -91,8 +89,6 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   double* _UD_data = Workspace;
   double* _B_data = &Workspace[N_cols * stride];
   const double* _U_d0 = U_ptr + stride * col_offset;
-  int64_t* _F_d = (int64_t*)malloc(sizeof(int64_t) * N_cols * R_dim);
-  int64_t _F_len = 0;
 
   for (int64_t x = 0; x < N_cols; x++) {
     int64_t diag_id = 0;
@@ -112,12 +108,6 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
     _A_rs[x] = A_ptr + stride * diag_id + R_dim;
     _U_dx[x] = _UD_data + stride * x;
     _A_ss[x] = A_up[diag_id];
-
-    int64_t dimc = dimr[x + col_offset];
-    int64_t fill_new = R_dim - dimc;
-    for (int64_t i = 0; i < fill_new; i++)
-      _F_d[_F_len + i] = x * stride + (N_dim + 1) * (dimc + i);
-    _F_len = _F_len + fill_new;
   }
 
   for (int64_t x = 0; x < lenB; x++) {
@@ -131,9 +121,7 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   params_ptr->N_upper = N_up;
   params_ptr->L_diag = N_cols;
   params_ptr->L_nnz = NNZ;
-  params_ptr->L_fill = _F_len;
   params_ptr->L_tmp = lenB;
-  cudaMalloc((void**)&(params_ptr->F_d), sizeof(int64_t) * N_cols * R_dim);
 
   cudaMalloc((void**)&(params_ptr->A_d), sizeof(double*) * N_cols);
   cudaMalloc((void**)&(params_ptr->U_d), sizeof(double*) * N_cols);
@@ -157,7 +145,6 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   cudaMalloc((void**)&(params_ptr->info), sizeof(int) * N_cols);
   *params = params_ptr;
 
-  cudaMemcpy(params_ptr->F_d, _F_d, sizeof(int64_t) * N_cols * R_dim, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->A_d, _A_d, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->U_d, _U_d, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->U_r, _U_r, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
@@ -172,36 +159,6 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
   cudaMemcpy(params_ptr->A_ss, _A_ss, sizeof(double*) * N_cols, cudaMemcpyHostToDevice);
   cudaMemcpy(params_ptr->A_upper, _A_upper, sizeof(double*) * NNZ, cudaMemcpyHostToDevice);
 
-  params_ptr->comm_merge = NULL;
-  params_ptr->comm_share = NULL;
-
-  if (merge != MPI_COMM_NULL) {
-    int rank, size;
-    MPI_Comm_rank(merge, &rank);
-    MPI_Comm_size(merge, &size);
-
-    ncclUniqueId id;
-    if (rank == 0) 
-      ncclGetUniqueId(&id);
-
-    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, merge);
-    ncclCommInitRank(&params_ptr->comm_merge, size, id, rank);
-  }
-
-  if (share != MPI_COMM_NULL) {
-    int rank, size;
-    MPI_Comm_rank(share, &rank);
-    MPI_Comm_size(share, &size);
-
-    ncclUniqueId id;
-    if (rank == 0) 
-      ncclGetUniqueId(&id);
-
-    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, share);
-    ncclCommInitRank(&params_ptr->comm_share, size, id, rank);
-  }
-
-  free(_F_d);
   free(_A_d);
   free(_U_d);
   free(_U_r);
@@ -218,8 +175,6 @@ void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double
 
 void batchParamsDestory(void* params) {
   struct BatchedFactorParams* params_ptr = (struct BatchedFactorParams*)params;
-  if (params_ptr->F_d)
-    cudaFree(params_ptr->F_d);
   if (params_ptr->A_d)
     cudaFree(params_ptr->A_d);
   if (params_ptr->U_d)
@@ -246,15 +201,11 @@ void batchParamsDestory(void* params) {
     cudaFree(params_ptr->A_upper);
   if (params_ptr->info)
     cudaFree(params_ptr->info);
-  if (params_ptr->comm_merge)
-    ncclCommDestroy(params_ptr->comm_merge);
-  if (params_ptr->comm_share)
-    ncclCommDestroy(params_ptr->comm_share);
 
   free(params);
 }
 
-void batchCholeskyFactor(void* params_ptr) {
+void batchCholeskyFactor(void* params_ptr, const struct CellComm* comm) {
   struct BatchedFactorParams* params = (struct BatchedFactorParams*)params_ptr;
   int64_t U = params->N_upper, R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag;
   int64_t alen = N * N * params->L_nnz;
@@ -263,10 +214,8 @@ void batchCholeskyFactor(void* params_ptr) {
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
-  if (params->comm_merge)
-    ncclAllReduce((const void*)params->A_data, (void*)params->A_data, alen, ncclDouble, ncclSum, params->comm_merge, stream);
-  if (params->comm_share)
-    ncclBroadcast((const void*)params->A_data, (void*)params->A_data, alen, ncclDouble, 0, params->comm_share, stream);
+  level_merge_gpu(params->A_data, alen, stream, comm);
+  dup_bcast_gpu(params->A_data, alen, stream, comm);
 #ifdef _PROF
   cudaStreamSynchronize(stream);
   double etime = MPI_Wtime() - stime;
@@ -278,8 +227,6 @@ void batchCholeskyFactor(void* params_ptr) {
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, R, N, &one, 
     params->U_d, N, (const double**)(params->U_dx), N, &zero, params->B_x, N, D);
   cublasDcopy(cublasH, N * N * D, params->U_d0, 1, params->UD_data, 1);
-  //thrust::fill(thrust::cuda::par.on(stream), thrust::make_permutation_iterator(params->B_data, params->F_d), 
-    //thrust::make_permutation_iterator(params->B_data, params->F_d + params->L_fill), 1.);
 
   cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R, params->B_x, N, params->info, D);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
@@ -301,113 +248,51 @@ void batchCholeskyFactor(void* params_ptr) {
 }
 
 struct LastFactorParams {
-  double* A_ptr, *Workspace;
-  int64_t L_child, N_lower, *child_dims;
+  double *A_ptr, *Workspace;
+  int64_t N_A;
   int Lwork, *info;
-  ncclComm_t comm_merge, comm_share;
 };
 
-void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[], MPI_Comm merge, MPI_Comm share) {
+void lastParamsCreate(void** params, double* A, int64_t N) {
   struct LastFactorParams* params_ptr = (struct LastFactorParams*)malloc(sizeof(struct LastFactorParams));
   *params = params_ptr;
 
   params_ptr->A_ptr = A;
-  params_ptr->L_child = Nblocks;
-  params_ptr->N_lower = block_dim;
-  params_ptr->child_dims = (int64_t*)malloc(sizeof(int64_t) * Nblocks);
+  params_ptr->N_A = N;
 
-  int64_t sum = 0;
-  for (int64_t i = 0; i < Nblocks; i++) {
-    params_ptr->child_dims[i] = dims[i];
-    sum = sum + dims[i];
-  }
-
-  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, sum, A, Nblocks * block_dim, &params_ptr->Lwork);
+  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, &params_ptr->Lwork);
   cudaMalloc((void**)&params_ptr->Workspace, sizeof(double) * params_ptr->Lwork);
   cudaMalloc((void**)&params_ptr->info, sizeof(int));
-  
-  params_ptr->comm_merge = NULL;
-  params_ptr->comm_share = NULL;
-
-  if (merge != MPI_COMM_NULL) {
-    int rank, size;
-    MPI_Comm_rank(merge, &rank);
-    MPI_Comm_size(merge, &size);
-
-    ncclUniqueId id;
-    if (rank == 0) 
-      ncclGetUniqueId(&id);
-
-    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, merge);
-    ncclCommInitRank(&params_ptr->comm_merge, size, id, rank);
-  }
-
-  if (share != MPI_COMM_NULL) {
-    int rank, size;
-    MPI_Comm_rank(share, &rank);
-    MPI_Comm_size(share, &size);
-
-    ncclUniqueId id;
-    if (rank == 0) 
-      ncclGetUniqueId(&id);
-
-    MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, share);
-    ncclCommInitRank(&params_ptr->comm_share, size, id, rank);
-  }
 }
 
 void lastParamsDestory(void* params) {
   struct LastFactorParams* params_ptr = (struct LastFactorParams*)params;
-  if (params_ptr->child_dims)
-    free(params_ptr->child_dims);
   if (params_ptr->Workspace)
     cudaFree(params_ptr->Workspace);
   if (params_ptr->info)
     cudaFree(params_ptr->info);
-  if (params_ptr->comm_merge)
-    ncclCommDestroy(params_ptr->comm_merge);
-  if (params_ptr->comm_share)
-    ncclCommDestroy(params_ptr->comm_share);
   
   free(params);
 }
 
-void chol_decomp(void* params_ptr) {
+void chol_decomp(void* params_ptr, const struct CellComm* comm) {
   struct LastFactorParams* params = (struct LastFactorParams*)params_ptr;
   double* A = params->A_ptr;
-  int64_t Nblocks = params->L_child;
-  int64_t block_dim = params->N_lower;
-  const int64_t* dims = params->child_dims;
-  int64_t lda = Nblocks * block_dim;
-  int64_t alen = lda * lda;
+  int64_t N = params->N_A;
+  int64_t alen = N * N;
 
 #ifdef _PROF
   double stime = MPI_Wtime();
 #endif
-  if (params->comm_merge)
-    ncclAllReduce((const void*)params->A_ptr, (void*)params->A_ptr, alen, ncclDouble, ncclSum, params->comm_merge, stream);
-  if (params->comm_share)
-    ncclBroadcast((const void*)params->A_ptr, (void*)params->A_ptr, alen, ncclDouble, 0, params->comm_share, stream);
+  level_merge_gpu(params->A_ptr, alen, stream, comm);
+  dup_bcast_gpu(params->A_ptr, alen, stream, comm);
 #ifdef _PROF
   cudaStreamSynchronize(stream);
   double etime = MPI_Wtime() - stime;
   recordCommTime(etime);
 #endif
 
-  int64_t row = 0;
-  for (int64_t i = 0; i < Nblocks; i++) {
-    int64_t Arow = i * block_dim;
-    if (row < Arow)
-      for (int64_t j = 0; j < dims[i]; j++) {
-        int64_t rj = row + j;
-        int64_t arj = Arow + j;
-        cublasDswap(cublasH, lda - rj, &A[rj * (lda + 1)], 1, &A[arj * lda + rj], 1);
-        cublasDswap(cublasH, rj + 1, &A[rj], lda, &A[arj], lda);
-      }
-    row = row + dims[i];
-  }
-
-  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, row, A, lda, params->Workspace, params->Lwork, params->info);
+  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, params->Workspace, params->Lwork, params->info);
   cudaStreamSynchronize(stream);
 }
 
