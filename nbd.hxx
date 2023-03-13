@@ -34,12 +34,11 @@ int init_libs(int* argc, char*** argv);
 void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
-void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_gpu, double* A_ptr, int64_t N_up, double** A_up, double* Workspace, int64_t Lwork,
-  int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]);
+void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
+  double* Workspace, int64_t Lwork, int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]);
 void batchParamsDestory(void* params);
 
-void lastParamsCreate(void** params, double* A, int64_t N);
-void lastParamsCreate(void** params, double* A, int64_t Nblocks, int64_t block_dim, const int64_t dims[], MPI_Comm merge, MPI_Comm share);
+void lastParamsCreate(void** params, double* A, double* X, int64_t N);
 void lastParamsDestory(void* params);
 
 void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int64_t count);
@@ -47,7 +46,10 @@ void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, in
 void freeBufferedList(void* A_ptr, void* A_buffer);
 
 void batchCholeskyFactor(void* params, const struct CellComm* comm);
+void batchForwardULV(void* params_ptr, const struct CellComm* comm);
+void batchBackwardULV(void* params_ptr, const struct CellComm* comm);
 void chol_decomp(void* params, const struct CellComm* comm);
+void chol_solve(void* params_ptr, const struct CellComm* comm);
 
 struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
@@ -59,7 +61,7 @@ struct Base {
   double *U_gpu, *U_cpu, *R_gpu, *R_cpu; 
 };
 
-struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf; void* params; };
+struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf, *X_ptr, *X_buf; void* params; };
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo, *B; };
 
 void laplace3d(double* r2);
@@ -133,7 +135,7 @@ void allocRightHandSidesMV(struct RightHandSides st[], const struct Base base[],
 
 void rightHandSides_free(struct RightHandSides* rhs);
 
-void solveA(struct RightHandSides st[], const struct Node A[], const struct Base B[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels);
+void solveA(struct RightHandSides st[], struct Node A[], const struct Base B[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels);
 
 void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], double* X, const struct CellComm comm[], int64_t levels);
 
