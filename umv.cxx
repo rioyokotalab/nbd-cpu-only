@@ -263,7 +263,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
           X_next[child + j] = &A[i - 1].X_ptr[j * basis[i].dimS + x * n_next];
     }
 
-    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_cpu, A[i].A_ptr, A[i].X_ptr, n_next, A_next, X_next,
+    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, A_next, X_next,
       *Workspace, *Lwork, basis[i].Ulen, rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex);
     free(A_next);
     free(X_next);
@@ -385,7 +385,7 @@ void solveA(struct RightHandSides rhs[], struct Node A[], const struct Base basi
   for (int64_t i = 0; i < (lend - lbegin); i++) {
     int64_t m = basis[levels].Dims[i + lbegin];
     //memcpy(rhs[levels].X[lbegin + i].A, &X[row], m * sizeof(double));
-    memcpy(&A[levels].X_ptr[(i + lbegin) * basis[levels].dimN], &X[row], m * sizeof(double));
+    cudaMemcpy(&A[levels].X_ptr[(i + lbegin) * basis[levels].dimN], &X[row], m * sizeof(double), cudaMemcpyHostToDevice);
     row = row + m;
   }
 
@@ -479,7 +479,7 @@ void solveA(struct RightHandSides rhs[], struct Node A[], const struct Base basi
   for (int64_t i = 0; i < (lend - lbegin); i++) {
     int64_t m = basis[levels].Dims[i + lbegin];
     //memcpy(&X[row], rhs[levels].X[lbegin + i].A, m * sizeof(double));
-    memcpy(&X[row], &A[levels].X_ptr[(i + lbegin) * basis[levels].dimN], m * sizeof(double));
+    cudaMemcpy(&X[row], &A[levels].X_ptr[(i + lbegin) * basis[levels].dimN], m * sizeof(double), cudaMemcpyDeviceToHost);
     row = row + m;
   }
 }

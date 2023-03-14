@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.18)
 
 set(CMAKE_CXX_COMPILER "g++")
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS "-O3 -m64 -Wall -Wextra")
 
 project ("shimo" LANGUAGES CXX CUDA)

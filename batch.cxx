@@ -328,9 +328,9 @@ void batchForwardULV(void* params_ptr, const struct CellComm* comm) {
 #endif
 
   cblas_dtrsm_batch(CblasColMajor, &left, &lower, &no_trans, &non_unit, &R, &ONE, &one, 
-    params->A_d, &N, params->Xc_d, &N, 1, &D);
+    params->A_d, &N, params->Xc_d, &R, 1, &D);
   for (int64_t i = 0; i < params->L_nnz; i++)
-    cblas_dgemm(CblasColMajor, no_trans, no_trans, S, ONE, R, minus_one, params->A_sr[i], N, params->Xc_x[i], R, one, params->Xo_y[i], R);
+    cblas_dgemm(CblasColMajor, no_trans, no_trans, S, ONE, R, minus_one, params->A_sr[i], N, params->Xc_x[i], R, one, params->Xo_y[i], S);
 }
 
 void batchBackwardULV(void* params_ptr, const struct CellComm* comm) {
@@ -350,7 +350,7 @@ void batchBackwardULV(void* params_ptr, const struct CellComm* comm) {
   MKL_INT ONE = 1;
 
   for (int64_t i = 0; i < params->L_nnz; i++)
-    cblas_dgemm(CblasColMajor, trans, no_trans, R, ONE, S, minus_one, params->A_sr[i], N, params->Xo_y[i], R, one, params->Xc_x[i], R);
+    cblas_dgemm(CblasColMajor, trans, no_trans, R, ONE, S, minus_one, params->A_sr[i], N, params->Xo_y[i], S, one, params->Xc_x[i], R);
   cblas_dcopy(R * D, params->Xc_d[0], 1, params->B_d[0], 1);
   cblas_dtrsm_batch(CblasColMajor, &left, &lower, &trans, &non_unit, &R, &ONE, &one, 
     params->A_d, &N, params->Xc_d, &R, 1, &D);
