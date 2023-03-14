@@ -21,7 +21,7 @@ target_compile_options(lorasp PRIVATE -D_PROF)
 target_include_directories(lorasp PRIVATE ./)
 target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
 
-add_executable(gpu lorasp.cxx kernel.cxx linalg.cxx comm.cxx batch_gpu.cu build_tree.cxx umv.cxx profile.cxx)
+add_executable(gpu lorasp.cxx kernel.cxx linalg.cxx comm.cxx batch_gpu.cxx build_tree.cxx umv.cxx profile.cxx)
 target_compile_options(gpu PRIVATE -D_PROF)
 target_include_directories(gpu PRIVATE ./)
 target_link_libraries(gpu MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
