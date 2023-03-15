@@ -23,7 +23,7 @@ void randomize2d(double* dst, int64_t rows, int64_t cols, int64_t ld) {
       dst[i + j * ld] = ((double)std::rand() + 1) / RAND_MAX;
 }
 
-void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
+void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, const double* bodies, int64_t levels, const struct CellComm* comm) {
   std::vector<int64_t> dimSmax(levels + 1, 0);
   std::vector<int64_t> dimRmax(levels + 1, 0);
   std::vector<int64_t> nchild(levels + 1, 0);
@@ -41,7 +41,6 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     basis[l].Uo = arr_m;
     basis[l].Uc = &arr_m[xlen];
     basis[l].R = &arr_m[xlen * 2];
-    basis[l].Multipoles = (int64_t**)malloc(sizeof(int64_t*) * xlen);
 
     int64_t lbegin = 0, lend = ncells;
     get_level(&lbegin, &lend, cells, l, -1);
@@ -52,7 +51,6 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       int64_t ci = lbegin + gi;
       basis[l].Dims[i] = cell_basis[ci].M;
       basis[l].DimsLr[i] = cell_basis[ci].N;
-      basis[l].Multipoles[i] = cell_basis[ci].Multipoles;
 
       dimSmax[l] = std::max(dimSmax[l], basis[l].DimsLr[i]);
       dimRmax[l] = std::max(dimRmax[l], basis[l].Dims[i] - basis[l].DimsLr[i]);
@@ -71,8 +69,11 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     int64_t stride_r = basis[l].dimS * basis[l].dimS;
     int64_t LD = basis[l].dimN;
 
+    basis[l].M_cpu = (double*)calloc(basis[l].dimS * basis[l].Ulen * 3, sizeof(double));
     basis[l].U_cpu = (double*)calloc(stride * basis[l].Ulen, sizeof(double));
     basis[l].R_cpu = (double*)calloc(stride_r * basis[l].Ulen, sizeof(double));
+    if (cudaMalloc(&basis[l].M_gpu, sizeof(double) * basis[l].dimS * basis[l].Ulen * 3) != cudaSuccess)
+      basis[l].M_gpu = NULL;
     if (cudaMalloc(&basis[l].U_gpu, sizeof(double) * stride * basis[l].Ulen) != cudaSuccess)
       basis[l].U_gpu = NULL;
     if (cudaMalloc(&basis[l].R_gpu, sizeof(double) * stride_r * basis[l].Ulen) != cudaSuccess)
@@ -82,6 +83,7 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     get_level(&lbegin, &lend, cells, l, -1);
 
     for (int64_t i = 0; i < basis[l].Ulen; i++) {
+      double* M_ptr = basis[l].M_cpu + i * basis[l].dimS * 3;
       double* Uc_ptr = basis[l].U_cpu + i * stride;
       double* Uo_ptr = Uc_ptr + basis[l].dimR * basis[l].dimN;
       double* R_ptr = basis[l].R_cpu + i * stride_r;
@@ -96,6 +98,11 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       i_global(&gi, &comm[l]);
       int64_t ci = lbegin + gi;
 
+      for (int64_t j = 0; j < No; j++) {
+        int64_t M = cell_basis[ci].Multipoles[j];
+        for (int64_t k = 0; k < 3; k++)
+          M_ptr[j * 3 + k] = bodies[M * 3 + k];
+      }
       memcpy2d(R_ptr, cell_basis[ci].R, No, No, basis[l].dimS, No, sizeof(double));
 
       int64_t child = std::get<0>(comm[l].LocalChild[i]);
@@ -128,6 +135,8 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       }
     }
 
+    if (basis[l].M_gpu)
+      cudaMemcpy(basis[l].M_gpu, basis[l].M_cpu, sizeof(double) * basis[l].dimS * basis[l].Ulen * 3, cudaMemcpyHostToDevice);
     if (basis[l].U_gpu)
       cudaMemcpy(basis[l].U_gpu, basis[l].U_cpu, sizeof(double) * stride * basis[l].Ulen, cudaMemcpyHostToDevice);
     if (basis[l].R_gpu)
@@ -136,9 +145,12 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
 }
 
 void basis_free(struct Base* basis) {
-  free(basis->Multipoles);
   free(basis->Dims);
   free(basis->Uo);
+  if (basis->M_cpu)
+    free(basis->M_cpu);
+  if (basis->M_gpu)
+    cudaFree(basis->M_gpu);
   if (basis->U_cpu)
     free(basis->U_cpu);
   if (basis->U_gpu)
@@ -307,37 +319,6 @@ void factorA(struct Node A[], const struct Base basis[], const struct CellComm c
 #endif
 }
 
-void allocRightHandSidesSV(struct RightHandSides rhs[], const struct Base base[], const struct CellComm comm[], int64_t levels) {
-  for (int64_t l = levels; l >= 0; l--) {
-    int64_t len = base[l].Ulen;
-    int64_t len_arr = len * 4;
-    struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
-    rhs[l].Xlen = len;
-    rhs[l].X = arr_m;
-    rhs[l].B = &arr_m[len];
-    rhs[l].Xo = &arr_m[len * 2];
-    rhs[l].Xc = &arr_m[len * 3];
-
-    int64_t len_data = len * (base[l].dimN + base[l].dimR * 2);
-    double* data = (double*)calloc(len_data, sizeof(double));
-    for (int64_t i = 0; i < len; i++) {
-      arr_m[i] = (struct Matrix) { &data[i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // X
-      arr_m[i + len] = (struct Matrix) { &data[len * base[l].dimN + i * base[l].dimR], base[l].dimR, 1, base[l].dimR }; // B
-      arr_m[i + len * 2] = (struct Matrix) { NULL, base[l].dimS, 1, base[l].dimS }; // Xo
-      arr_m[i + len * 3] = (struct Matrix) { &data[len * (base[l].dimR + base[l].dimN) + i * base[l].dimR], base[l].dimR, 1, base[l].dimR }; // Xc
-    }
-
-    for (int64_t i = 0; i < len; i++) {
-      int64_t child = std::get<0>(comm[l].LocalChild[i]);
-      int64_t clen = std::get<1>(comm[l].LocalChild[i]);
-      
-      if (child >= 0 && l < levels)
-        for (int64_t j = 0; j < clen; j++)
-          rhs[l + 1].Xo[child + j].A = &rhs[l].X[i].A[j * base[l + 1].dimS];
-    }
-  }
-}
-
 void allocRightHandSidesMV(struct RightHandSides rhs[], const struct Base base[], const struct CellComm comm[], int64_t levels) {
   for (int64_t l = levels; l >= 0; l--) {
     int64_t len = base[l].Ulen;
@@ -378,122 +359,10 @@ void rightHandSides_free(struct RightHandSides* rhs) {
   free(rhs->X);
 }
 
-void solveA(struct RightHandSides rhs[], struct Node A[], const struct Base basis[], const struct CSC rels[], double* X, const struct CellComm comm[], int64_t levels) {
-  int64_t lbegin = 0, lend = 0;
-  self_local_range(&lbegin, &lend, &comm[levels]);
-  int64_t row = 0;
-  for (int64_t i = 0; i < (lend - lbegin); i++) {
-    int64_t m = basis[levels].Dims[i + lbegin];
-    //memcpy(rhs[levels].X[lbegin + i].A, &X[row], m * sizeof(double));
-    cudaMemcpy(&A[levels].X_ptr[(i + lbegin) * basis[levels].dimN], &X[row], m * sizeof(double), cudaMemcpyHostToDevice);
-    row = row + m;
-  }
-
-  for (int64_t i = levels; i > 0; i--)
-    batchForwardULV(A[i].params, &comm[i]);
-  chol_solve(A[0].params, &comm[0]);
-  for (int64_t i = 1; i <= levels; i++)
-    batchBackwardULV(A[i].params, &comm[i]);
-
-  /*for (int64_t i = levels; i > 0; i--) {
-    int64_t xlen = rhs[i].Xlen;
-    int64_t ibegin = 0, iend = 0;
-    self_local_range(&ibegin, &iend, &comm[i]);
-
-    level_merge_cpu(rhs[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
-    neighbor_reduce_cpu(rhs[i].X[0].A, basis[i].dimN, &comm[i]);
-    dup_bcast_cpu(rhs[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
-
-    for (int64_t x = 0; x < rels[i].N; x++) {
-      mmult('T', 'N', &basis[i].Uc[x + ibegin], &rhs[i].X[x + ibegin], &rhs[i].Xc[x + ibegin], 1., 0.);
-      mmult('T', 'N', &basis[i].Uo[x + ibegin], &rhs[i].X[x + ibegin], &rhs[i].Xo[x + ibegin], 1., 0.);
-      int64_t xx;
-      lookupIJ(&xx, &rels[i], x + ibegin, x);
-      memcpy(rhs[i].B[x + ibegin].A, rhs[i].Xc[x + ibegin].A, sizeof(double) * basis[i].dimR);
-      mat_solve('F', &rhs[i].B[x + ibegin], &A[i].A_cc[xx]);
-    }
-
-    for (int64_t x = 0; x < rels[i].N; x++)
-      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
-        int64_t y = rels[i].RowIndex[yx];
-        if (y > x + ibegin)
-          mmult('N', 'N', &A[i].A_cc[yx], &rhs[i].B[x + ibegin], &rhs[i].Xc[y], -1., 1.);
-      }
-
-    neighbor_reduce_cpu(rhs[i].Xc[0].A, basis[i].dimR, &comm[i]);
-    dup_bcast_cpu(rhs[i].Xc[0].A, xlen * basis[i].dimR, &comm[i]);
-
-    for (int64_t x = 0; x < rels[i].N; x++) {
-      int64_t xx;
-      lookupIJ(&xx, &rels[i], x + ibegin, x);
-      mat_solve('F', &rhs[i].Xc[x + ibegin], &A[i].A_cc[xx]);
-      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
-        int64_t y = rels[i].RowIndex[yx];
-        mmult('N', 'N', &A[i].A_oc[yx], &rhs[i].Xc[x + ibegin], &rhs[i].Xo[y], -1., 1.);
-      }
-    }
-  }
-
-  level_merge_cpu(rhs[0].X[0].A, basis[0].dimN, &comm[0]);
-  dup_bcast_cpu(rhs[0].X[0].A, basis[0].dimN, &comm[0]);
-  mat_solve('A', &rhs[0].X[0], &A[0].A[0]);
-  
-  for (int64_t i = 1; i <= levels; i++) {
-    int64_t ibegin = 0, iend = 0;
-    self_local_range(&ibegin, &iend, &comm[i]);
-    for (int64_t x = 0; x < rels[i].N; x++) {
-      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
-        int64_t y = rels[i].RowIndex[yx];
-        mmult('T', 'N', &A[i].A_oc[yx], &rhs[i].Xo[y], &rhs[i].Xc[x + ibegin], -1., 1.);
-      }
-      int64_t xx;
-      lookupIJ(&xx, &rels[i], x + ibegin, x);
-      memcpy(rhs[i].B[x + ibegin].A, rhs[i].Xc[x + ibegin].A, sizeof(double) * basis[i].dimR);
-      mat_solve('B', &rhs[i].Xc[x + ibegin], &A[i].A_cc[xx]);
-    }
-
-    int64_t xlen = rhs[i].Xlen;
-    neighbor_bcast_cpu(rhs[i].Xc[0].A, basis[i].dimR, &comm[i]);
-    dup_bcast_cpu(rhs[i].Xc[0].A, xlen * basis[i].dimR, &comm[i]);
-
-    for (int64_t x = 0; x < rels[i].N; x++)
-      for (int64_t yx = rels[i].ColIndex[x]; yx < rels[i].ColIndex[x + 1]; yx++) {
-        int64_t y = rels[i].RowIndex[yx];
-        if (y > x + ibegin)
-          mmult('T', 'N', &A[i].A_cc[yx], &rhs[i].Xc[y], &rhs[i].B[x + ibegin], -1., 1.);
-      }
-
-    for (int64_t x = 0; x < rels[i].N; x++) {
-      int64_t xx;
-      lookupIJ(&xx, &rels[i], x + ibegin, x);
-      mat_solve('B', &rhs[i].B[x + ibegin], &A[i].A_cc[xx]);
-      mmult('N', 'N', &basis[i].Uc[x + ibegin], &rhs[i].B[x + ibegin], &rhs[i].X[x + ibegin], 1., 0.);
-      mmult('N', 'N', &basis[i].Uo[x + ibegin], &rhs[i].Xo[x + ibegin], &rhs[i].X[x + ibegin], 1., 1.);
-    }
-
-    neighbor_bcast_cpu(rhs[i].X[0].A, basis[i].dimN, &comm[i]);
-    dup_bcast_cpu(rhs[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
-  }*/
-
-  row = 0;
-  for (int64_t i = 0; i < (lend - lbegin); i++) {
-    int64_t m = basis[levels].Dims[i + lbegin];
-    //memcpy(&X[row], rhs[levels].X[lbegin + i].A, m * sizeof(double));
-    cudaMemcpy(&X[row], &A[levels].X_ptr[(i + lbegin) * basis[levels].dimN], m * sizeof(double), cudaMemcpyDeviceToHost);
-    row = row + m;
-  }
-}
-
 void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], double* X, const struct CellComm comm[], int64_t levels) {
   int64_t lbegin = 0, lend = 0;
   self_local_range(&lbegin, &lend, &comm[levels]);
-
-  int64_t row = 0;
-  for (int64_t i = 0; i < (lend - lbegin); i++) {
-    int64_t m = basis[levels].Dims[i + lbegin];
-    memcpy(rhs[levels].X[lbegin + i].A, &X[row], m * sizeof(double));
-    row = row + m;
-  }
+  memcpy(rhs[levels].X[lbegin].A, X, (lend - lbegin) * basis[levels].dimN * sizeof(double));
 
   for (int64_t i = levels; i > 0; i--) {
     int64_t xlen = rhs[i].Xlen;
@@ -526,13 +395,7 @@ void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Ba
       int64_t x = rels_near[levels].RowIndex[xy];
       mmult('T', 'N', &A[levels].A[xy], &rhs[levels].X[x], &rhs[levels].B[y + lbegin], 1., 1.);
     }
-
-  row = 0;
-  for (int64_t i = 0; i < (lend - lbegin); i++) {
-    int64_t m = basis[levels].Dims[i + lbegin];
-    memcpy(&X[row], rhs[levels].B[lbegin + i].A, m * sizeof(double));
-    row = row + m;
-  }
+  memcpy(X, rhs[levels].B[lbegin].A, (lend - lbegin) * basis[levels].dimN * sizeof(double));
 }
 
 

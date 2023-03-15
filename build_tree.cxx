@@ -575,11 +575,19 @@ void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int
   body[1] = cells[iend - 1].Body[1];
 }
 
-void loadX(double* X, int64_t body[], const double Xbodies[]) {
-  int64_t ibegin = body[0], iend = body[1];
-  int64_t iboxes = iend - ibegin;
-  for (int64_t i = 0; i < iboxes; i++)
-    X[i] = Xbodies[i + ibegin];
+void loadX(double* X, int64_t seg, const double Xbodies[], int64_t ncells, const struct Cell cells[], int64_t levels) {
+  int __mpi_rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
+  int64_t mpi_rank = __mpi_rank;
+  int64_t ibegin = 0, iend = ncells;
+  get_level(&ibegin, &iend, cells, levels, mpi_rank);
+
+  for (int64_t i = 0; i < (iend - ibegin); i++) {
+    int64_t b0 = cells[i + ibegin].Body[0];
+    int64_t b1 = cells[i + ibegin].Body[1];
+    for (int64_t j = 0; j < (b1 - b0); j++)
+      X[i * seg + j] = Xbodies[j + b0];
+  }
 }
 
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm) {
@@ -654,9 +662,10 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
   }
 }
 
-void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const double* bodies, const struct CSC* rels, const struct CellComm* comm) {
+void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
+  int64_t seg = basis->dimS * 3;
 
 #pragma omp parallel for
   for (int64_t x = 0; x < rels->N; x++) {
@@ -665,7 +674,7 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       int64_t m = basis->DimsLr[y];
-      gen_matrix(ef, m, n, bodies, bodies, S[yx].A, S[yx].LDA, basis->Multipoles[y], basis->Multipoles[x + ibegin]);
+      gen_matrix(ef, m, n, &basis->M_cpu[y * seg], &basis->M_cpu[(x + ibegin) * seg], S[yx].A, S[yx].LDA, NULL, NULL);
       upper_tri_reflec_mult('L', 1, &basis->R[y], &S[yx]);
       upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
     }

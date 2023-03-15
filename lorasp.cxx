@@ -54,11 +54,10 @@ int main(int argc, char* argv[]) {
   }
   body_neutral_charge(Xbody, Nbody, 1., 999);
 
-  int64_t body_local[2];
-  local_bodies(body_local, ncells, cell, levels);
-  int64_t lenX = body_local[1] - body_local[0];
+
+  /*int64_t lenX = body_local[1] - body_local[0];
   double* X1 = (double*)malloc(sizeof(double) * lenX);
-  double* X2 = (double*)malloc(sizeof(double) * lenX);
+  double* X2 = (double*)malloc(sizeof(double) * lenX);*/
 
   traverse('N', &cellNear, ncells, cell, theta);
   traverse('F', &cellFar, ncells, cell, theta);
@@ -75,21 +74,25 @@ int main(int argc, char* argv[]) {
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
-  buildBasis(4, basis, ncells, cell, cell_basis, levels, cell_comm);
+  buildBasis(4, basis, ncells, cell, cell_basis, body, levels, cell_comm);
   allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(ef, nodes[levels].A, ncells, cell, body, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++)
-    evalS(ef, nodes[i].S, &basis[i], body, &rels_far[i], &cell_comm[i]);
+    evalS(ef, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
 
-  loadX(X1, body_local, Xbody);
+  int64_t lenX = rels_near[levels].N * basis[levels].dimN;
+  double* X1 = (double*)calloc(lenX, sizeof(double));
+  double* X2 = (double*)calloc(lenX, sizeof(double));
+
+  loadX(X1, basis[levels].dimN, Xbody, ncells, cell, levels);
   allocRightHandSidesMV(rhs, basis, cell_comm, levels);
   matVecA(rhs, nodes, basis, rels_near, rels_far, X1, cell_comm, levels);
-  for (int64_t i = 0; i <= levels; i++)
-    rightHandSides_free(&rhs[i]);
 
   double cerr = 0.;
   if (Nbody < 10000) {
+    int64_t body_local[2];
+    local_bodies(body_local, ncells, cell, levels);
     mat_vec_reference(ef, body_local[0], body_local[1], X2, Nbody, body, Xbody);
     solveRelErr(&cerr, X1, X2, lenX);
   }
@@ -108,14 +111,23 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < 3; i++)
     percent[i] = (double)factor_flops[i] / (double)sum_flops * (double)100;
 
-  allocRightHandSidesSV(rhs, basis, cell_comm, levels);
+  int64_t lbegin = 0, lend = 0;
+  self_local_range(&lbegin, &lend, &cell_comm[levels]);
+  cudaMemcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1, lenX * sizeof(double), cudaMemcpyHostToDevice);
 
   double solve_time, solve_comm_time;
   startTimer(&solve_time, &solve_comm_time);
-  solveA(rhs, nodes, basis, rels_near, X1, cell_comm, levels);
+
+  for (int64_t i = levels; i > 0; i--)
+    batchForwardULV(nodes[i].params, &cell_comm[i]);
+  chol_solve(nodes[0].params, &cell_comm[0]);
+  for (int64_t i = 1; i <= levels; i++)
+    batchBackwardULV(nodes[i].params, &cell_comm[i]);
   stopTimer(&solve_time, &solve_comm_time);
 
-  loadX(X2, body_local, Xbody);
+  cudaMemcpy(X1, &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double), cudaMemcpyDeviceToHost);
+
+  loadX(X2, basis[levels].dimN, Xbody, ncells, cell, levels);
   double err;
   solveRelErr(&err, X1, X2, lenX);
 
