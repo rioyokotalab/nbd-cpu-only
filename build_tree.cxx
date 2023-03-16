@@ -326,20 +326,20 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
     int64_t* M_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
     int64_t* N_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
 
-#pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ci = i + ibegin;
       int64_t childi = cells[ci].Child[0];
       int64_t ske_len = childi >= 0 ? (basis[childi].N + basis[childi + 1].N) : (cells[ci].Body[1] - cells[ci].Body[0]);
-      int64_t* skeletons = (int64_t*)malloc(sizeof(int64_t) * ske_len);
+      double* skeletons = (double*)malloc(sizeof(double) * ske_len * 3);
 
       if (childi >= 0) {
-        memcpy(skeletons, basis[childi].Multipoles, sizeof(int64_t) * basis[childi].N);
-        memcpy(skeletons + basis[childi].N, basis[childi + 1].Multipoles, sizeof(int64_t) * basis[childi + 1].N);
+        memcpy(skeletons, basis[childi].Multipoles, sizeof(double) * basis[childi].N * 3);
+        memcpy(skeletons + basis[childi].N * 3, basis[childi + 1].Multipoles, sizeof(double) * basis[childi + 1].N * 3);
       }
       else
         for (int64_t j = 0; j < ske_len; j++)
-          skeletons[j] = j + cells[ci].Body[0];
+          for (int64_t k = 0; k < 3; k++)
+            skeletons[j * 3 + k] = bodies[(j + cells[ci].Body[0]) * 3 + k];
 
       int64_t nbegin = rels->ColIndex[ci];
       int64_t nlen = rels->ColIndex[ci + 1] - nbegin;
@@ -359,44 +359,26 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       }
       int64_t len_c = gen_close(sp_pts, close, nlen, body, lens, cpos);
       int64_t len_f = gen_far(sp_pts, remote, nlen, body, lens, nbodies);
+
+      std::vector<double> Cbodies(len_c * 3), Fbodies(len_f * 3);
+      for (int64_t j = 0; j < len_c; j++)
+        for (int64_t k = 0; k < 3; k++)
+          Cbodies[j * 3 + k] = bodies[close[j] * 3 + k];
       
-      double* Smat = (double*)malloc(sizeof(double) * ske_len * (ske_len + sp_pts));
-      double* Svec = (double*)malloc(sizeof(double) * ske_len * 2);
-      struct Matrix S_dn = (struct Matrix){ Smat, ske_len, ske_len, ske_len };
-      double nrm_dn = 0.;
-      double nrm_lr = 0.;
-      struct Matrix S_dn_work = (struct Matrix){ &Smat[ske_len * ske_len], ske_len, len_c, ske_len };
-      gen_matrix(ef, ske_len, len_c, bodies, bodies, S_dn_work.A, S_dn_work.LDA, skeletons, close);
-      mmult('N', 'T', &S_dn_work, &S_dn_work, &S_dn, 1., 0.);
-      nrm2_A(&S_dn, &nrm_dn);
+      for (int64_t j = 0; j < len_f; j++)
+        for (int64_t k = 0; k < 3; k++)
+          Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
 
-      struct Matrix S_lr = (struct Matrix){ &Smat[ske_len * ske_len], ske_len, len_f, ske_len };
-      gen_matrix(ef, ske_len, len_f, bodies, bodies, S_lr.A, S_lr.LDA, skeletons, remote);
-      nrm2_A(&S_lr, &nrm_lr);
-      double scale = (nrm_dn == 0. || nrm_lr == 0.) ? 1. : nrm_lr / nrm_dn;
-      scal_A(&S_dn, scale);
-
-      int64_t rank = mrank > 0 ? (mrank < ske_len ? mrank : ske_len) : ske_len;
-      struct Matrix S = (struct Matrix){ Smat, ske_len, ske_len + len_f, ske_len };
-      svd_U(&S, Svec);
-
-      if (epi > 0.) {
-        int64_t r = 0;
-        double sepi = Svec[0] * epi;
-        while(r < rank && Svec[r] > sepi)
-          r += 1;
-        rank = r;
-      }
+      std::vector<double> A(ske_len * ske_len);
+      int64_t rank = compute_basis(ef, epi, 20, mrank, ske_len, &A[0], ske_len, skeletons, len_c, &Cbodies[0], len_f, &Fbodies[0]);
 
       double* basis_data = (double*)malloc(sizeof(double) * (ske_len * ske_len + rank * rank));
-      int32_t* pa = (int32_t*)malloc(sizeof(int32_t) * ske_len);
-      struct Matrix Qo = (struct Matrix){ basis_data, ske_len, rank, ske_len };
-      struct Matrix work = (struct Matrix){ Smat, ske_len, rank, ske_len };
-      id_row(&Qo, &work, pa);
+      memcpy(basis_data, &A[0], sizeof(double) * ske_len * rank);
       if (childi >= 0) {
         struct Matrix reflec[2];
         reflec[0] = (struct Matrix){ basis[childi].R, basis[childi].N, basis[childi].N, basis[childi].N };
         reflec[1] = (struct Matrix){ basis[childi + 1].R, basis[childi + 1].N, basis[childi + 1].N, basis[childi + 1].N };
+        struct Matrix Qo = (struct Matrix){ basis_data, ske_len, rank, ske_len };
         upper_tri_reflec_mult('L', 2, reflec, &Qo);
       }
 
@@ -407,22 +389,13 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
         qr_full(&Q, &R);
       }
 
-      for (int64_t j = 0; j < rank; j++) {
-        int64_t piv = (int64_t)pa[j] - 1;
-        if (piv != j) {
-          int64_t c = skeletons[piv];
-          skeletons[piv] = skeletons[j];
-          skeletons[j] = c;
-        }
-      }
-
       basis[ci].M = ske_len;
       basis[ci].N = rank;
-      basis[ci].Multipoles = (int64_t*)malloc(sizeof(int64_t) * rank);
+      basis[ci].Multipoles = (double*)malloc(sizeof(double) * rank * 3);
       basis[ci].Uo = basis_data;
       basis[ci].Uc = &basis_data[ske_len * rank];
       basis[ci].R = &basis_data[ske_len * ske_len];
-      memcpy(basis[ci].Multipoles, skeletons, sizeof(int64_t) * rank);
+      memcpy(basis[ci].Multipoles, skeletons, sizeof(double) * rank * 3);
 
       M_comm[ci - lbegin] = ske_len;
       N_comm[ci - lbegin] = rank;
@@ -432,9 +405,6 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       free(remote);
       free(body);
       free(lens);
-      free(Smat);
-      free(Svec);
-      free(pa);
     }
 
 #ifdef _PROF
@@ -454,14 +424,14 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       int64_t N = N_comm[i];
       M_comm[i] = size_multipole;
       N_comm[i] = size_matrix;
-      size_multipole = size_multipole + N;
+      size_multipole = size_multipole + N * 3;
       size_matrix = size_matrix + (M * M + N * N);
 
       int64_t ci = i + lbegin;
       basis[ci].M = M;
       basis[ci].N = N;
       if (basis[ci].Multipoles == NULL && N > 0)
-        basis[ci].Multipoles = (int64_t*)malloc(sizeof(int64_t) * N);
+        basis[ci].Multipoles = (double*)malloc(sizeof(double) * N * 3);
       if (basis[ci].Uo == NULL && (M > 0 || N > 0)) {
         basis[ci].Uo = (double*)malloc(sizeof(double) * (M * M + N * N));
         basis[ci].Uc = &(basis[ci].Uo)[M * N];
@@ -471,7 +441,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
     M_comm[llen] = size_multipole;
     N_comm[llen] = size_matrix;
 
-    int64_t* multipoles = size_multipole > 0 ? (int64_t*)malloc(sizeof(int64_t) * size_multipole) : NULL;
+    double* multipoles = size_multipole > 0 ? (double*)malloc(sizeof(int64_t) * size_multipole) : NULL;
     double* matrix = size_matrix > 0 ? (double*)malloc(sizeof(double) * size_matrix) : NULL;
 
     for (int64_t i = 0; i < llen; i++) {
@@ -479,7 +449,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       int64_t sizeN = N_comm[i + 1] - N_comm[i];
       int64_t ci = i + lbegin;
       if (sizeM > 0)
-        memcpy(multipoles + M_comm[i], basis[ci].Multipoles, sizeof(int64_t) * sizeM);
+        memcpy(multipoles + M_comm[i], basis[ci].Multipoles, sizeof(double) * sizeM);
       if (sizeN > 0)
         memcpy(matrix + N_comm[i], basis[ci].Uo, sizeof(double) * sizeN);
     }
@@ -498,7 +468,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       int64_t mlen = M_comm[pbox_end] - M_comm[pbox];
       send_buf = (int64_t*)malloc(sizeof(int64_t) * mlen);
       memcpy(send_buf, &multipoles[mbegin], sizeof(int64_t) * mlen);
-      MPI_Allgatherv(send_buf, mlen, MPI_INT64_T, multipoles, Lens_comm, Offs_comm, MPI_INT64_T, MPI_COMM_WORLD);
+      MPI_Allgatherv(send_buf, mlen, MPI_DOUBLE, multipoles, Lens_comm, Offs_comm, MPI_DOUBLE, MPI_COMM_WORLD);
       free(send_buf);
     }
 
@@ -529,7 +499,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       int64_t sizeN = N_comm[i + 1] - N_comm[i];
       int64_t ci = i + lbegin;
       if (sizeM > 0)
-        memcpy(basis[ci].Multipoles, multipoles + M_comm[i], sizeof(int64_t) * sizeM);
+        memcpy(basis[ci].Multipoles, multipoles + M_comm[i], sizeof(double) * sizeM);
       if (sizeN > 0)
         memcpy(basis[ci].Uo, matrix + N_comm[i], sizeof(double) * sizeN);
     }

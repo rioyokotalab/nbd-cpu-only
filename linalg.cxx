@@ -48,10 +48,6 @@ void fin_libs() {
   MPI_Finalize();
 }
 
-void mat_cpy(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2) {
-  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', m, n, &m1->A[y1 + x1 * m1->M], m1->LDA, &m2->A[y2 + x2 * m2->M], m2->LDA);
-}
-
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta) {
   int64_t k = ta == 'N' ? A->N : A->M;
   CBLAS_TRANSPOSE tac = ta == 'N' ? CblasNoTrans : CblasTrans;
@@ -60,23 +56,6 @@ void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, str
   int64_t ldb = 1 < B->LDA ? B->LDA : 1;
   int64_t ldc = 1 < C->LDA ? C->LDA : 1;
   cblas_dgemm(CblasColMajor, tac, tbc, C->M, C->N, k, alpha, A->A, lda, B->A, ldb, beta, C->A, ldc);
-}
-
-
-void svd_U(struct Matrix* A, double* S) {
-  int64_t rank_a = A->M < A->N ? A->M : A->N;
-  int64_t lda = 1 < A->LDA ? A->LDA : 1;
-  int64_t ldv = 1 < A->N ? A->N : 1;
-  LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', A->M, A->N, A->A, lda, S, NULL, lda, NULL, ldv, &S[rank_a]);
-}
-
-void id_row(struct Matrix* U, struct Matrix* A, int32_t arows[]) {
-  int64_t lda = 1 < A->LDA ? A->LDA : 1;
-  int64_t ldu = 1 < U->LDA ? U->LDA : 1;
-  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'A', A->M, A->N, A->A, lda, U->A, ldu);
-  LAPACKE_dgetrf(LAPACK_COL_MAJOR, A->M, A->N, A->A, lda, arows);
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, A->N, 1., A->A, lda, U->A, ldu);
-  cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, A->M, A->N, 1., A->A, lda, U->A, ldu);
 }
 
 void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A) {
@@ -109,15 +88,50 @@ void qr_full(struct Matrix* Q, struct Matrix* R) {
   LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, k, Q->A, ldq, tau);
 }
 
-void nrm2_A(struct Matrix* A, double* nrm) {
-  int64_t len_A = A->M * A->N;
-  double nrm_A = cblas_dnrm2(len_A, A->A, 1);
-  *nrm = nrm_A;
-}
+int64_t compute_basis(void(*ef)(double*), double epi, int64_t rank_min, int64_t rank_max, 
+  int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]) {
 
-void scal_A(struct Matrix* A, double alpha) {
-  int64_t len_A = A->M * A->N;
-  cblas_dscal(len_A, alpha, A->A, 1);
+  if (Nclose > 0 || Nfar > 0) {
+    std::vector<double> Aclose(M * Nclose), Afar(M * Nfar);
+    gen_matrix(ef, M, Nclose, Xbodies, Cbodies, &Aclose[0], M, NULL, NULL);
+    gen_matrix(ef, M, Nfar, Xbodies, Fbodies, &Afar[0], M, NULL, NULL);
+
+    std::vector<double> CC(M * M);
+    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, M, M, Nclose, 1., &Aclose[0], M, &Aclose[0], M, 0., &CC[0], M);
+
+    double nrm_C = M > 0 ? cblas_dnrm2(M * M, &CC[0], 1) : 0.;
+    double nrm_A = (M > 0) && (Nfar > 0) ? cblas_dnrm2(M * Nfar, &Afar[0], 1) : 0.;
+    double scale = (nrm_C == 0. || nrm_A == 0.) ? 1. : nrm_A / nrm_C;
+    cblas_dscal(M * M, scale, &CC[0], 1);
+    
+    std::vector<double> Aall(M * (M + Nfar));
+    cblas_dcopy(M * M, &CC[0], 1, &Aall[0], 1);
+    cblas_dcopy(M * Nfar, &Afar[0], 1, &Aall[M * M], 1);
+
+    std::vector<double> S(M), superb(M);
+    LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M + Nfar, &Aall[0], M, &S[0], NULL, M, NULL, M + Nfar, &superb[0]);
+
+    double s0 = S[0] * epi;
+    rank_max = rank_max <= 0 ? M : std::min(rank_max, M);
+    rank_min = rank_min <= 0 ? 0 : std::min(rank_min, M);
+    int64_t rank = epi > 0. ?
+      std::distance(S.begin(), std::find_if(S.begin() + rank_min, S.begin() + rank_max, [s0](double& s) { return s < s0; })) : rank_max;
+
+    std::vector<MKL_INT> Apiv(rank);
+    LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'F', M, rank, &Aall[0], M, A, LDA);
+    LAPACKE_dgetrf(LAPACK_COL_MAJOR, M, rank, &Aall[0], M, &Apiv[0]);
+    cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, M, rank, 1., &Aall[0], M, A, LDA);
+    cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, M, rank, 1., &Aall[0], M, A, LDA);
+
+    for (int64_t i = 0; i < rank; i++) {
+      MKL_INT piv = (int64_t)Apiv[i] - 1;
+      if (piv != i)
+        for (int64_t k = 0; k < 3; k++)
+          std::iter_swap(&Xbodies[i * 3 + k], &Xbodies[piv * 3 + k]);
+    }
+    return rank;
+  }
+  return 0;
 }
 
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {

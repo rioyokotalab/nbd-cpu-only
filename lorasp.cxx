@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
-  buildBasis(4, basis, ncells, cell, cell_basis, body, levels, cell_comm);
+  buildBasis(4, basis, ncells, cell, cell_basis, levels, cell_comm);
   allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(ef, nodes[levels].A, ncells, cell, body, &cellNear, levels);

@@ -15,7 +15,7 @@
 struct Matrix { double* A; int64_t M, N, LDA; };
 
 struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
-struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
+struct CellBasis { int64_t M, N; double *Multipoles, *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 
 struct Base { 
@@ -36,7 +36,7 @@ struct BatchedFactorParams {
   double** FwdRR_Xc, **FwdRS_Xo, **BackRR_B, **BackRS_Xc;
 };
 
-struct Node { 
+struct Node {
   int64_t lenA, lenS;
   struct Matrix *A, *S, *A_cc, *A_oc, *A_oo;
   double* A_ptr, *A_buf, *X_ptr, *X_buf;
@@ -45,19 +45,13 @@ struct Node {
 
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo, *B; };
 
-void mat_cpy(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
-
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 
-void svd_U(struct Matrix* A, double* S);
-
-void id_row(struct Matrix* U, struct Matrix* A, int32_t arows[]);
+int64_t compute_basis(void(*ef)(double*), double epi, int64_t rank_min, int64_t rank_max, 
+  int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]);
 
 void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A);
 void qr_full(struct Matrix* Q, struct Matrix* R);
-
-void nrm2_A(struct Matrix* A, double* nrm);
-void scal_A(struct Matrix* A, double alpha);
 
 void init_libs(int* argc, char*** argv);
 void fin_libs();
@@ -130,7 +124,7 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
 
 void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* csc, int64_t level);
 
-void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, const double* bodies, int64_t levels, const struct CellComm* comm);
+void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm);
 
 void basis_free(struct Base* basis);
 

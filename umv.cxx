@@ -23,7 +23,7 @@ void randomize2d(double* dst, int64_t rows, int64_t cols, int64_t ld) {
       dst[i + j * ld] = ((double)std::rand() + 1) / RAND_MAX;
 }
 
-void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, const double* bodies, int64_t levels, const struct CellComm* comm) {
+void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
   std::vector<int64_t> dimSmax(levels + 1, 0);
   std::vector<int64_t> dimRmax(levels + 1, 0);
   std::vector<int64_t> nchild(levels + 1, 0);
@@ -98,11 +98,7 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
       i_global(&gi, &comm[l]);
       int64_t ci = lbegin + gi;
 
-      for (int64_t j = 0; j < No; j++) {
-        int64_t M = cell_basis[ci].Multipoles[j];
-        for (int64_t k = 0; k < 3; k++)
-          M_ptr[j * 3 + k] = bodies[M * 3 + k];
-      }
+      memcpy(M_ptr, cell_basis[ci].Multipoles, sizeof(double) * No * 3);
       memcpy2d(R_ptr, cell_basis[ci].R, No, No, basis[l].dimS, No, sizeof(double));
 
       int64_t child = std::get<0>(comm[l].LocalChild[i]);
