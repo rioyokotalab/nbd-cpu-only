@@ -14,6 +14,37 @@
 
 struct Matrix { double* A; int64_t M, N, LDA; };
 
+struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
+struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
+struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
+
+struct Base { 
+  int64_t Ulen, *Dims, *DimsLr, dimR, dimS, dimN, padN;
+  struct Matrix *Uo, *Uc, *R;
+  double *M_gpu, *M_cpu, *U_gpu, *U_cpu, *R_gpu, *R_cpu; 
+};
+
+struct BatchedFactorParams { 
+  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_lower, L_rows, L_tmp;
+  const double** A_d, **U_d, **U_ds, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_d0;
+  double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
+  double** X_d, **Xc_d, **Xo_d, **B_d, *X_data, *Xc_data, *Xc_d0, *B_d0;
+  int* info;
+
+  std::vector<int64_t> FwdRR_batch, FwdRS_batch, BackRR_batch, BackRS_batch;
+  const double** FwdRR_A, **FwdRS_A, **BackRR_A, **BackRS_A, **FwdRR_B, **FwdRS_Xc, **BackRR_Xc, **BackRS_Xo;
+  double** FwdRR_Xc, **FwdRS_Xo, **BackRR_B, **BackRS_Xc;
+};
+
+struct Node { 
+  int64_t lenA, lenS;
+  struct Matrix *A, *S, *A_cc, *A_oc, *A_oo;
+  double* A_ptr, *A_buf, *X_ptr, *X_buf;
+  struct BatchedFactorParams params; 
+};
+
+struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo, *B; };
+
 void mat_cpy(int64_t m, int64_t n, const struct Matrix* m1, struct Matrix* m2, int64_t y1, int64_t x1, int64_t y2, int64_t x2);
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
@@ -30,39 +61,25 @@ void mat_solve(char type, struct Matrix* X, const struct Matrix* A);
 void nrm2_A(struct Matrix* A, double* nrm);
 void scal_A(struct Matrix* A, double alpha);
 
-int init_libs(int* argc, char*** argv);
+void init_libs(int* argc, char*** argv);
 void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
-void batchParamsCreate(void** params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
+void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
   double* Workspace, int64_t Lwork, int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]);
-void batchParamsDestory(void* params);
+void batchParamsDestory(struct BatchedFactorParams* params);
 
-void lastParamsCreate(void** params, double* A, double* X, int64_t N);
-void lastParamsDestory(void* params);
+void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, int64_t N);
 
 void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int64_t count);
 void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, int64_t count);
 void freeBufferedList(void* A_ptr, void* A_buffer);
 
-void batchCholeskyFactor(void* params, const struct CellComm* comm);
-void batchForwardULV(void* params_ptr, const struct CellComm* comm);
-void batchBackwardULV(void* params_ptr, const struct CellComm* comm);
-void chol_decomp(void* params, const struct CellComm* comm);
-void chol_solve(void* params_ptr, const struct CellComm* comm);
-
-struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
-struct CellBasis { int64_t M, N, *Multipoles; double *Uo, *Uc, *R; };
-struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
-
-struct Base { 
-  int64_t Ulen, *Dims, *DimsLr, dimR, dimS, dimN, padN;
-  struct Matrix *Uo, *Uc, *R;
-  double *M_gpu, *M_cpu, *U_gpu, *U_cpu, *R_gpu, *R_cpu; 
-};
-
-struct Node { int64_t lenA, lenS; struct Matrix *A, *S, *A_cc, *A_oc, *A_oo; double* A_ptr, *A_buf, *X_ptr, *X_buf; void* params; };
-struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo, *B; };
+void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellComm* comm);
+void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* comm);
+void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm);
+void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm);
+void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm);
 
 void laplace3d(double* r2);
 

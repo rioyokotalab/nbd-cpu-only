@@ -119,10 +119,10 @@ int main(int argc, char* argv[]) {
   startTimer(&solve_time, &solve_comm_time);
 
   for (int64_t i = levels; i > 0; i--)
-    batchForwardULV(nodes[i].params, &cell_comm[i]);
-  chol_solve(nodes[0].params, &cell_comm[0]);
+    batchForwardULV(&nodes[i].params, &cell_comm[i]);
+  chol_solve(&nodes[0].params, &cell_comm[0]);
   for (int64_t i = 1; i <= levels; i++)
-    batchBackwardULV(nodes[i].params, &cell_comm[i]);
+    batchBackwardULV(&nodes[i].params, &cell_comm[i]);
   stopTimer(&solve_time, &solve_comm_time);
 
   cudaMemcpy(X1, &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double), cudaMemcpyDeviceToHost);

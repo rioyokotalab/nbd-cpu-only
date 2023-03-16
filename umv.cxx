@@ -288,11 +288,7 @@ void node_free(struct Node* node) {
   freeBufferedList(node->A_ptr, node->A_buf);
   freeBufferedList(node->X_ptr, node->X_buf);
   free(node->A);
-  int is_last = (node->lenA == 1) && (node->lenS == 0);
-  if (is_last && node->params != NULL)
-    lastParamsDestory(node->params);
-  if (!is_last && node->params != NULL)
-    batchParamsDestory(node->params);
+  batchParamsDestory(&node->params);
 }
 
 void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels) {
@@ -305,7 +301,7 @@ void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64
 void factorA(struct Node A[], const struct Base basis[], const struct CellComm comm[], int64_t levels) {
 
   for (int64_t i = levels; i > 0; i--) {
-    batchCholeskyFactor(A[i].params, &comm[i]);
+    batchCholeskyFactor(&A[i].params, &comm[i]);
 #ifdef _PROF
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
@@ -313,7 +309,7 @@ void factorA(struct Node A[], const struct Base basis[], const struct CellComm c
     record_factor_flops(basis[i].dimR, basis[i].dimS, nnz, iend - ibegin);
 #endif
   }
-  chol_decomp(A[0].params, &comm[0]);
+  chol_decomp(&A[0].params, &comm[0]);
 #ifdef _PROF
   record_factor_flops(0, basis[0].dimR, 1, 1);
 #endif
