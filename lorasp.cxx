@@ -54,11 +54,6 @@ int main(int argc, char* argv[]) {
   }
   body_neutral_charge(Xbody, Nbody, 1., 999);
 
-
-  /*int64_t lenX = body_local[1] - body_local[0];
-  double* X1 = (double*)malloc(sizeof(double) * lenX);
-  double* X2 = (double*)malloc(sizeof(double) * lenX);*/
-
   traverse('N', &cellNear, ncells, cell, theta);
   traverse('F', &cellFar, ncells, cell, theta);
 

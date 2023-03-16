@@ -109,15 +109,6 @@ void qr_full(struct Matrix* Q, struct Matrix* R) {
   LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, k, Q->A, ldq, tau);
 }
 
-void mat_solve(char type, struct Matrix* X, const struct Matrix* A) {
-  int64_t lda = 1 < A->LDA ? A->LDA : 1;
-  int64_t ldx = 1 < X->LDA ? X->LDA : 1;
-  if (type == 'F' || type == 'f' || type == 'A' || type == 'a')
-    cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, X->M, X->N, 1., A->A, lda, X->A, ldx);
-  if (type == 'B' || type == 'b' || type == 'A' || type == 'a')
-    cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasTrans, CblasNonUnit, X->M, X->N, 1., A->A, lda, X->A, ldx);
-}
-
 void nrm2_A(struct Matrix* A, double* nrm) {
   int64_t len_A = A->M * A->N;
   double nrm_A = cblas_dnrm2(len_A, A->A, 1);
