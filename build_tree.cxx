@@ -242,32 +242,6 @@ void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t l
   *end = low;
 }
 
-int64_t gen_close(int64_t clen, int64_t close[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[], int64_t cpos) {
-  int64_t avail = 0;
-  for (int64_t i = 0; i < ngbs; i++)
-    avail = avail + (i != cpos ? ngbs_len[i] : 0);
-  clen = avail < clen ? avail : clen;
-  for (int64_t i = 0; i < clen; i++)
-    close[i] = (double)(i * avail) / clen;
-  int64_t* begin = close;
-  int64_t slen = 0;
-  for (int64_t i = 0; i < ngbs; i++) 
-    if (i != cpos) {
-      int64_t len = &close[clen] - begin;
-      len = len < ngbs_len[i] ? len : ngbs_len[i];
-      int64_t bound = ngbs_len[i] + slen;
-      int64_t body = ngbs_body[i] - slen;
-      int64_t* next = begin;
-      while (next != begin + len && *next < bound)
-        next = next + 1;
-      for (int64_t* p = begin; p != next; p++)
-        *p = *p + body;
-      begin = next;
-      slen = slen + ngbs_len[i];
-    }
-  return clen;
-}
-
 int64_t gen_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[], int64_t nbody) {
   int64_t near = 0;
   for (int64_t i = 0; i < ngbs; i++)
@@ -344,33 +318,35 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       int64_t nbegin = rels->ColIndex[ci];
       int64_t nlen = rels->ColIndex[ci + 1] - nbegin;
       const int64_t* ngbs = &rels->RowIndex[nbegin];
-      int64_t* close = (int64_t*)malloc(sizeof(int64_t) * sp_pts);
+      std::vector<double> Cbodies;
       int64_t* remote = (int64_t*)malloc(sizeof(int64_t) * sp_pts);
       int64_t* body = (int64_t*)malloc(sizeof(int64_t) * nlen);
       int64_t* lens = (int64_t*)malloc(sizeof(int64_t) * nlen);
 
-      int64_t cpos = nlen;
       for (int64_t j = 0; j < nlen; j++) {
         int64_t cj = ngbs[j];
         body[j] = cells[cj].Body[0];
         lens[j] = cells[cj].Body[1] - cells[cj].Body[0];
-        if (ci == cj)
-          cpos = j;
+
+        int64_t childj = cells[cj].Child[0];
+        if (ci != cj && childj >= 0)
+          for (int64_t k = 0; k < (cells[cj].Child[1] - cells[cj].Child[0]); k++)
+            for (int64_t n = 0; n < (basis[childj + k].N * 3); n++)
+              Cbodies.emplace_back(basis[childj + k].Multipoles[n]);
+        else if (ci != cj)
+          for (int64_t k = 0; k < (cells[cj].Body[1] - cells[cj].Body[0]); k++)
+            for (int64_t n = 0; n < 3; n++)
+              Cbodies.emplace_back(bodies[(cells[cj].Body[0] + k) * 3 + n]);
       }
-      int64_t len_c = gen_close(sp_pts, close, nlen, body, lens, cpos);
       int64_t len_f = gen_far(sp_pts, remote, nlen, body, lens, nbodies);
 
-      std::vector<double> Cbodies(len_c * 3), Fbodies(len_f * 3);
-      for (int64_t j = 0; j < len_c; j++)
-        for (int64_t k = 0; k < 3; k++)
-          Cbodies[j * 3 + k] = bodies[close[j] * 3 + k];
-      
+      std::vector<double> Fbodies(len_f * 3);
       for (int64_t j = 0; j < len_f; j++)
         for (int64_t k = 0; k < 3; k++)
           Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
 
       std::vector<double> A(ske_len * ske_len);
-      int64_t rank = compute_basis(ef, epi, 20, mrank, ske_len, &A[0], ske_len, skeletons, len_c, &Cbodies[0], len_f, &Fbodies[0]);
+      int64_t rank = compute_basis(ef, epi, 20, mrank, ske_len, &A[0], ske_len, skeletons, Cbodies.size() / 3, &Cbodies[0], len_f, &Fbodies[0]);
 
       double* basis_data = (double*)malloc(sizeof(double) * (ske_len * ske_len + rank * rank));
       memcpy(basis_data, &A[0], sizeof(double) * ske_len * rank);
@@ -401,7 +377,6 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
       N_comm[ci - lbegin] = rank;
 
       free(skeletons);
-      free(close);
       free(remote);
       free(body);
       free(lens);
@@ -551,6 +526,7 @@ void loadX(double* X, int64_t seg, const double Xbodies[], int64_t ncells, const
   int64_t mpi_rank = __mpi_rank;
   int64_t ibegin = 0, iend = ncells;
   get_level(&ibegin, &iend, cells, levels, mpi_rank);
+  memset(X, 0, sizeof(double) * (iend - ibegin) * seg);
 
   for (int64_t i = 0; i < (iend - ibegin); i++) {
     int64_t b0 = cells[i + ibegin].Body[0];
