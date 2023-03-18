@@ -267,7 +267,7 @@ int64_t gen_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_bo
   return flen;
 }
 
-void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
+void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, double(*func)(double), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
   int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels) {
   int __mpi_rank = 0, __mpi_size = 1;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
@@ -346,7 +346,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, void(*ef)(double*
           Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
 
       std::vector<double> A(ske_len * ske_len);
-      int64_t rank = compute_basis(ef, epi, 20, mrank, ske_len, &A[0], ske_len, skeletons, Cbodies.size() / 3, &Cbodies[0], len_f, &Fbodies[0]);
+      int64_t rank = compute_basis(func, epi, 20, mrank, ske_len, &A[0], ske_len, skeletons, Cbodies.size() / 3, &Cbodies[0], len_f, &Fbodies[0]);
 
       double* basis_data = (double*)malloc(sizeof(double) * (ske_len * ske_len + rank * rank));
       memcpy(basis_data, &A[0], sizeof(double) * ske_len * rank);
@@ -576,7 +576,7 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
   }
 }
 
-void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* rels, int64_t level) {
+void evalD(double(*func)(double), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* rels, int64_t level) {
   int __mpi_rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   int64_t mpi_rank = __mpi_rank;
@@ -603,12 +603,12 @@ void evalD(void(*ef)(double*), struct Matrix* D, int64_t ncells, const struct Ce
       const struct Cell* cj = &cells[lj];
       int64_t y_begin = cj->Body[0];
       int64_t m = cj->Body[1] - y_begin;
-      gen_matrix(ef, m, n, &bodies[y_begin * 3], &bodies[x_begin * 3], D[offsetD + j].A, D[offsetD + j].LDA);
+      gen_matrix(func, m, n, &bodies[y_begin * 3], &bodies[x_begin * 3], D[offsetD + j].A, D[offsetD + j].LDA);
     }
   }
 }
 
-void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm) {
+void evalS(double(*func)(double), struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0, iend = 0;
   self_local_range(&ibegin, &iend, comm);
   int64_t seg = basis->dimS * 3;
@@ -620,7 +620,7 @@ void evalS(void(*ef)(double*), struct Matrix* S, const struct Base* basis, const
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       int64_t m = basis->DimsLr[y];
-      gen_matrix(ef, m, n, &basis->M_cpu[y * seg], &basis->M_cpu[(x + ibegin) * seg], S[yx].A, S[yx].LDA);
+      gen_matrix(func, m, n, &basis->M_cpu[y * seg], &basis->M_cpu[(x + ibegin) * seg], S[yx].A, S[yx].LDA);
       upper_tri_reflec_mult('L', 1, &basis->R[y], &S[yx]);
       upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
     }

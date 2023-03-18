@@ -24,8 +24,8 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  //void(*ef)(double*) = laplace3d;
-  void(*ef)(double*) = yukawa3d;
+  double(*func)(double) = laplace3d;
+  //double(*func)(double) = yukawa3d;
   set_kernel_constants(1.e-3 / Nbody, 1.);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  buildCellBasis(epi, rank_max, sp_pts, ef, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
+  buildCellBasis(epi, rank_max, sp_pts, func, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
   stopTimer(&construct_time, &construct_comm_time);
 
   double* Workspace = NULL;
@@ -72,9 +72,9 @@ int main(int argc, char* argv[]) {
   buildBasis(4, basis, ncells, cell, cell_basis, levels, cell_comm);
   allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
-  evalD(ef, nodes[levels].A, ncells, cell, body, &cellNear, levels);
+  evalD(func, nodes[levels].A, ncells, cell, body, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++)
-    evalS(ef, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
+    evalS(func, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
 
   int64_t lenX = rels_near[levels].N * basis[levels].dimN;
   double* X1 = (double*)calloc(lenX, sizeof(double));
@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
   if (Nbody < 10000) {
     int64_t body_local[2];
     local_bodies(body_local, ncells, cell, levels);
-    mat_vec_reference(ef, body_local[0], body_local[1], X2, Nbody, body, Xbody);
+    mat_vec_reference(func, body_local[0], body_local[1], X2, Nbody, body, Xbody);
 
     int64_t ibegin = 0, iend = ncells;
     int mpi_rank;

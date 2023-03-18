@@ -88,7 +88,7 @@ void qr_full(struct Matrix* Q, struct Matrix* R) {
   LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, k, Q->A, ldq, tau);
 }
 
-int64_t compute_basis(void(*ef)(double*), double epi, int64_t rank_min, int64_t rank_max, 
+int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64_t rank_max, 
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]) {
 
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
@@ -106,7 +106,10 @@ int64_t compute_basis(void(*ef)(double*), double epi, int64_t rank_min, int64_t 
     cudaStreamSynchronize(stream);*/
 
     if (Nclose > 0) {
-      /*std::vector<double> test(Nclose * Mc);
+      /*gen_matrix(func, Nclose, M, Cbodies, Xbodies, &Aclose[0], Nclose);
+      gen_matrix(func, Nclose, Nclose, Cbodies, Cbodies, &Aclose[Nclose * M], Nclose);
+
+      std::vector<double> test(Nclose * Mc);
       cudaMemcpy(&test[0], Aclose_gpu, sizeof(double) * Nclose * Mc, cudaMemcpyDeviceToHost);
       double err[2] = { 0., 0. };
       for (int64_t i = 0; i < Nclose * Mc; i++) {
@@ -114,10 +117,10 @@ int64_t compute_basis(void(*ef)(double*), double epi, int64_t rank_min, int64_t 
         err[0] = err[0] + diff * diff;
         err[1] = err[1] + Aclose[i] * Aclose[i];
       }
-      printf("%f\n", sqrt(err[0] / err[1]));*/
+      printf("%e\n", sqrt(err[0] / err[1]));*/
 
-      gen_matrix(ef, Nclose, M, Cbodies, Xbodies, &Aclose[0], Nclose);
-      gen_matrix(ef, Nclose, Nclose, Cbodies, Cbodies, &Aclose[Nclose * M], Nclose);
+      gen_matrix(func, Nclose, M, Cbodies, Xbodies, &Aclose[0], Nclose);
+      gen_matrix(func, Nclose, Nclose, Cbodies, Cbodies, &Aclose[Nclose * M], Nclose);
       std::vector<MKL_INT> Mpiv(Nclose);
       LAPACKE_dgesv(LAPACK_COL_MAJOR, Nclose, M, &Aclose[Nclose * M], Nclose, &Mpiv[0], &Aclose[0], Nclose);
       LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Nclose, M, &Aclose[0], Nclose, &superb[0]);
@@ -125,7 +128,7 @@ int64_t compute_basis(void(*ef)(double*), double epi, int64_t rank_min, int64_t 
     }
 
     if (Nfar > 0) {
-      gen_matrix(ef, Nfar, M, Fbodies, Xbodies, &Aall[M], Mf);
+      gen_matrix(func, Nfar, M, Fbodies, Xbodies, &Aall[M], Mf);
       LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Mf, M, &Aall[0], Mf, &superb[0]);
       LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', M - 1, M - 1, 0., 0., &Aall[1], Mf);
     }
