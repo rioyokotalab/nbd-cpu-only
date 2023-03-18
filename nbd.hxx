@@ -79,7 +79,7 @@ void yukawa3d(double* r2);
 
 void set_kernel_constants(double singularity, double alpha);
 
-void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda, const int64_t sel_i[], const int64_t sel_j[]);
+void gen_matrix(void(*ef)(double*), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda);
 
 void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim, unsigned int seed);
 
