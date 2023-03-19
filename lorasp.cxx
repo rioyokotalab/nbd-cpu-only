@@ -85,24 +85,27 @@ int main(int argc, char* argv[]) {
   matVecA(rhs, nodes, basis, rels_near, rels_far, X1, cell_comm, levels);
 
   double cerr = 0.;
-  if (Nbody < 10000) {
+  if (Nbody < 20000) {
     int64_t body_local[2];
     local_bodies(body_local, ncells, cell, levels);
-    mat_vec_reference(func, body_local[0], body_local[1], X2, Nbody, body, Xbody);
+    std::vector<double> X3(lenX);
+    mat_vec_reference(func, body_local[0], body_local[1], &X3[0], Nbody, body, Xbody);
 
     int64_t ibegin = 0, iend = ncells;
     int mpi_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     get_level(&ibegin, &iend, cell, levels, mpi_rank);
-    std::vector<double> X3(lenX);
 
     for (int64_t i = 0; i < (iend - ibegin); i++) {
       int64_t b0 = cell[i + ibegin].Body[0];
       int64_t b1 = cell[i + ibegin].Body[1];
+      const double* x3 = &X3[b0 - body_local[0]];
+      double* x2 = &X2[i * basis[levels].dimN];
       for (int64_t j = 0; j < (b1 - b0); j++)
-        X3[i * basis[levels].dimN + j] = X2[j + b0];
+        x2[j] = x3[j];
     }
-    solveRelErr(&cerr, X1, &X3[0], lenX);
+    solveRelErr(&cerr, X1, X2, lenX);
+    std::iter_swap(&X1, &X2);
   }
   
   factorA_mov_mem('S', nodes, basis, levels);
