@@ -95,34 +95,11 @@ int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64
     int64_t Mc = M + Nclose;
     int64_t Mf = M + Nfar;
     std::vector<double> Aclose(Nclose * Mc), Aall(M * Mf, 0.), superb(M);
-    /*double *Xbodies_gpu, *Cbodies_gpu, *Aclose_gpu;
-    cudaMalloc(&Xbodies_gpu, sizeof(double) * M * 3);
-    cudaMalloc(&Cbodies_gpu, sizeof(double) * Nclose * 3);
-    cudaMalloc(&Aclose_gpu, sizeof(double) * Nclose * Mc);
-    cudaMemcpy(&Xbodies_gpu[0], Xbodies, sizeof(double) * M * 3, cudaMemcpyHostToDevice);
-    cudaMemcpy(&Cbodies_gpu[0], Cbodies, sizeof(double) * Nclose * 3, cudaMemcpyHostToDevice);
-    gen_matrix_gpu(func, Nclose, M, Cbodies_gpu, Xbodies_gpu, &Aclose_gpu[0], Nclose, stream);
-    gen_matrix_gpu(func, Nclose, Nclose, Cbodies_gpu, Cbodies_gpu, &Aclose_gpu[Nclose * M], Nclose, stream);
-    cudaStreamSynchronize(stream);*/
 
     if (Nclose > 0) {
-      /*gen_matrix(func, Nclose, M, Cbodies, Xbodies, &Aclose[0], Nclose);
-      gen_matrix(func, Nclose, Nclose, Cbodies, Cbodies, &Aclose[Nclose * M], Nclose);
-
-      std::vector<double> test(Nclose * Mc);
-      cudaMemcpy(&test[0], Aclose_gpu, sizeof(double) * Nclose * Mc, cudaMemcpyDeviceToHost);
-      double err[2] = { 0., 0. };
-      for (int64_t i = 0; i < Nclose * Mc; i++) {
-        double diff = test[i] - Aclose[i];
-        err[0] = err[0] + diff * diff;
-        err[1] = err[1] + Aclose[i] * Aclose[i];
-      }
-      printf("%e\n", sqrt(err[0] / err[1]));*/
-
       gen_matrix(func, Nclose, M, Cbodies, Xbodies, &Aclose[0], Nclose);
       gen_matrix(func, Nclose, Nclose, Cbodies, Cbodies, &Aclose[Nclose * M], Nclose);
-      std::vector<MKL_INT> Mpiv(Nclose);
-      LAPACKE_dgesv(LAPACK_COL_MAJOR, Nclose, M, &Aclose[Nclose * M], Nclose, &Mpiv[0], &Aclose[0], Nclose);
+      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, Nclose, M, 1., &Aclose[Nclose * M], Nclose, &Aclose[0], Nclose);
       LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Nclose, M, &Aclose[0], Nclose, &superb[0]);
       LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'U', M, M, &Aclose[0], Nclose, &Aall[0], Mf);
     }

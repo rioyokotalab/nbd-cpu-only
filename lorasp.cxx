@@ -24,8 +24,8 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  double(*func)(double) = laplace3d;
-  //double(*func)(double) = yukawa3d;
+  //double(*func)(double) = laplace3d_cpu();
+  double(*func)(double) = yukawa3d_cpu();
   set_kernel_constants(1.e-3 / Nbody, 1.);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);

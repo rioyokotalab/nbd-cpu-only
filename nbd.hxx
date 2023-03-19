@@ -73,9 +73,13 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
 void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm);
 void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm);
 
-double laplace3d(double r2);
+double (*laplace3d_cpu(void)) (double);
 
-double yukawa3d(double r2);
+double (*laplace3d_gpu(void)) (double);
+
+double (*yukawa3d_cpu(void)) (double);
+
+double (*yukawa3d_gpu(void)) (double);
 
 void set_kernel_constants(double singularity, double alpha);
 
