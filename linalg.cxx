@@ -92,26 +92,22 @@ int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]) {
 
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
-    int64_t Mc = M + Nclose;
-    int64_t Mf = M + Nfar;
-    std::vector<double> Aclose(Nclose * Mc), Aall(M * Mf, 0.), superb(M);
+    int64_t ldm = std::max(M, Nclose + Nfar);
+    std::vector<double> Aall(M * ldm, 0.), superb(M);
+    gen_matrix(func, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
+    gen_matrix(func, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
     if (Nclose > 0) {
-      gen_matrix(func, Nclose, M, Cbodies, Xbodies, &Aclose[0], Nclose);
-      gen_matrix(func, Nclose, Nclose, Cbodies, Cbodies, &Aclose[Nclose * M], Nclose);
-      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, Nclose, M, 1., &Aclose[Nclose * M], Nclose, &Aclose[0], Nclose);
-      LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Nclose, M, &Aclose[0], Nclose, &superb[0]);
-      LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'U', M, M, &Aclose[0], Nclose, &Aall[0], Mf);
+      std::vector<double> Aclose(Nclose * Nclose);
+      gen_matrix(func, Nclose, Nclose, Cbodies, Cbodies, &Aclose[0], Nclose);
+      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, Nclose, M, 1., &Aclose[0], Nclose, &Aall[0], ldm);
     }
 
-    if (Nfar > 0) {
-      gen_matrix(func, Nfar, M, Fbodies, Xbodies, &Aall[M], Mf);
-      LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Mf, M, &Aall[0], Mf, &superb[0]);
-      LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', M - 1, M - 1, 0., 0., &Aall[1], Mf);
-    }
+    LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Nclose + Nfar, M, &Aall[0], ldm, &superb[0]);
+    LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', M - 1, M - 1, 0., 0., &Aall[1], ldm);
 
     std::vector<double> U(M * M), S(M);
-    mkl_domatcopy('C', 'T', M, M, 1., &Aall[0], Mf, &U[0], M);
+    mkl_domatcopy('C', 'T', M, M, 1., &Aall[0], ldm, &U[0], M);
     LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M, &U[0], M, &S[0], NULL, M, NULL, M, &superb[0]);
 
     double s0 = S[0] * epi;
@@ -386,7 +382,6 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   params->X_data = X_ptr;
   params->Xc_data = _Xc_data;
 
-  cudaMalloc((void**)&(params->info), sizeof(int) * N_cols);
   cudaMemcpy(ptrs_nnz, ptrs_nnz_cpu.data(), sizeof(double*) * NNZ_aligned * NZ, cudaMemcpyHostToDevice);
   cudaMemcpy(ptrs_diag, ptrs_diag_cpu.data(), sizeof(double*) * N_cols_aligned * ND, cudaMemcpyHostToDevice);
 }
@@ -396,8 +391,6 @@ void batchParamsDestory(struct BatchedFactorParams* params) {
     cudaFree(params->A_d);
   if (params->U_r)
     cudaFree(params->U_r);
-  if (params->info)
-    cudaFree(params->info);
   if (params->Xc_data)
     cudaFree(params->Xc_data);
 }
@@ -425,7 +418,7 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
     params->U_d, N, (const double**)(params->U_dx), N, &zero, params->B_x, N, D);
   cublasDcopy(cublasH, N * N * D, params->U_d0, 1, params->UD_data, 1);
 
-  cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R, params->B_x, N, params->info, D);
+  cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R, params->B_x, N, NULL, D);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
     N, R, &one, (const double**)(params->B_x), N, params->U_dx, N, D);
 
@@ -598,7 +591,6 @@ void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, 
   int Lwork;
   cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, &Lwork);
   cudaMalloc((void**)&params->Xc_data, sizeof(double) * Lwork);
-  cudaMalloc((void**)&params->info, sizeof(int));
   params->L_tmp = Lwork;
 }
 
@@ -619,7 +611,7 @@ void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm
   cudaEventRecord(e2, stream);
 #endif
 
-  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, params->Xc_data, params->L_tmp, params->info);
+  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, params->Xc_data, params->L_tmp, NULL);
   cudaStreamSynchronize(stream);
 #ifdef _PROF
   float time = 0.;
@@ -648,7 +640,7 @@ void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm)
   cudaEventRecord(e2, stream);
 #endif
 
-  cusolverDnDpotrs(cusolverH, CUBLAS_FILL_MODE_LOWER, N, 1, A, N, X, N, params->info);
+  cusolverDnDpotrs(cusolverH, CUBLAS_FILL_MODE_LOWER, N, 1, A, N, X, N, NULL);
   cudaStreamSynchronize(stream);
 #ifdef _PROF
   float time = 0.;

@@ -29,7 +29,6 @@ struct BatchedFactorParams {
   const double** A_d, **U_d, **U_ds, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_d0;
   double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
   double** X_d, **Xc_d, **Xo_d, **B_d, *X_data, *Xc_data, *Xc_d0, *B_d0;
-  int* info;
 
   std::vector<int64_t> FwdRR_batch, FwdRS_batch, BackRR_batch, BackRS_batch;
   const double** FwdRR_A, **FwdRS_A, **BackRR_A, **BackRS_A, **FwdRR_B, **FwdRS_Xc, **BackRR_Xc, **BackRS_Xo;
