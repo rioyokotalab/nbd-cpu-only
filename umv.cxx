@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 #include <algorithm>
+#include <random>
 
 void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src, size_t elm_size) {
   for (int64_t i = 0; i < cols; i++) {
@@ -17,17 +18,19 @@ void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld
   }
 }
 
-void randomize2d(double* dst, int64_t rows, int64_t cols, int64_t ld) {
+void randomize2d(double* dst, int64_t rows, int64_t cols, int64_t ld, std::uniform_real_distribution<double>& dist, std::default_random_engine& engine) {
   for (int64_t j = 0; j < cols; j++)
     for (int64_t i = 0; i < rows; i++)
-      dst[i + j * ld] = ((double)std::rand() + 1) / RAND_MAX;
+      dst[i + j * ld] = dist(engine);//(double)std::rand();
 }
 
 void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
   std::vector<int64_t> dimSmax(levels + 1, 0);
   std::vector<int64_t> dimRmax(levels + 1, 0);
   std::vector<int64_t> nchild(levels + 1, 0);
-  std::srand(999);
+  std::random_device seed_gen;
+  std::default_random_engine engine(seed_gen());
+  std::uniform_real_distribution<double> dist(0.0, 1.0);
   
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0;
@@ -112,22 +115,22 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
           memcpy2d(&Uc_ptr[Urow], &cell_basis[ci].Uc[row], M, Nc, LD, Nc + No, sizeof(double));
           memcpy2d(&Uo_ptr[Urow], &cell_basis[ci].Uo[row], M, No, LD, Nc + No, sizeof(double));
 
-          randomize2d(&Uc_ptr[Urow + M + Nc * LD], basis[l + 1].dimS - M, basis[l].dimR - Nc, LD);
-          randomize2d(&Uo_ptr[Urow + M + No * LD], basis[l + 1].dimS - M, basis[l].dimS - No, LD);
+          randomize2d(&Uc_ptr[Urow + M + Nc * LD], basis[l + 1].dimS - M, basis[l].dimR - Nc, LD, dist, engine);
+          randomize2d(&Uo_ptr[Urow + M + No * LD], basis[l + 1].dimS - M, basis[l].dimS - No, LD, dist, engine);
           row = row + M;
         }
 
         int64_t pad = basis[l].padN;
-        randomize2d(&Uc_ptr[LD - pad + Nc * LD], pad, basis[l].dimR - Nc, LD);
-        randomize2d(&Uo_ptr[LD - pad + No * LD], pad, basis[l].dimS - No, LD);
+        randomize2d(&Uc_ptr[LD - pad + Nc * LD], pad, basis[l].dimR - Nc, LD, dist, engine);
+        randomize2d(&Uo_ptr[LD - pad + No * LD], pad, basis[l].dimS - No, LD, dist, engine);
       }
       else {
         int64_t M = basis[l].Dims[i];
         memcpy2d(Uc_ptr, cell_basis[ci].Uc, M, Nc, LD, Nc + No, sizeof(double));
         memcpy2d(Uo_ptr, cell_basis[ci].Uo, M, No, LD, Nc + No, sizeof(double));
 
-        randomize2d(&Uc_ptr[M + Nc * LD], LD - M, basis[l].dimR - Nc, LD);
-        randomize2d(&Uo_ptr[M + No * LD], LD - M, basis[l].dimS - No, LD);
+        randomize2d(&Uc_ptr[M + Nc * LD], LD - M, basis[l].dimR - Nc, LD, dist, engine);
+        randomize2d(&Uo_ptr[M + No * LD], LD - M, basis[l].dimS - No, LD, dist, engine);
       }
     }
 

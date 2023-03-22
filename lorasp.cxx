@@ -49,7 +49,8 @@ int main(int argc, char* argv[]) {
   else {
     int64_t* buckets = (int64_t*)malloc(sizeof(int64_t) * Nleaf);
     read_sorted_bodies(&Nbody, Nleaf, body, buckets, fname);
-    buildTreeBuckets(cell, body, buckets, levels);
+    //buildTreeBuckets(cell, body, buckets, levels);
+    buildTree(&ncells, cell, body, Nbody, levels);
     free(buckets);
   }
   body_neutral_charge(Xbody, Nbody, 1., 999);

@@ -300,6 +300,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, double(*func)(dou
     int64_t* M_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
     int64_t* N_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
 
+#pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ci = i + ibegin;
       int64_t childi = cells[ci].Child[0];

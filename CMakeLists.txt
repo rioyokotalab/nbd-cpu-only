@@ -21,3 +21,12 @@ target_compile_options(lorasp PRIVATE -D_PROF)
 target_include_directories(lorasp PRIVATE ./)
 target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MAGMA magma)
+
+if (MAGMA_FOUND)
+add_executable(bench benchmark/benchmark.cxx)
+target_compile_options(bench PRIVATE ${MAGMA_CFLAGS})
+target_include_directories(bench PRIVATE ./ ${MAGMA_INCLUDE_DIRS})
+target_link_libraries(bench PRIVATE OpenMP::OpenMP_CXX MKL::MKL ${MAGMA_LDFLAGS})
+endif()
