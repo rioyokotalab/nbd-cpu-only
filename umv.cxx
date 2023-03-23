@@ -8,7 +8,6 @@
 
 #include <cstdlib>
 #include <algorithm>
-#include <random>
 
 void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src, size_t elm_size) {
   for (int64_t i = 0; i < cols; i++) {
@@ -18,19 +17,10 @@ void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld
   }
 }
 
-void randomize2d(double* dst, int64_t rows, int64_t cols, int64_t ld, std::uniform_real_distribution<double>& dist, std::default_random_engine& engine) {
-  for (int64_t j = 0; j < cols; j++)
-    for (int64_t i = 0; i < rows; i++)
-      dst[i + j * ld] = dist(engine);//(double)std::rand();
-}
-
 void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
   std::vector<int64_t> dimSmax(levels + 1, 0);
   std::vector<int64_t> dimRmax(levels + 1, 0);
   std::vector<int64_t> nchild(levels + 1, 0);
-  std::random_device seed_gen;
-  std::default_random_engine engine(seed_gen());
-  std::uniform_real_distribution<double> dist(0.0, 1.0);
   
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0;
@@ -72,12 +62,16 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     int64_t stride_r = basis[l].dimS * basis[l].dimS;
     int64_t LD = basis[l].dimN;
 
+    int64_t ibegin = 0, iend = 0;
+    self_local_range(&ibegin, &iend, &comm[l]);
+    int64_t ilen = iend - ibegin;
+
     basis[l].M_cpu = (double*)calloc(basis[l].dimS * basis[l].Ulen * 3, sizeof(double));
-    basis[l].U_cpu = (double*)calloc(stride * basis[l].Ulen, sizeof(double));
+    basis[l].U_cpu = (double*)calloc(stride * basis[l].Ulen + ilen * basis[l].dimR, sizeof(double));
     basis[l].R_cpu = (double*)calloc(stride_r * basis[l].Ulen, sizeof(double));
     if (cudaMalloc(&basis[l].M_gpu, sizeof(double) * basis[l].dimS * basis[l].Ulen * 3) != cudaSuccess)
       basis[l].M_gpu = NULL;
-    if (cudaMalloc(&basis[l].U_gpu, sizeof(double) * stride * basis[l].Ulen) != cudaSuccess)
+    if (cudaMalloc(&basis[l].U_gpu, sizeof(double) * (stride * basis[l].Ulen + ilen * basis[l].dimR)) != cudaSuccess)
       basis[l].U_gpu = NULL;
     if (cudaMalloc(&basis[l].R_gpu, sizeof(double) * stride_r * basis[l].Ulen) != cudaSuccess)
       basis[l].R_gpu = NULL;
@@ -103,6 +97,11 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
 
       memcpy(M_ptr, cell_basis[ci].Multipoles, sizeof(double) * No * 3);
       memcpy2d(R_ptr, cell_basis[ci].R, No, No, basis[l].dimS, No, sizeof(double));
+      if (ibegin <= i && i < iend) {
+        double* Ui_ptr = basis[l].U_cpu + basis[l].Ulen * stride + (i - ibegin) * basis[l].dimR; 
+        for (int64_t j = Nc; j < basis[l].dimR; j++)
+          Ui_ptr[j] = 1.;
+      }
 
       int64_t child = std::get<0>(comm[l].LocalChild[i]);
       int64_t clen = std::get<1>(comm[l].LocalChild[i]);
@@ -114,30 +113,20 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
           int64_t Urow = j * basis[l + 1].dimS;
           memcpy2d(&Uc_ptr[Urow], &cell_basis[ci].Uc[row], M, Nc, LD, Nc + No, sizeof(double));
           memcpy2d(&Uo_ptr[Urow], &cell_basis[ci].Uo[row], M, No, LD, Nc + No, sizeof(double));
-
-          randomize2d(&Uc_ptr[Urow + M + Nc * LD], basis[l + 1].dimS - M, basis[l].dimR - Nc, LD, dist, engine);
-          randomize2d(&Uo_ptr[Urow + M + No * LD], basis[l + 1].dimS - M, basis[l].dimS - No, LD, dist, engine);
           row = row + M;
         }
-
-        int64_t pad = basis[l].padN;
-        randomize2d(&Uc_ptr[LD - pad + Nc * LD], pad, basis[l].dimR - Nc, LD, dist, engine);
-        randomize2d(&Uo_ptr[LD - pad + No * LD], pad, basis[l].dimS - No, LD, dist, engine);
       }
       else {
         int64_t M = basis[l].Dims[i];
         memcpy2d(Uc_ptr, cell_basis[ci].Uc, M, Nc, LD, Nc + No, sizeof(double));
         memcpy2d(Uo_ptr, cell_basis[ci].Uo, M, No, LD, Nc + No, sizeof(double));
-
-        randomize2d(&Uc_ptr[M + Nc * LD], LD - M, basis[l].dimR - Nc, LD, dist, engine);
-        randomize2d(&Uo_ptr[M + No * LD], LD - M, basis[l].dimS - No, LD, dist, engine);
       }
     }
 
     if (basis[l].M_gpu)
       cudaMemcpy(basis[l].M_gpu, basis[l].M_cpu, sizeof(double) * basis[l].dimS * basis[l].Ulen * 3, cudaMemcpyHostToDevice);
     if (basis[l].U_gpu)
-      cudaMemcpy(basis[l].U_gpu, basis[l].U_cpu, sizeof(double) * stride * basis[l].Ulen, cudaMemcpyHostToDevice);
+      cudaMemcpy(basis[l].U_gpu, basis[l].U_cpu, sizeof(double) * (stride * basis[l].Ulen + ilen * basis[l].dimR), cudaMemcpyHostToDevice);
     if (basis[l].R_gpu)
       cudaMemcpy(basis[l].R_gpu, basis[l].R_cpu, sizeof(double) * stride_r * basis[l].Ulen, cudaMemcpyHostToDevice);
   }
@@ -162,6 +151,7 @@ void basis_free(struct Base* basis) {
 
 void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
   int64_t work_size = 0;
+  int64_t pers_work = 0;
 
   for (int64_t i = levels; i >= 0; i--) {
     int64_t n_i = rels_near[i].N;
@@ -188,7 +178,9 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), stride * nnz);
     allocBufferedList((void**)&A[i].X_ptr, (void**)&A[i].X_buf, sizeof(double), dimn * basis[i].Ulen);
     int64_t work_required = n_i * stride * 2;
-    work_size = work_size < work_required ? work_required : work_size;
+    int64_t pers_required = basis[i].dimR * (basis[i].Ulen + n_i * (basis[i].dimR + 1));
+    pers_work = pers_work + pers_required;
+    work_size = std::max(work_size, work_required + pers_work);
 
     int64_t nloc = 0, nend = 0;
     self_local_range(&nloc, &nend, &comm[i]);
@@ -205,10 +197,6 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
         arr_m[yx + nnz] = (struct Matrix) { &A[i].A_buf[yx * stride], dimr, dimr, dimn }; // A_cc
         arr_m[yx + nnz * 2] = (struct Matrix) { &A[i].A_buf[yx * stride + dimr], dims, dimr, dimn }; // A_oc
         arr_m[yx + nnz * 3] = (struct Matrix) { NULL, diml_y, diml_x, dimn_up }; // A_oo
-
-        if (y == box_x)
-          for (int64_t z = 0; z < basis[i].padN; z++)
-            A[i].A_buf[yx * stride + (z + dimn - basis[i].padN) * (dimn + 1)] = 1.;
       }
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
@@ -251,7 +239,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
   }
   
   set_work_size(work_size, Workspace, Lwork);
-  for (int64_t i = 1; i <= levels; i++) {
+  for (int64_t i = levels; i > 0; i--) {
     int64_t ibegin = 0, iend = 0;
     self_local_range(&ibegin, &iend, &comm[i]);
     int64_t nnz = A[i].lenA;
@@ -274,13 +262,20 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
           X_next[child + j] = &A[i - 1].X_ptr[j * basis[i].dimS + x * n_next];
     }
 
-    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, A_next, X_next,
-      *Workspace, *Lwork, basis[i].Ulen, rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex);
+    int64_t alloc = batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, A_next, X_next,
+      *Workspace, work_size, basis[i].Ulen, rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex);
+    work_size = work_size - alloc;
     free(A_next);
     free(X_next);
   }
 
-  lastParamsCreate(&A[0].params, A[0].A_ptr, A[0].X_ptr, basis[0].dimN);
+  int64_t child = std::get<0>(comm[0].LocalChild[0]);
+  int64_t clen = std::get<1>(comm[0].LocalChild[0]);
+  std::vector<int64_t> cdims(clen);
+  if (child >= 0)
+    for (int64_t i = 0; i < clen; i++)
+      cdims[i] = basis[1].DimsLr[child + i];
+  lastParamsCreate(&A[0].params, A[0].A_ptr, A[0].X_ptr, basis[0].dimN, clen > 0 ? basis[1].dimS : 0, clen, &cdims[0]);
 }
 
 void node_free(struct Node* node) {

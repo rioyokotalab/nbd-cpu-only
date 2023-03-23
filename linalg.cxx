@@ -193,18 +193,19 @@ int64_t shuffle_batch_dgemm(const double** A, const double** B, double** C, int6
   return iters;
 }
 
-void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
+int64_t batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
   double* Workspace, int64_t Lwork, int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]) {
   
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
-  int64_t lenB = (Lwork / stride) - N_cols;
+  int64_t pers = R_dim * (N_rows + N_cols * (R_dim + 1));
+  int64_t lenB = ((Lwork - pers) / stride) - N_cols;
   lenB = lenB > NNZ ? NNZ : lenB;
   int64_t N_cols_aligned = 16 * ((N_cols >> 4) + ((N_cols & 15) > 0));
   int64_t NNZ_aligned = 16 * ((NNZ >> 4) + ((NNZ & 15) > 0));
 
-  const int64_t NZ = 19, ND = 10, NH = 6;
+  const int64_t NZ = 19, ND = 11, NH = 6;
   std::vector<double*> ptrs_nnz_cpu(NZ * NNZ_aligned);
   std::vector<double*> ptrs_diag_cpu(ND * N_cols_aligned);
   std::vector<double*> ptrs_host_cpu(NH * NNZ_aligned); 
@@ -236,10 +237,11 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   const double** _A_rs = (const double**)&ptrs_diag_cpu[3 * N_cols_aligned];
   double** _U_dx = (double**)&ptrs_diag_cpu[4 * N_cols_aligned];
   double** _A_ss = (double**)&ptrs_diag_cpu[5 * N_cols_aligned];
-  double** _X_d = (double**)&ptrs_diag_cpu[6 * N_cols_aligned];
-  double** _Xc_d = (double**)&ptrs_diag_cpu[7 * N_cols_aligned];
-  double** _Xo_d = (double**)&ptrs_diag_cpu[8 * N_cols_aligned];
-  double** _B_d = (double**)&ptrs_diag_cpu[9 * N_cols_aligned];
+  double** _A_rr = (double**)&ptrs_diag_cpu[6 * N_cols_aligned];
+  double** _X_d = (double**)&ptrs_diag_cpu[7 * N_cols_aligned];
+  double** _Xc_d = (double**)&ptrs_diag_cpu[8 * N_cols_aligned];
+  double** _Xo_d = (double**)&ptrs_diag_cpu[9 * N_cols_aligned];
+  double** _B_d = (double**)&ptrs_diag_cpu[10 * N_cols_aligned];
 
   const double** _A_xlo = (const double**)&ptrs_host_cpu[0 * NNZ_aligned];
   const double** _A_sr = (const double**)&ptrs_host_cpu[1 * NNZ_aligned];
@@ -250,9 +252,8 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
 
   double* _UD_data = Workspace;
   double* _B_data = &Workspace[N_cols * stride];
-  double* _Xc_data;
-  cudaMalloc(&_Xc_data, sizeof(double) * N_rows * R_dim);
-  cudaMemset(_Xc_data, 0, sizeof(double) * N_rows * R_dim);
+  double* _Xc_data = &Workspace[Lwork - pers];
+  double* _D_data = &_Xc_data[R_dim * N_rows];
 
   int64_t countL = 0;
   for (int64_t x = 0; x < N_cols; x++) {
@@ -284,6 +285,7 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
     _A_rs[x] = A_ptr + stride * diag_id + R_dim;
     _U_dx[x] = _UD_data + stride * x;
     _A_ss[x] = A_up[diag_id];
+    _A_rr[x] = _D_data + (R_dim + 1) * R_dim * x;
 
     _X_d[x] = X_ptr + N_dim * (x + col_offset);
     _Xc_d[x] = _Xc_data + R_dim * (x + col_offset);
@@ -336,6 +338,7 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   params->L_lower = countL;
   params->L_rows = N_rows;
   params->L_tmp = lenB;
+  params->FreeB = 0;
 
   void** ptrs_nnz, **ptrs_diag;
   cudaMalloc((void**)&ptrs_nnz, sizeof(double*) * NNZ_aligned * NZ);
@@ -368,22 +371,26 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   params->A_rs = (const double**)&ptrs_diag[3 * N_cols_aligned];
   params->U_dx = (double**)&ptrs_diag[4 * N_cols_aligned];
   params->A_ss = (double**)&ptrs_diag[5 * N_cols_aligned];
-  params->X_d = (double**)&ptrs_diag[6 * N_cols_aligned];
-  params->Xc_d = (double**)&ptrs_diag[7 * N_cols_aligned];
-  params->Xo_d = (double**)&ptrs_diag[8 * N_cols_aligned];
-  params->B_d = (double**)&ptrs_diag[9 * N_cols_aligned];
+  params->A_rr = (double**)&ptrs_diag[6 * N_cols_aligned];
+  params->X_d = (double**)&ptrs_diag[7 * N_cols_aligned];
+  params->Xc_d = (double**)&ptrs_diag[8 * N_cols_aligned];
+  params->Xo_d = (double**)&ptrs_diag[9 * N_cols_aligned];
+  params->B_d = (double**)&ptrs_diag[10 * N_cols_aligned];
 
+  params->U_i = U_ptr + stride * N_rows;
   params->U_d0 = U_ptr + stride * col_offset;
   params->Xc_d0 = _Xc_data + R_dim * col_offset;
   params->B_d0 = _UD_data + R_dim * col_offset;
   params->UD_data = _UD_data;
   params->A_data = A_ptr;
   params->B_data = _B_data;
+  params->A_rr0 = _D_data;
   params->X_data = X_ptr;
   params->Xc_data = _Xc_data;
 
   cudaMemcpy(ptrs_nnz, ptrs_nnz_cpu.data(), sizeof(double*) * NNZ_aligned * NZ, cudaMemcpyHostToDevice);
   cudaMemcpy(ptrs_diag, ptrs_diag_cpu.data(), sizeof(double*) * N_cols_aligned * ND, cudaMemcpyHostToDevice);
+  return pers;
 }
 
 void batchParamsDestory(struct BatchedFactorParams* params) {
@@ -391,8 +398,8 @@ void batchParamsDestory(struct BatchedFactorParams* params) {
     cudaFree(params->A_d);
   if (params->U_r)
     cudaFree(params->U_r);
-  if (params->Xc_data)
-    cudaFree(params->Xc_data);
+  if (params->B_data && params->FreeB)
+    cudaFree(params->B_data);
 }
 
 void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellComm* comm) {
@@ -415,15 +422,16 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, R, N, &one, 
     params->A_d, N, params->U_d, N, &zero, params->U_dx, N, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, R, N, &one, 
-    params->U_d, N, (const double**)(params->U_dx), N, &zero, params->B_x, N, D);
+    params->U_d, N, (const double**)(params->U_dx), N, &zero, params->A_rr, R, D);
+  cublasDaxpy(cublasH, R * D, &one, params->U_i, 1, params->A_rr0, R + 1);
   cublasDcopy(cublasH, N * N * D, params->U_d0, 1, params->UD_data, 1);
 
-  cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R, params->B_x, N, NULL, D);
+  cusolverDnDpotrfBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R, params->A_rr, R, NULL, D);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
-    N, R, &one, (const double**)(params->B_x), N, params->U_dx, N, D);
+    N, R, &one, (const double**)(params->A_rr), R, params->U_dx, N, D);
 
   for (int64_t i = 0; i < params->L_nnz; i += params->L_tmp) {
-    int64_t len = params->L_nnz - i > params->L_tmp ? params->L_tmp : params->L_nnz - i;
+    int64_t len = std::min(params->L_nnz - i, params->L_tmp);
     cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &one, 
       (const double**)(&params->A_x[i]), N, &params->V_x[i], N, &zero, params->B_x, N, len);
     cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, N, R, N, &one, 
@@ -461,13 +469,14 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
   cudaEventRecord(e2, stream);
 #endif
 
+  cudaMemsetAsync(params->Xc_data, 0, sizeof(double) * params->L_rows * R, stream);
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, N, &one,
     params->U_d, N, (const double**)params->X_d, N, &zero, params->Xc_d, R, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, S, ONE, N, &one,
     params->U_ds, N, (const double**)params->X_d, N, &zero, params->Xo_d, S, D);
   cublasDcopy(cublasH, R * D, params->Xc_d0, 1, params->B_d0, 1);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_d, N, params->B_d, N, D);
+    R, ONE, &one, params->A_rr, R, params->B_d, N, D);
 
   int64_t row = 0;
   for (int64_t i = 0; i < (int64_t)params->FwdRR_batch.size(); i++) {
@@ -490,7 +499,7 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
 #endif
 
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_d, N, params->Xc_d, R, D);
+    R, ONE, &one, params->A_rr, R, params->Xc_d, R, D);
 
   row = 0;
   for (int64_t i = 0; i < (int64_t)params->FwdRS_batch.size(); i++) {
@@ -527,7 +536,7 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
   }
   cublasDcopy(cublasH, R * D, params->Xc_d0, 1, params->B_d0, 1);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_d, N, params->Xc_d, R, D);
+    R, ONE, &one, params->A_rr, R, params->Xc_d, R, D);
 
 #ifdef _PROF
   cudaEvent_t e1, e2;
@@ -549,7 +558,7 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
     row = row + len;
   }
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_d, N, params->B_d, R, D);
+    R, ONE, &one, params->A_rr, R, params->B_d, R, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, ONE, R, &one,
     params->U_d, N, (const double**)params->B_d, R, &zero, params->X_d, N, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, ONE, S, &one,
@@ -581,23 +590,31 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
 #endif
 }
 
-void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, int64_t N) {
+void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, int64_t N, int64_t S, int64_t clen, const int64_t cdims[]) {
   memset((void*)params, 0, sizeof(struct BatchedFactorParams));
 
   params->A_data = A;
   params->X_data = X;
   params->N_r = N;
+  params->FreeB = 1;
 
   int Lwork;
   cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, &Lwork);
-  cudaMalloc((void**)&params->Xc_data, sizeof(double) * Lwork);
+  Lwork = std::max((int64_t)Lwork, N);
+  cudaMalloc((void**)&params->B_data, sizeof(double) * Lwork);
   params->L_tmp = Lwork;
+
+  std::vector<double> I(N, 1.);
+  for (int64_t i = 0; i < clen; i++)
+    std::fill(I.begin() + i * S, I.begin() + i * S + cdims[i], 0.);
+  cudaMemcpy(params->B_data, &I[0], sizeof(double) * N, cudaMemcpyHostToDevice);
 }
 
 void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm) {
   double* A = params->A_data;
   int64_t N = params->N_r;
   int64_t alen = N * N;
+  double one = 1.;
 
 #ifdef _PROF
   cudaEvent_t e1, e2;
@@ -611,7 +628,8 @@ void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm
   cudaEventRecord(e2, stream);
 #endif
 
-  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, params->Xc_data, params->L_tmp, NULL);
+  cublasDaxpy(cublasH, N, &one, params->B_data, 1, A, N + 1);
+  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, params->B_data, params->L_tmp, NULL);
   cudaStreamSynchronize(stream);
 #ifdef _PROF
   float time = 0.;

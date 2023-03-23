@@ -25,9 +25,9 @@ struct Base {
 };
 
 struct BatchedFactorParams { 
-  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_lower, L_rows, L_tmp;
-  const double** A_d, **U_d, **U_ds, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_d0;
-  double** U_dx, **A_x, **B_x, **A_ss, **A_upper, *UD_data, *A_data, *B_data;
+  int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_lower, L_rows, L_tmp, FreeB;
+  const double** A_d, **U_d, **U_ds, **U_r, **U_s, **V_x, **A_rs, **A_sx, *U_i, *U_d0;
+  double** U_dx, **A_x, **B_x, **A_ss, **A_rr, **A_upper, *UD_data, *A_data, *B_data, *A_rr0;
   double** X_d, **Xc_d, **Xo_d, **B_d, *X_data, *Xc_data, *Xc_d0, *B_d0;
 
   std::vector<int64_t> FwdRR_batch, FwdRS_batch, BackRR_batch, BackRS_batch;
@@ -56,11 +56,11 @@ void init_libs(int* argc, char*** argv);
 void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
-void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
+int64_t batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_t S_dim, const double* U_ptr, double* A_ptr, double* X_ptr, int64_t N_up, double** A_up, double** X_up,
   double* Workspace, int64_t Lwork, int64_t N_rows, int64_t N_cols, int64_t col_offset, const int64_t row_A[], const int64_t col_A[]);
 void batchParamsDestory(struct BatchedFactorParams* params);
 
-void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, int64_t N);
+void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, int64_t N, int64_t S, int64_t clen, const int64_t cdims[]);
 
 void allocBufferedList(void** A_ptr, void** A_buffer, int64_t element_size, int64_t count);
 void flushBuffer(char dir, void* A_ptr, void* A_buffer, int64_t element_size, int64_t count);
