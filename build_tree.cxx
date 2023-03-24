@@ -300,7 +300,6 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, double(*func)(dou
     int64_t* M_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
     int64_t* N_comm = (int64_t*)malloc(sizeof(int64_t) * (llen + 1));
 
-#pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ci = i + ibegin;
       int64_t childi = cells[ci].Child[0];
@@ -347,7 +346,7 @@ void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, double(*func)(dou
           Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
 
       std::vector<double> A(ske_len * ske_len);
-      int64_t rank = compute_basis(func, epi, 20, mrank, ske_len, &A[0], ske_len, skeletons, Cbodies.size() / 3, &Cbodies[0], len_f, &Fbodies[0]);
+      int64_t rank = compute_basis(func, epi, 10, mrank, ske_len, &A[0], ske_len, skeletons, Cbodies.size() / 3, &Cbodies[0], len_f, &Fbodies[0]);
 
       double* basis_data = (double*)malloc(sizeof(double) * (ske_len * ske_len + rank * rank));
       memcpy(basis_data, &A[0], sizeof(double) * ske_len * rank);

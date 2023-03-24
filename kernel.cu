@@ -53,6 +53,14 @@ double (*yukawa3d_gpu(void)) (double) {
   return func;
 }
 
+double __gauss_h(double r2) {
+  return exp(-sqrt(r2) / _alpha);
+}
+
+double (*gauss_cpu(void)) (double) {
+  return &__gauss_h;
+}
+
 void set_kernel_constants(double singularity, double alpha) {
   _singularity = singularity;
   _alpha = alpha;

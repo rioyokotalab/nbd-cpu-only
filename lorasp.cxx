@@ -20,13 +20,15 @@ int main(int argc, char* argv[]) {
   int64_t sp_pts = argc > 6 ? atol(argv[6]) : 2000;
   const char* fname = argc > 7 ? argv[7] : NULL;
 
+  leaf_size = Nbody < leaf_size ? Nbody : leaf_size;
   int64_t levels = (int64_t)log2((double)Nbody / leaf_size);
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
   //double(*func)(double) = laplace3d_cpu();
-  double(*func)(double) = yukawa3d_cpu();
-  set_kernel_constants(1.e-3 / Nbody, 1.);
+  //double(*func)(double) = yukawa3d_cpu();
+  double(*func)(double) = gauss_cpu();
+  set_kernel_constants(1.e-3 / Nbody, 1.e-2);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -114,6 +116,7 @@ int main(int argc, char* argv[]) {
   startTimer(&factor_time, &factor_comm_time);
   factorA(nodes, basis, cell_comm, levels);
   stopTimer(&factor_time, &factor_comm_time);
+  factorA_mov_mem('G', nodes, basis, levels);
 
   int64_t factor_flops[3];
   get_factor_flops(factor_flops);

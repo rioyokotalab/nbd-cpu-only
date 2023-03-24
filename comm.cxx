@@ -209,8 +209,8 @@ void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t al
     int64_t rem1 = i1 & (align - 1);
     int64_t rem2 = i2 & (align - 1);
 
-    dim_max[i * 3] = i1 - rem1 + (rem1 ? align : 0);
-    dim_max[i * 3 + 1] = i2 - rem2 + (rem2 ? align : 0);
+    dim_max[i * 3] = std::max(align, i1 - rem1 + (rem1 ? align : 0));
+    dim_max[i * 3 + 1] = std::max(align, i2 - rem2 + (rem2 ? align : 0));
     dim_max[i * 3 + 2] = nchild[i];
   }
   MPI_Allreduce(MPI_IN_PLACE, dim_max.data(), (levels + 1) * 3, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);

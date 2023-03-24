@@ -275,7 +275,10 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
   if (child >= 0)
     for (int64_t i = 0; i < clen; i++)
       cdims[i] = basis[1].DimsLr[child + i];
-  lastParamsCreate(&A[0].params, A[0].A_ptr, A[0].X_ptr, basis[0].dimN, clen > 0 ? basis[1].dimS : 0, clen, &cdims[0]);
+  else
+    cdims.emplace_back(basis[0].Dims[0]);
+  int64_t low_s = clen > 0 ? basis[1].dimS : 0;
+  lastParamsCreate(&A[0].params, A[0].A_ptr, A[0].X_ptr, basis[0].dimN, low_s, cdims.size(), &cdims[0]);
 }
 
 void node_free(struct Node* node) {
