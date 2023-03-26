@@ -93,7 +93,8 @@ int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64
 
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
     int64_t ldm = std::max(M, Nclose + Nfar);
-    std::vector<double> Aall(M * ldm, 0.), superb(M);
+    std::vector<double> Aall(M * ldm, 0.);
+    std::vector<MKL_INT> ipiv(M);
     gen_matrix(func, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
     gen_matrix(func, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
@@ -103,12 +104,12 @@ int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64
       cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, Nclose, M, 1., &Aclose[0], Nclose, &Aall[0], ldm);
     }
 
-    LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Nclose + Nfar, M, &Aall[0], ldm, &superb[0]);
+    LAPACKE_dgetrf(LAPACK_COL_MAJOR, Nclose + Nfar, M, &Aall[0], ldm, &ipiv[0]);
     LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', M - 1, M - 1, 0., 0., &Aall[1], ldm);
 
-    std::vector<double> U(M * M), S(M);
+    std::vector<double> U(M * M), S(M * 2);
     mkl_domatcopy('C', 'T', M, M, 1., &Aall[0], ldm, &U[0], M);
-    LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M, &U[0], M, &S[0], NULL, M, NULL, M, &superb[0]);
+    LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M, &U[0], M, &S[0], NULL, M, NULL, M, &S[M]);
 
     double s0 = S[0] * epi;
     rank_max = rank_max <= 0 ? M : std::min(rank_max, M);
@@ -117,14 +118,13 @@ int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64
       std::distance(S.begin(), std::find_if(S.begin() + rank_min, S.begin() + rank_max, [s0](double& s) { return s < s0; })) : rank_max;
 
     if (rank > 0) {
-      std::vector<MKL_INT> Apiv(rank);
       LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'F', M, rank, &U[0], M, A, LDA);
-      LAPACKE_dgetrf(LAPACK_COL_MAJOR, M, rank, &U[0], M, &Apiv[0]);
+      LAPACKE_dgetrf(LAPACK_COL_MAJOR, M, rank, &U[0], M, &ipiv[0]);
       cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, M, rank, 1., &U[0], M, A, LDA);
       cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, M, rank, 1., &U[0], M, A, LDA);
 
       for (MKL_INT i = 0; i < rank; i++) {
-        MKL_INT piv = Apiv[i] - 1;
+        MKL_INT piv = ipiv[i] - 1;
         if (piv != i)
           for (MKL_INT k = 0; k < 3; k++)
             std::iter_swap(&Xbodies[i * 3 + k], &Xbodies[piv * 3 + k]);

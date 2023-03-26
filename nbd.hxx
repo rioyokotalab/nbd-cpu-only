@@ -11,18 +11,13 @@
 #include <cstddef>
 
 #include "comm.hxx"
+#include "basis.hxx"
 
 struct Matrix { double* A; int64_t M, N, LDA; };
 
 struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
 struct CellBasis { int64_t M, N; double *Multipoles, *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
-
-struct Base { 
-  int64_t Ulen, *Dims, *DimsLr, dimR, dimS, dimN, padN;
-  struct Matrix *Uo, *Uc, *R;
-  double *M_gpu, *M_cpu, *U_gpu, *U_cpu, *R_gpu, *R_cpu; 
-};
 
 struct BatchedFactorParams { 
   int64_t N_r, N_s, N_upper, L_diag, L_nnz, L_lower, L_rows, L_tmp, FreeB;
@@ -38,7 +33,7 @@ struct BatchedFactorParams {
 struct Node {
   int64_t lenA, lenS;
   struct Matrix *A, *S, *A_cc, *A_oc, *A_oo;
-  double* A_ptr, *A_buf, *X_ptr, *X_buf;
+  double* A_ptr, *A_buf, *X_ptr, *X_buf, *M_ptr, *M_buf, *U_ptr, *U_buf, *R_ptr, *R_buf;
   struct BatchedFactorParams params; 
 };
 

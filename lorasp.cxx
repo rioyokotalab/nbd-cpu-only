@@ -16,7 +16,7 @@ int main(int argc, char* argv[]) {
   double theta = argc > 2 ? atof(argv[2]) : 1e0;
   int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
   double epi = argc > 4 ? atof(argv[4]) : 1e-10;
-  int64_t rank_max = argc > 5 ? atol(argv[5]) : 100;
+  int64_t rank_max = argc > 5 ? atol(argv[5]) : 200;
   int64_t sp_pts = argc > 6 ? atol(argv[6]) : 2000;
   const char* fname = argc > 7 ? argv[7] : NULL;
 
@@ -26,9 +26,9 @@ int main(int argc, char* argv[]) {
   int64_t ncells = Nleaf + Nleaf - 1;
   
   //double(*func)(double) = laplace3d_cpu();
-  //double(*func)(double) = yukawa3d_cpu();
-  double(*func)(double) = gauss_cpu();
-  set_kernel_constants(1.e-3 / Nbody, 1.e-2);
+  double(*func)(double) = yukawa3d_cpu();
+  //double(*func)(double) = gauss_cpu();
+  set_kernel_constants(1.e-9, 0.8);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -38,14 +38,17 @@ int main(int argc, char* argv[]) {
   struct CSC* rels_far = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
   struct CSC* rels_near = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
   struct CellComm* cell_comm = (struct CellComm*)calloc(levels + 1, sizeof(struct CellComm));
-  struct Base* basis = (struct Base*)malloc(sizeof(struct Base) * (levels + 1));
+  struct Base* basis = (struct Base*)calloc(levels + 1, sizeof(struct Base));
   struct Node* nodes = (struct Node*)malloc(sizeof(struct Node) * (levels + 1));
   struct RightHandSides* rhs = (struct RightHandSides*)malloc(sizeof(struct RightHandSides) * (levels + 1));
 
   if (fname == NULL) {
     mesh_unit_sphere(body, Nbody);
     //mesh_unit_cube(body, Nbody);
-    //uniform_unit_cube(body, Nbody, 3, 1234);
+    //uniform_unit_cube(body, Nbody, 2, 1234);
+    double c[3] = { 0, 0, 0 };
+    double r[3] = { sqrt(1.e-3 * Nbody), sqrt(1.e-3 * Nbody), sqrt(1.e-3 * Nbody) };
+    magnify_reloc(body, Nbody, c, c, r, 1.);
     buildTree(&ncells, cell, body, Nbody, levels);
   }
   else {
@@ -125,8 +128,8 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < 3; i++)
     percent[i] = (double)factor_flops[i] / (double)sum_flops * (double)100;
 
-  int64_t lbegin = 0, lend = 0;
-  self_local_range(&lbegin, &lend, &cell_comm[levels]);
+  int64_t lbegin = 0;
+  content_length(NULL, NULL, &lbegin, &cell_comm[levels]);
   cudaMemcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1, lenX * sizeof(double), cudaMemcpyHostToDevice);
 
   double solve_time, solve_comm_time;

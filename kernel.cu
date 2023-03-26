@@ -54,7 +54,7 @@ double (*yukawa3d_gpu(void)) (double) {
 }
 
 double __gauss_h(double r2) {
-  return exp(-sqrt(r2) / _alpha);
+  return exp(-sqrt(r2) / (_alpha * _alpha));
 }
 
 double (*gauss_cpu(void)) (double) {

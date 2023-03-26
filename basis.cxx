@@ -1,10 +1,47 @@
 
+#include "basis.hxx"
+#include "comm.hxx"
 #include "nbd.hxx"
 #include "profile.hxx"
 
-#include "stdlib.h"
-#include "math.h"
-#include "string.h"
+#include <algorithm>
+#include <cstdlib>
+#include <cmath>
+#include <cstring>
+
+void initBasisLeaf(Base* basis, int64_t ncells, const Cell* cells, const double bodies[], const CellComm* comm, int64_t level) {
+  int64_t mbegin = 0, mend = ncells;
+  int64_t lbegin = 0, llen = 0, ulen = 0;
+  get_level(&mbegin, &mend, cells, level, -1);
+  content_length(&llen, &ulen, &lbegin, comm);
+
+  basis->Ulen = ulen;
+  basis->Llen = llen;
+  basis->LocalOffset = lbegin;
+  basis->Dims = std::vector<int64_t>(ulen, 0);
+  basis->DimsLr = std::vector<int64_t>(ulen, 0);
+  basis->LenC = std::vector<int64_t>(llen, 0);
+  basis->LenF = std::vector<int64_t>(llen, 0);
+
+  int64_t seg = 0;
+  for (int64_t i = 0; i < ulen; i++) {
+    int64_t gi = i;
+    i_global(&gi, comm);
+    const Cell* c = &cells[mbegin + gi];
+    basis->Dims[i + lbegin] = c->Body[1] - c->Body[0];
+    seg = std::max(seg, basis->Dims[i + lbegin]);
+  }
+  MPI_Allreduce(MPI_IN_PLACE, &seg, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
+
+  basis->Seg = seg;
+  basis->Skeletons = std::vector<double>(ulen * seg * 3, 0.);
+  for (int64_t i = 0; i < ulen; i++) {
+    int64_t gi = i;
+    i_global(&gi, comm);
+    const Cell* c = &cells[mbegin + gi];
+    std::copy(&bodies[3 * c->Body[0]], &bodies[3 * c->Body[1]], &basis->Skeletons[3 * i * seg]);
+  }
+}
 
 struct SampleBodies 
 { int64_t LTlen, *FarLens, *FarAvails, **FarBodies, *CloseLens, *CloseAvails, **CloseBodies, *SkeLens, **Skeletons; };
@@ -149,9 +186,9 @@ const struct CSC* rels, const int64_t* lt_child, const struct Base* basis_lo, in
       close[j] = loc + offset_i - s_lens;
     }
 
-    int64_t lc = lt_child[i];
+    /*int64_t lc = lt_child[i];
     int64_t sbegin = cells[i + ibegin].Body[0];
-    /*if (basis_lo != NULL && lc >= 0)
+    if (basis_lo != NULL && lc >= 0)
       memcpy(skeleton, basis_lo->Multipoles + basis_lo->Offsets[lc], sizeof(int64_t) * ske_len);
     else
       for (int64_t j = 0; j < ske_len; j++)
@@ -169,7 +206,7 @@ void sampleBodies_free(struct SampleBodies* sample) {
 
 
 /*void buildBasis(void(*ef)(double*), struct Base basis[], int64_t ncells, struct Cell* cells, const struct CSC* rel_near, int64_t levels, 
-const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
+  const struct CellComm* comm, const struct Body* bodies, int64_t nbodies, double epi, int64_t mrank, int64_t sp_pts) {
 
   for (int64_t l = levels; l >= 0; l--) {
     int64_t xlen = 0;

@@ -55,8 +55,8 @@ int64_t potrf_flops = 0;
 int64_t trsm_flops = 0;
 
 void record_factor_flops(int64_t dimr, int64_t dims, int64_t nnz, int64_t ndiag) {
-  if (dims == 0 && nnz == 1)
-    potrf_flops = potrf_flops + dimr * dimr * dimr / 3;
+  if (dimr == 0 && nnz == 1)
+    potrf_flops = potrf_flops + dims * dims * dims / 3;
   else {
     int64_t dimn = dimr + dims;
     int64_t fgemm = 4 * dimn * dimn * dimn * nnz;

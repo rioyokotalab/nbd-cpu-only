@@ -22,6 +22,8 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t lenp = cells[mbegin].Procs[1] - p;
     comms[i].Proc[0] = p;
     comms[i].Proc[1] = p + lenp;
+    comms[i].Boxes[0] = ibegin;
+    comms[i].Boxes[1] = iend;
 
     for (int64_t j = 0; j < mpi_size; j++) {
       int is_ngb = 0;
@@ -174,29 +176,19 @@ void i_global(int64_t* iglobal, const struct CellComm* comm) {
     *iglobal = -1;
 }
 
-void self_local_range(int64_t* ibegin, int64_t* iend, const struct CellComm* comm) {
-  int64_t p = comm->Proc[0];
-  size_t iter = 0;
-  int64_t slen = 0;
-  while (iter < comm->ProcTargets.size() && comm->ProcTargets[iter] != p) {
-    slen = slen + std::get<1>(comm->ProcBoxes[iter]);
-    iter = iter + 1;
-  }
-  if (iter < comm->ProcTargets.size()) {
-    *ibegin = slen;
-    *iend = slen + std::get<1>(comm->ProcBoxes[iter]);
-  }
-  else {
-    *ibegin = -1;
-    *iend = -1;
-  }
-}
-
-void content_length(int64_t* len, const struct CellComm* comm) {
-  int64_t slen = 0;
-  for (size_t i = 0; i < comm->ProcTargets.size(); i++)
+void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const struct CellComm* comm) {
+  int64_t slen = 0, offset = -1, len_self = -1;
+  for (size_t i = 0; i < comm->ProcTargets.size(); i++) {
+    if (comm->ProcTargets[i] == comm->Proc[0])
+    { offset = slen; len_self = std::get<1>(comm->ProcBoxes[i]); }
     slen = slen + std::get<1>(comm->ProcBoxes[i]);
-  *len = slen;
+  }
+  if (local)
+    *local = len_self;
+  if (neighbors)
+    *neighbors = slen;
+  if (local_off)
+    *local_off = offset;
 }
 
 void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t align, int64_t levels) {
@@ -224,6 +216,16 @@ void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t al
     dimS[i] = dims;
     dimR[i] = dimr;
     nchild[i] = dimr + dims - child_s;
+  }
+}
+
+void neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
+  int64_t y = 0;
+  for (size_t p = 0; p < comm->Comm_box.size(); p++) {
+    int64_t llen = std::get<1>(comm->ProcBoxes[p]);
+    int64_t* loc = &data[y];
+    MPI_Bcast(loc, llen, MPI_INT64_T, std::get<0>(comm->Comm_box[p]), std::get<1>(comm->Comm_box[p]));
+    y = y + llen;
   }
 }
 

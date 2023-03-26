@@ -609,8 +609,8 @@ void evalD(double(*func)(double), struct Matrix* D, int64_t ncells, const struct
 }
 
 void evalS(double(*func)(double), struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm) {
-  int64_t ibegin = 0, iend = 0;
-  self_local_range(&ibegin, &iend, comm);
+  int64_t ibegin = 0;
+  content_length(NULL, NULL, &ibegin, comm);
   int64_t seg = basis->dimS * 3;
 
 #pragma omp parallel for
