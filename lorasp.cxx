@@ -16,7 +16,7 @@ int main(int argc, char* argv[]) {
   double theta = argc > 2 ? atof(argv[2]) : 1e0;
   int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
   double epi = argc > 4 ? atof(argv[4]) : 1e-10;
-  int64_t rank_max = argc > 5 ? atol(argv[5]) : 200;
+  int64_t rank_max = argc > 5 ? atol(argv[5]) : 100;
   int64_t sp_pts = argc > 6 ? atol(argv[6]) : 2000;
   const char* fname = argc > 7 ? argv[7] : NULL;
 
@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
   struct Cell* cell = (struct Cell*)malloc(sizeof(struct Cell) * ncells);
-  struct CellBasis* cell_basis = (struct CellBasis*)malloc(sizeof(struct CellBasis) * ncells);
+  //struct CellBasis* cell_basis = (struct CellBasis*)malloc(sizeof(struct CellBasis) * ncells);
   struct CSC cellNear, cellFar;
   struct CSC* rels_far = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
   struct CSC* rels_near = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
@@ -70,12 +70,13 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  buildCellBasis(epi, rank_max, sp_pts, func, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
+  //buildCellBasis(epi, rank_max, sp_pts, func, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
   stopTimer(&construct_time, &construct_comm_time);
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
-  buildBasis(4, basis, ncells, cell, cell_basis, levels, cell_comm);
+  //buildBasis(4, basis, ncells, cell, cell_basis, levels, cell_comm);
+  buildBasis(func, basis, ncells, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
   allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(func, nodes[levels].A, ncells, cell, body, &cellNear, levels);
@@ -88,7 +89,7 @@ int main(int argc, char* argv[]) {
 
   loadX(X1, basis[levels].dimN, Xbody, ncells, cell, levels);
   allocRightHandSidesMV(rhs, basis, cell_comm, levels);
-  matVecA(rhs, nodes, basis, rels_near, rels_far, X1, cell_comm, levels);
+  matVecA(rhs, nodes, basis, rels_near, X1, cell_comm, levels);
 
   double cerr = 0.;
   if (Nbody < 20000) {
@@ -184,15 +185,15 @@ int main(int argc, char* argv[]) {
     rightHandSides_free(&rhs[i]);
     cellComm_free(&cell_comm[i]);
   }
-  for (int64_t i = 0; i < ncells; i++)
-    cellBasis_free(&cell_basis[i]);
+  //for (int64_t i = 0; i < ncells; i++)
+    //cellBasis_free(&cell_basis[i]);
   csc_free(&cellFar);
   csc_free(&cellNear);
   
   free(body);
   free(Xbody);
   free(cell);
-  free(cell_basis);
+  //free(cell_basis);
   free(rels_far);
   free(rels_near);
   free(cell_comm);

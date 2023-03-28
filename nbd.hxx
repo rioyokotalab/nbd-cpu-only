@@ -144,7 +144,7 @@ void allocRightHandSidesMV(struct RightHandSides st[], const struct Base base[],
 
 void rightHandSides_free(struct RightHandSides* rhs);
 
-void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], double* X, const struct CellComm comm[], int64_t levels);
+void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], double* X, const struct CellComm comm[], int64_t levels);
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 

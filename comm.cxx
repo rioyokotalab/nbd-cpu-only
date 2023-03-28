@@ -219,7 +219,7 @@ void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t al
   }
 }
 
-void neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
+int64_t neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
   int64_t y = 0;
   for (size_t p = 0; p < comm->Comm_box.size(); p++) {
     int64_t llen = std::get<1>(comm->ProcBoxes[p]);
@@ -227,6 +227,16 @@ void neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
     MPI_Bcast(loc, llen, MPI_INT64_T, std::get<0>(comm->Comm_box[p]), std::get<1>(comm->Comm_box[p]));
     y = y + llen;
   }
+  int64_t len = 0;
+  content_length(NULL, &len, NULL, comm);
+  if (comm->Comm_share != MPI_COMM_NULL)
+    MPI_Bcast(data, len, MPI_DOUBLE, 0, comm->Comm_share);
+
+  int64_t max = 0;
+  for (int64_t i = 0; i < len; i++)
+    max = std::max(max, data[i]);
+  MPI_Allreduce(MPI_IN_PLACE, &max, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
+  return max;
 }
 
 void neighbor_bcast_cpu(double* data, int64_t seg, const struct CellComm* comm) {
@@ -287,5 +297,38 @@ void level_merge_gpu(double* data, int64_t len, cudaStream_t stream, const struc
 void dup_bcast_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm) {
   if (comm->NCCL_share != NULL)
     ncclBroadcast((const void*)data, data, len, ncclDouble, 0, comm->NCCL_share, stream);
+}
+
+void dist_int_64(int64_t arr[], const int64_t offsets[], const struct CellComm* comm) {
+  int64_t y = 0;
+  for (size_t p = 0; p < comm->Comm_box.size(); p++) {
+    int64_t offset0 = offsets[y];
+    int64_t offset1 = offsets[y + std::get<1>(comm->ProcBoxes[p])];
+    int64_t llen = offset1 - offset0;
+    int64_t* loc = &arr[offset0];
+    MPI_Bcast(loc, llen, MPI_INT64_T, std::get<0>(comm->Comm_box[p]), std::get<1>(comm->Comm_box[p]));
+    y = y + std::get<1>(comm->ProcBoxes[p]);
+  }
+  int64_t len = 0;
+  content_length(NULL, &len, NULL, comm);
+  int64_t alen = offsets[len];
+  if (comm->Comm_share != MPI_COMM_NULL)
+    MPI_Bcast(arr, alen, MPI_INT64_T, 0, comm->Comm_share);
+}
+
+void dist_double(double* arr[], const struct CellComm* comm) {
+  int64_t y = 0;
+  for (size_t p = 0; p < comm->Comm_box.size(); p++) {
+    int64_t next = y + std::get<1>(comm->ProcBoxes[p]);
+    int64_t len = arr[next] - arr[y];
+    MPI_Bcast(arr[y], len, MPI_DOUBLE, std::get<0>(comm->Comm_box[p]), std::get<1>(comm->Comm_box[p]));
+    y = next;
+  }
+
+  int64_t len = 0;
+  content_length(NULL, &len, NULL, comm);
+  int64_t alen = arr[len] - arr[0];
+  if (comm->Comm_share != MPI_COMM_NULL)
+    MPI_Bcast(arr[0], alen, MPI_DOUBLE, 0, comm->Comm_share);
 }
 

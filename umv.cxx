@@ -9,7 +9,7 @@
 #include <cstdlib>
 #include <algorithm>
 
-void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src, size_t elm_size) {
+/*void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src, size_t elm_size) {
   for (int64_t i = 0; i < cols; i++) {
     unsigned char* _dst = (unsigned char*)dst + i * ld_dst * elm_size;
     const unsigned char* _src = (const unsigned char*)src + i * ld_src * elm_size;
@@ -127,7 +127,7 @@ void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell*
     if (basis[l].R_gpu)
       cudaMemcpy(basis[l].R_gpu, basis[l].R_cpu, sizeof(double) * stride_r * basis[l].Ulen, cudaMemcpyHostToDevice);
   }
-}
+}*/
 
 void basis_free(struct Base* basis) {
   free(basis->Uo);
@@ -353,7 +353,7 @@ void rightHandSides_free(struct RightHandSides* rhs) {
   free(rhs->X);
 }
 
-void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], double* X, const struct CellComm comm[], int64_t levels) {
+void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], double* X, const struct CellComm comm[], int64_t levels) {
   int64_t lbegin = 0, llen = 0;
   content_length(&llen, NULL, &lbegin, &comm[levels]);
   memcpy(rhs[levels].X[lbegin].A, X, llen * basis[levels].dimN * sizeof(double));
@@ -369,24 +369,20 @@ void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Ba
     for (int64_t j = 0; j < iboxes; j++)
       mmult('T', 'N', &basis[i].Uo[j + ibegin], &rhs[i].X[j + ibegin], &rhs[i].Xo[j + ibegin], 1., 0.);
   }
-  
+
+  mmult('T', 'N', &A[0].A[0], &rhs[0].X[0], &rhs[0].B[0], 1., 0.);
+
   for (int64_t i = 1; i <= levels; i++) {
     int64_t ibegin = 0, iboxes = 0;
     content_length(&iboxes, NULL, &ibegin, &comm[i]);
-    for (int64_t y = 0; y < rels_far[i].N; y++)
-      for (int64_t xy = rels_far[i].ColIndex[y]; xy < rels_far[i].ColIndex[y + 1]; xy++) {
-        int64_t x = rels_far[i].RowIndex[xy];
-        mmult('T', 'N', &A[i].S[xy], &rhs[i].Xo[x], &rhs[i].Xc[y + ibegin], 1., 1.);
-      }
     for (int64_t j = 0; j < iboxes; j++)
       mmult('N', 'N', &basis[i].Uo[j + ibegin], &rhs[i].Xc[j + ibegin], &rhs[i].B[j + ibegin], 1., 0.);
+    for (int64_t y = 0; y < rels_near[i].N; y++)
+      for (int64_t xy = rels_near[i].ColIndex[y]; xy < rels_near[i].ColIndex[y + 1]; xy++) {
+        int64_t x = rels_near[i].RowIndex[xy];
+        mmult('T', 'N', &A[i].A[xy], &rhs[i].X[x], &rhs[i].B[y + ibegin], 1., 1.);
+      }
   }
-
-  for (int64_t y = 0; y < rels_near[levels].N; y++)
-    for (int64_t xy = rels_near[levels].ColIndex[y]; xy < rels_near[levels].ColIndex[y + 1]; xy++) {
-      int64_t x = rels_near[levels].RowIndex[xy];
-      mmult('T', 'N', &A[levels].A[xy], &rhs[levels].X[x], &rhs[levels].B[y + lbegin], 1., 1.);
-    }
   memcpy(X, rhs[levels].B[lbegin].A, llen * basis[levels].dimN * sizeof(double));
 }
 
