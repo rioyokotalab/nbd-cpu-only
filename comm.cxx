@@ -22,8 +22,6 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     int64_t lenp = cells[mbegin].Procs[1] - p;
     comms[i].Proc[0] = p;
     comms[i].Proc[1] = p + lenp;
-    comms[i].Boxes[0] = ibegin;
-    comms[i].Boxes[1] = iend;
 
     for (int64_t j = 0; j < mpi_size; j++) {
       int is_ngb = 0;
@@ -191,34 +189,6 @@ void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, cons
     *local_off = offset;
 }
 
-void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t align, int64_t levels) {
-  align = 1 << (int)log2(align);
-  std::vector<int64_t> dim_max((levels + 1) * 3);
-
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t i1 = dimS[i];
-    int64_t i2 = dimR[i];
-    int64_t rem1 = i1 & (align - 1);
-    int64_t rem2 = i2 & (align - 1);
-
-    dim_max[i * 3] = std::max(align, i1 - rem1 + (rem1 ? align : 0));
-    dim_max[i * 3 + 1] = std::max(align, i2 - rem2 + (rem2 ? align : 0));
-    dim_max[i * 3 + 2] = nchild[i];
-  }
-  MPI_Allreduce(MPI_IN_PLACE, dim_max.data(), (levels + 1) * 3, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
-
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t child_s = i < levels ? (dim_max[(i + 1) * 3] * dim_max[i * 3 + 2]) : 0;
-    int64_t dims = dim_max[i * 3];
-    int64_t dimr = dim_max[i * 3 + 1];
-    if (dimr + dims < child_s)
-      dimr = child_s - dims;
-    dimS[i] = dims;
-    dimR[i] = dimr;
-    nchild[i] = dimr + dims - child_s;
-  }
-}
-
 int64_t neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
   int64_t y = 0;
   for (size_t p = 0; p < comm->Comm_box.size(); p++) {
@@ -297,38 +267,5 @@ void level_merge_gpu(double* data, int64_t len, cudaStream_t stream, const struc
 void dup_bcast_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm) {
   if (comm->NCCL_share != NULL)
     ncclBroadcast((const void*)data, data, len, ncclDouble, 0, comm->NCCL_share, stream);
-}
-
-void dist_int_64(int64_t arr[], const int64_t offsets[], const struct CellComm* comm) {
-  int64_t y = 0;
-  for (size_t p = 0; p < comm->Comm_box.size(); p++) {
-    int64_t offset0 = offsets[y];
-    int64_t offset1 = offsets[y + std::get<1>(comm->ProcBoxes[p])];
-    int64_t llen = offset1 - offset0;
-    int64_t* loc = &arr[offset0];
-    MPI_Bcast(loc, llen, MPI_INT64_T, std::get<0>(comm->Comm_box[p]), std::get<1>(comm->Comm_box[p]));
-    y = y + std::get<1>(comm->ProcBoxes[p]);
-  }
-  int64_t len = 0;
-  content_length(NULL, &len, NULL, comm);
-  int64_t alen = offsets[len];
-  if (comm->Comm_share != MPI_COMM_NULL)
-    MPI_Bcast(arr, alen, MPI_INT64_T, 0, comm->Comm_share);
-}
-
-void dist_double(double* arr[], const struct CellComm* comm) {
-  int64_t y = 0;
-  for (size_t p = 0; p < comm->Comm_box.size(); p++) {
-    int64_t next = y + std::get<1>(comm->ProcBoxes[p]);
-    int64_t len = arr[next] - arr[y];
-    MPI_Bcast(arr[y], len, MPI_DOUBLE, std::get<0>(comm->Comm_box[p]), std::get<1>(comm->Comm_box[p]));
-    y = next;
-  }
-
-  int64_t len = 0;
-  content_length(NULL, &len, NULL, comm);
-  int64_t alen = arr[len] - arr[0];
-  if (comm->Comm_share != MPI_COMM_NULL)
-    MPI_Bcast(arr[0], alen, MPI_DOUBLE, 0, comm->Comm_share);
 }
 

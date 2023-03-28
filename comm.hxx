@@ -12,7 +12,6 @@
 
 struct CellComm { 
   int64_t Proc[2];
-  int64_t Boxes[2];
   std::vector<int64_t> ProcTargets;
   std::vector<std::pair<int64_t, int64_t>> LocalChild;
   std::vector<std::pair<int64_t, int64_t>> ProcBoxes;
@@ -34,8 +33,6 @@ void i_global(int64_t* iglobal, const struct CellComm* comm);
 
 void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const struct CellComm* comm);
 
-void get_segment_sizes(int64_t* dimS, int64_t* dimR, int64_t* nchild, int64_t alignment, int64_t levels);
-
 int64_t neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm);
 
 void neighbor_bcast_cpu(double* data, int64_t seg, const struct CellComm* comm);
@@ -54,6 +51,3 @@ void level_merge_gpu(double* data, int64_t len, cudaStream_t stream, const struc
 
 void dup_bcast_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm);
 
-void dist_int_64(int64_t arr[], const int64_t offsets[], const struct CellComm* comm);
-
-void dist_double(double* arr[], const struct CellComm* comm);

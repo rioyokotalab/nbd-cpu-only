@@ -16,7 +16,6 @@
 struct Matrix { double* A; int64_t M, N, LDA; };
 
 struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
-struct CellBasis { int64_t M, N; double *Multipoles, *Uo, *Uc, *R; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 
 struct BatchedFactorParams { 
@@ -33,7 +32,7 @@ struct BatchedFactorParams {
 struct Node {
   int64_t lenA, lenS;
   struct Matrix *A, *S, *A_cc, *A_oc, *A_oo;
-  double* A_ptr, *A_buf, *X_ptr, *X_buf, *M_ptr, *M_buf, *U_ptr, *U_buf, *R_ptr, *R_buf;
+  double* A_ptr, *A_buf, *X_ptr, *X_buf;
   struct BatchedFactorParams params; 
 };
 
@@ -111,11 +110,6 @@ void csc_free(struct CSC* csc);
 
 void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank);
 
-void buildCellBasis(double epi, int64_t mrank, int64_t sp_pts, double(*func)(double), struct CellBasis* basis, int64_t ncells, const struct Cell* cells, 
-  int64_t nbodies, const double* bodies, const struct CSC* rels, int64_t levels);
-
-void cellBasis_free(struct CellBasis* basis);
-
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
 
 void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int64_t levels);
@@ -125,10 +119,6 @@ void loadX(double* X, int64_t seg, const double Xbodies[], int64_t ncells, const
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
 
 void evalD(double(*func)(double), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* csc, int64_t level);
-
-void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm);
-
-void basis_free(struct Base* basis);
 
 void evalS(double(*func)(double), struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm);
 

@@ -26,14 +26,13 @@ int main(int argc, char* argv[]) {
   int64_t ncells = Nleaf + Nleaf - 1;
   
   //double(*func)(double) = laplace3d_cpu();
-  double(*func)(double) = yukawa3d_cpu();
-  //double(*func)(double) = gauss_cpu();
-  set_kernel_constants(1.e-9, 0.8);
+  //double(*func)(double) = yukawa3d_cpu();
+  double(*func)(double) = gauss_cpu();
+  set_kernel_constants(1.e-8, 0.8);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
   struct Cell* cell = (struct Cell*)malloc(sizeof(struct Cell) * ncells);
-  //struct CellBasis* cell_basis = (struct CellBasis*)malloc(sizeof(struct CellBasis) * ncells);
   struct CSC cellNear, cellFar;
   struct CSC* rels_far = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
   struct CSC* rels_near = (struct CSC*)malloc(sizeof(struct CSC) * (levels + 1));
@@ -70,13 +69,11 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  //buildCellBasis(epi, rank_max, sp_pts, func, cell_basis, ncells, cell, Nbody, body, &cellNear, levels);
+  buildBasis(func, basis, ncells, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
   stopTimer(&construct_time, &construct_comm_time);
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
-  //buildBasis(4, basis, ncells, cell, cell_basis, levels, cell_comm);
-  buildBasis(func, basis, ncells, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
   allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
   evalD(func, nodes[levels].A, ncells, cell, body, &cellNear, levels);
@@ -185,15 +182,12 @@ int main(int argc, char* argv[]) {
     rightHandSides_free(&rhs[i]);
     cellComm_free(&cell_comm[i]);
   }
-  //for (int64_t i = 0; i < ncells; i++)
-    //cellBasis_free(&cell_basis[i]);
   csc_free(&cellFar);
   csc_free(&cellNear);
   
   free(body);
   free(Xbody);
   free(cell);
-  //free(cell_basis);
   free(rels_far);
   free(rels_near);
   free(cell_comm);

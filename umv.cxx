@@ -9,142 +9,6 @@
 #include <cstdlib>
 #include <algorithm>
 
-/*void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src, size_t elm_size) {
-  for (int64_t i = 0; i < cols; i++) {
-    unsigned char* _dst = (unsigned char*)dst + i * ld_dst * elm_size;
-    const unsigned char* _src = (const unsigned char*)src + i * ld_src * elm_size;
-    memcpy(_dst, _src, elm_size * rows);
-  }
-}
-
-void buildBasis(int alignment, struct Base basis[], int64_t ncells, struct Cell* cells, struct CellBasis* cell_basis, int64_t levels, const struct CellComm* comm) {
-  std::vector<int64_t> dimSmax(levels + 1, 0);
-  std::vector<int64_t> dimRmax(levels + 1, 0);
-  std::vector<int64_t> nchild(levels + 1, 0);
-  
-  for (int64_t l = levels; l >= 0; l--) {
-    int64_t xlen = 0;
-    content_length(NULL, &xlen, NULL, &comm[l]);
-    basis[l].Ulen = xlen;
-    basis[l].Dims = std::vector<int64_t>(xlen, 0);
-    basis[l].DimsLr = std::vector<int64_t>(xlen, 0);
-
-    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
-    basis[l].Uo = arr_m;
-    basis[l].Uc = &arr_m[xlen];
-    basis[l].R = &arr_m[xlen * 2];
-
-    int64_t lbegin = 0, lend = ncells;
-    get_level(&lbegin, &lend, cells, l, -1);
-
-    for (int64_t i = 0; i < xlen; i++) {
-      int64_t gi = i;
-      i_global(&gi, &comm[l]);
-      int64_t ci = lbegin + gi;
-      basis[l].Dims[i] = cell_basis[ci].M;
-      basis[l].DimsLr[i] = cell_basis[ci].N;
-
-      dimSmax[l] = std::max(dimSmax[l], basis[l].DimsLr[i]);
-      dimRmax[l] = std::max(dimRmax[l], basis[l].Dims[i] - basis[l].DimsLr[i]);
-      nchild[l] = std::max(nchild[l], std::get<1>(comm[l].LocalChild[i]));
-    }
-  }
-
-  get_segment_sizes(dimSmax.data(), dimRmax.data(), nchild.data(), alignment, levels);
-
-  for (int64_t l = levels; l >= 0; l--) {
-    basis[l].dimS = dimSmax[l];
-    basis[l].dimR = dimRmax[l];
-    basis[l].dimN = basis[l].dimS + basis[l].dimR;
-    int64_t stride = basis[l].dimN * basis[l].dimN;
-    int64_t stride_r = basis[l].dimS * basis[l].dimS;
-    int64_t LD = basis[l].dimN;
-
-    int64_t ibegin = 0, ilen = 0;
-    content_length(&ilen, NULL, &ibegin, &comm[l]);
-
-    basis[l].M_cpu = (double*)calloc(basis[l].dimS * basis[l].Ulen * 3, sizeof(double));
-    basis[l].U_cpu = (double*)calloc(stride * basis[l].Ulen + ilen * basis[l].dimR, sizeof(double));
-    basis[l].R_cpu = (double*)calloc(stride_r * basis[l].Ulen, sizeof(double));
-    if (cudaMalloc(&basis[l].M_gpu, sizeof(double) * basis[l].dimS * basis[l].Ulen * 3) != cudaSuccess)
-      basis[l].M_gpu = NULL;
-    if (cudaMalloc(&basis[l].U_gpu, sizeof(double) * (stride * basis[l].Ulen + ilen * basis[l].dimR)) != cudaSuccess)
-      basis[l].U_gpu = NULL;
-    if (cudaMalloc(&basis[l].R_gpu, sizeof(double) * stride_r * basis[l].Ulen) != cudaSuccess)
-      basis[l].R_gpu = NULL;
-
-    int64_t lbegin = 0, lend = ncells;
-    get_level(&lbegin, &lend, cells, l, -1);
-
-    for (int64_t i = 0; i < basis[l].Ulen; i++) {
-      double* M_ptr = basis[l].M_cpu + i * basis[l].dimS * 3;
-      double* Uc_ptr = basis[l].U_cpu + i * stride;
-      double* Uo_ptr = Uc_ptr + basis[l].dimR * basis[l].dimN;
-      double* R_ptr = basis[l].R_cpu + i * stride_r;
-
-      int64_t Nc = basis[l].Dims[i] - basis[l].DimsLr[i];
-      int64_t No = basis[l].DimsLr[i];
-      basis[l].Uo[i] = (struct Matrix) { Uo_ptr, basis[l].dimN, basis[l].dimS, basis[l].dimN };
-      basis[l].Uc[i] = (struct Matrix) { Uc_ptr, basis[l].dimN, basis[l].dimR, basis[l].dimN };
-      basis[l].R[i] = (struct Matrix) { R_ptr, No, No, basis[l].dimS };
-
-      int64_t gi = i;
-      i_global(&gi, &comm[l]);
-      int64_t ci = lbegin + gi;
-
-      memcpy(M_ptr, cell_basis[ci].Multipoles, sizeof(double) * No * 3);
-      memcpy2d(R_ptr, cell_basis[ci].R, No, No, basis[l].dimS, No, sizeof(double));
-      if (ibegin <= i && i < (ibegin + ilen)) {
-        double* Ui_ptr = basis[l].U_cpu + basis[l].Ulen * stride + (i - ibegin) * basis[l].dimR; 
-        for (int64_t j = Nc; j < basis[l].dimR; j++)
-          Ui_ptr[j] = 1.;
-      }
-
-      int64_t child = std::get<0>(comm[l].LocalChild[i]);
-      int64_t clen = std::get<1>(comm[l].LocalChild[i]);
-      if (child >= 0 && l < levels) {
-        int64_t row = 0;
-
-        for (int64_t j = 0; j < clen; j++) {
-          int64_t M = basis[l + 1].DimsLr[child + j];
-          int64_t Urow = j * basis[l + 1].dimS;
-          memcpy2d(&Uc_ptr[Urow], &cell_basis[ci].Uc[row], M, Nc, LD, Nc + No, sizeof(double));
-          memcpy2d(&Uo_ptr[Urow], &cell_basis[ci].Uo[row], M, No, LD, Nc + No, sizeof(double));
-          row = row + M;
-        }
-      }
-      else {
-        int64_t M = basis[l].Dims[i];
-        memcpy2d(Uc_ptr, cell_basis[ci].Uc, M, Nc, LD, Nc + No, sizeof(double));
-        memcpy2d(Uo_ptr, cell_basis[ci].Uo, M, No, LD, Nc + No, sizeof(double));
-      }
-    }
-
-    if (basis[l].M_gpu)
-      cudaMemcpy(basis[l].M_gpu, basis[l].M_cpu, sizeof(double) * basis[l].dimS * basis[l].Ulen * 3, cudaMemcpyHostToDevice);
-    if (basis[l].U_gpu)
-      cudaMemcpy(basis[l].U_gpu, basis[l].U_cpu, sizeof(double) * (stride * basis[l].Ulen + ilen * basis[l].dimR), cudaMemcpyHostToDevice);
-    if (basis[l].R_gpu)
-      cudaMemcpy(basis[l].R_gpu, basis[l].R_cpu, sizeof(double) * stride_r * basis[l].Ulen, cudaMemcpyHostToDevice);
-  }
-}*/
-
-void basis_free(struct Base* basis) {
-  free(basis->Uo);
-  if (basis->M_cpu)
-    free(basis->M_cpu);
-  if (basis->M_gpu)
-    cudaFree(basis->M_gpu);
-  if (basis->U_cpu)
-    free(basis->U_cpu);
-  if (basis->U_gpu)
-    cudaFree(basis->U_gpu);
-  if (basis->R_cpu)
-    free(basis->R_cpu);
-  if (basis->R_gpu)
-    cudaFree(basis->R_gpu);
-}
-
 void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
   int64_t work_size = 0;
   int64_t pers_work = 0;
@@ -174,9 +38,6 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     int64_t stride = dimn * dimn;
     allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), stride * nnz);
     allocBufferedList((void**)&A[i].X_ptr, (void**)&A[i].X_buf, sizeof(double), dimn * ulen);
-    allocBufferedList((void**)&A[i].M_ptr, (void**)&A[i].M_buf, sizeof(double), dims * ulen * 3);
-    allocBufferedList((void**)&A[i].U_ptr, (void**)&A[i].U_buf, sizeof(double), stride * ulen + n_i * dimr);
-    allocBufferedList((void**)&A[i].R_ptr, (void**)&A[i].R_buf, sizeof(double), dims * dims * ulen);
 
     int64_t work_required = n_i * stride * 2;
     int64_t pers_required = dimr * (ulen + n_i * (dimr + 1));
@@ -282,9 +143,6 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
 void node_free(struct Node* node) {
   freeBufferedList(node->A_ptr, node->A_buf);
   freeBufferedList(node->X_ptr, node->X_buf);
-  freeBufferedList(node->M_ptr, node->M_buf);
-  freeBufferedList(node->U_ptr, node->U_buf);
-  freeBufferedList(node->R_ptr, node->R_buf);
   free(node->A);
   batchParamsDestory(&node->params);
 }
