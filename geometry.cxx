@@ -1,9 +1,10 @@
 #include "nbd.hxx"
 
-#include <cstdio>
 #include <cstdlib>
 #include <cmath>
-#include <cinttypes>
+#include <cassert>
+#include <iostream>
+#include <fstream>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -26,7 +27,7 @@ void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim, unsigned in
 void mesh_unit_sphere(double* bodies, int64_t nbodies) {
   int64_t mlen = nbodies - 2;
   if (mlen < 0) {
-    fprintf(stderr, "Error spherical mesh size (GT/EQ. 2 required): %" PRId64 ".\n", nbodies);
+    std::cerr << "Error spherical mesh size (GT/EQ. 2 required): %" << nbodies << "." << std::endl;
     return;
   }
 
@@ -68,7 +69,7 @@ void mesh_unit_sphere(double* bodies, int64_t nbodies) {
 
 void mesh_unit_cube(double* bodies, int64_t nbodies) {
   if (nbodies < 0) {
-    fprintf(stderr, "Error cubic mesh size (GT/EQ. 0 required): %" PRId64 ".\n", nbodies);
+    std::cerr << "Error cubic mesh size (GT/EQ. 0 required): %" << nbodies << "." << std::endl;
     return;
   }
 
@@ -249,34 +250,33 @@ void sort_bodies(double* bodies, int64_t nbodies, int64_t sdim) {
 }
 
 void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, double* bodies, int64_t buckets[], const char* fname) {
-  FILE* file = fopen(fname, "r");
-  if (file != NULL) {
-    int64_t curr = 1, cbegin = 0, iter = 0, len = *nbodies;
-    int ret = !EOF;
-    while (iter < len && ret != EOF) {
-      int64_t b = 0;
-      double x = 0., y = 0., z = 0.;
-      ret = fscanf(file, "%lf %lf %lf %" PRId64 "\n", &x, &y, &z, &b);
-      if (lbuckets < b)
-        len = iter;
-      else if (ret != EOF) {
-        bodies[iter * 3] = x;
-        bodies[iter * 3 + 1] = y;
-        bodies[iter * 3 + 2] = z;
-        while (curr < b && curr <= lbuckets) {
-          buckets[curr - 1] = iter - cbegin;
-          cbegin = iter;
-          curr++;
-        }
-        iter++;
+  std::ifstream file(fname);
+  assert(static_cast<bool>(file));
+
+  int64_t curr = 1, cbegin = 0, iter = 0, len = *nbodies;
+  while (iter < len && !file.eof()) {
+    int64_t b = 0;
+    double x = 0., y = 0., z = 0.;
+    file >> x >> y >> z >> b;
+
+    if (lbuckets < b)
+      len = iter;
+    else if (!file.eof()) {
+      bodies[iter * 3] = x;
+      bodies[iter * 3 + 1] = y;
+      bodies[iter * 3 + 2] = z;
+      while (curr < b && curr <= lbuckets) {
+        buckets[curr - 1] = iter - cbegin;
+        cbegin = iter;
+        curr++;
       }
+      iter++;
     }
-    while (curr <= lbuckets) {
-      buckets[curr - 1] = iter - cbegin;
-      cbegin = iter;
-      curr++;
-    }
-    *nbodies = iter;
-    fclose(file);
   }
+  while (curr <= lbuckets) {
+    buckets[curr - 1] = iter - cbegin;
+    cbegin = iter;
+    curr++;
+  }
+  *nbodies = iter;
 }

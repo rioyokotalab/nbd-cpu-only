@@ -76,7 +76,11 @@ double (*yukawa3d_gpu(void)) (double);
 
 double (*gauss_cpu(void)) (double);
 
-void set_kernel_constants(double singularity, double alpha);
+#ifdef _GSL
+double (*matern_cpu(void)) (double);
+#endif
+
+void set_kernel_constants(double singularity, double alpha, double smoothness);
 
 void gen_matrix(double(*func)(double), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda);
 

@@ -4,12 +4,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
-#include <cinttypes>
+
+#include <gsl/gsl_sf_gamma.h>
+#include <gsl/gsl_sf_bessel.h>
 
 double _singularity = 1.e-8;
 double _alpha = 1.;
+double _smoothness = 1.;
 __constant__ double _singularity_gpu = 1.e-8;
 __constant__ double _alpha_gpu = 1.;
+__constant__ double _smoothness_gpu = 1.;
 
 double __laplace3d_h(double r2) {
   double r = sqrt(r2) + _singularity;
@@ -54,18 +58,44 @@ double (*yukawa3d_gpu(void)) (double) {
 }
 
 double __gauss_h(double r2) {
-  return exp(-sqrt(r2) / (_alpha * _alpha));
+  return exp(-r2 / (_alpha * _alpha));
 }
 
 double (*gauss_cpu(void)) (double) {
   return &__gauss_h;
 }
 
-void set_kernel_constants(double singularity, double alpha) {
+#ifdef _GSL
+double __matern_h(double r2) {
+  double expr = 0.0;
+  double con = 0.0;
+  double sigma_square = _singularity * _singularity;
+  double dist = sqrt(r2);
+
+  con = pow(2, (_smoothness - 1)) * gsl_sf_gamma(_smoothness);
+  con = 1.0 / con;
+  con = sigma_square * con;
+
+  if (dist != 0) {
+    expr = dist / _alpha;
+    return con * pow(expr, _smoothness) * gsl_sf_bessel_Knu(_smoothness, expr);
+  }
+  else
+    return sigma_square;
+}
+
+double (*matern_cpu(void)) (double) {
+  return &__matern_h;
+}
+#endif
+
+void set_kernel_constants(double singularity, double alpha, double smoothness) {
   _singularity = singularity;
   _alpha = alpha;
+  _smoothness = smoothness;
   cudaMemcpyToSymbol(_singularity_gpu, &singularity, sizeof(double));
   cudaMemcpyToSymbol(_alpha_gpu, &alpha, sizeof(double));
+  cudaMemcpyToSymbol(_smoothness_gpu, &smoothness, sizeof(double));
 }
 
 void gen_matrix(double(*func)(double), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda) {

@@ -15,13 +15,20 @@ set(MKL_MPI intelmpi)
 find_package(MKL REQUIRED)
 find_package(MPI REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GSL gsl)
 
 add_executable(lorasp lorasp.cxx kernel.cu geometry.cxx linalg.cxx basis.cxx comm.cxx build_tree.cxx umv.cxx profile.cxx)
 target_compile_options(lorasp PRIVATE -D_PROF)
 target_include_directories(lorasp PRIVATE ./)
 target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
 
-find_package(PkgConfig REQUIRED)
+if (GSL_FOUND)
+target_compile_options(lorasp PRIVATE -D_GSL ${GSL_CFLAGS})
+target_include_directories(lorasp PRIVATE ${GSL_INCLUDE_DIRS})
+target_link_libraries(lorasp ${GSL_LDFLAGS})
+endif()
+
 pkg_check_modules(MAGMA magma)
 
 if (MAGMA_FOUND)
