@@ -26,9 +26,9 @@ int main(int argc, char* argv[]) {
   int64_t ncells = Nleaf + Nleaf - 1;
   
   //double(*func)(double) = laplace3d_cpu();
-  //double(*func)(double) = yukawa3d_cpu();
-  double(*func)(double) = gauss_cpu();
-  set_kernel_constants(1.e-8, 0.8);
+  double(*func)(double) = yukawa3d_cpu();
+  //double(*func)(double) = gauss_cpu();
+  set_kernel_constants(1.e-9, 1);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -117,7 +117,6 @@ int main(int argc, char* argv[]) {
   startTimer(&factor_time, &factor_comm_time);
   factorA(nodes, basis, cell_comm, levels);
   stopTimer(&factor_time, &factor_comm_time);
-  factorA_mov_mem('G', nodes, basis, levels);
 
   int64_t factor_flops[3];
   get_factor_flops(factor_flops);

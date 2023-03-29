@@ -134,7 +134,7 @@ void buildBasis(double(*func)(double), struct Base basis[], int64_t ncells, stru
         for (int64_t k = 0; k < 3; k++)
           Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
       
-      int64_t rank = compute_basis(func, epi, 10, mrank, ske_len, mat, ske_len, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
+      int64_t rank = compute_basis(func, epi, 20, mrank, ske_len, mat, ske_len, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
 
       if (rank > 0) {
         struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len, ske_len };
