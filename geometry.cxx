@@ -10,7 +10,24 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim, unsigned int seed) {
+void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim) {
+  int64_t side = ceil(pow(nbodies, 1. / dim));
+  int64_t lens[3] = { dim > 0 ? side : 1, dim > 1 ? side : 1, dim > 2 ? side : 1 };
+  double step = 1. / side;
+
+  for (int64_t i = 0; i < lens[0]; ++i)
+    for (int64_t j = 0; j < lens[1]; ++j)
+       for (int64_t k = 0; k < lens[2]; ++k) {
+    int64_t x = k + lens[2] * (j + lens[1] * i);
+    if (x < nbodies) {
+      bodies[x * 3] = i * step;
+      bodies[x * 3 + 1] = j * step;
+      bodies[x * 3 + 2] = k * step;
+    }
+  }
+}
+
+void uniform_unit_cube_rnd(double* bodies, int64_t nbodies, int64_t dim, unsigned int seed) {
   if (seed > 0)
     srand(seed);
 

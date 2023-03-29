@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
   //double(*func)(double) = gauss_cpu();
   //double(*func)(double) = matern_cpu();
   set_kernel_constants(1.e-9, 1., 1.);
-  //set_kernel_constants(1., 0.03, 0.5);
+  //set_kernel_constants(1., 0.3, 0.5);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -44,12 +44,12 @@ int main(int argc, char* argv[]) {
   struct RightHandSides* rhs = (struct RightHandSides*)malloc(sizeof(struct RightHandSides) * (levels + 1));
 
   if (fname == NULL) {
-    //mesh_unit_sphere(body, Nbody);
+    mesh_unit_sphere(body, Nbody);
     //mesh_unit_cube(body, Nbody);
-    uniform_unit_cube(body, Nbody, 2, 1234);
+    //uniform_unit_cube(body, Nbody, 3);
     double c[3] = { 0, 0, 0 };
-    double r[3] = { sqrt(1.e-3 * Nbody), sqrt(1.e-3 * Nbody), sqrt(1.e-3 * Nbody) };
-    magnify_reloc(body, Nbody, c, c, r, 1.);
+    double r[3] = { 1, 1, 1 };
+    magnify_reloc(body, Nbody, c, c, r, sqrt(Nbody));
     buildTree(&ncells, cell, body, Nbody, levels);
   }
   else {

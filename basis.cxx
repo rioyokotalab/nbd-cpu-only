@@ -146,7 +146,6 @@ void buildBasis(double(*func)(double), struct Base basis[], int64_t ncells, stru
           upper_tri_reflec_mult('L', clen, &(basis[l + 1].R)[childi], &Qo);
         qr_full(&Q, &R);
       }
-
       basis[l].DimsLr[i + ibegin] = rank;
     }
     neighbor_bcast_sizes_cpu(basis[l].DimsLr.data(), &comm[l]);

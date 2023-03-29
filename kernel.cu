@@ -69,17 +69,11 @@ double (*gauss_cpu(void)) (double) {
 
 #ifdef _GSL
 double __matern_h(double r2) {
-  double expr = 0.0;
-  double con = 0.0;
   double sigma_square = _singularity * _singularity;
-  double dist = sqrt(r2);
 
-  con = pow(2, (_smoothness - 1)) * gsl_sf_gamma(_smoothness);
-  con = 1.0 / con;
-  con = sigma_square * con;
-
-  if (dist != 0) {
-    expr = dist / _alpha;
+  if (r2 > 0.) {
+    double con = sigma_square / (pow(2, (_smoothness - 1)) * tgamma(_smoothness));
+    double expr = sqrt(2 * _smoothness * r2) / _alpha;
     return con * pow(expr, _smoothness) * gsl_sf_bessel_Knu(_smoothness, expr);
   }
   else
