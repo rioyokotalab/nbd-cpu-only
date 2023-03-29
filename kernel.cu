@@ -5,8 +5,10 @@
 #include <cstdlib>
 #include <cmath>
 
+#ifdef _GSL
 #include <gsl/gsl_sf_gamma.h>
 #include <gsl/gsl_sf_bessel.h>
+#endif
 
 double _singularity = 1.e-8;
 double _alpha = 1.;
