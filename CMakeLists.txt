@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.18)
 
 set(CMAKE_CXX_COMPILER "g++")
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_FLAGS "-O3 -m64 -Wall -Wextra")
 
 project ("shimo" LANGUAGES CXX CUDA)
@@ -19,9 +19,10 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GSL gsl)
 
 add_executable(lorasp lorasp.cxx kernel.cu geometry.cxx linalg.cxx basis.cxx comm.cxx build_tree.cxx umv.cxx profile.cxx)
-target_compile_options(lorasp PRIVATE -D_PROF)
+target_compile_options(lorasp PRIVATE -D_PROF $<$<COMPILE_LANGUAGE:CUDA>:-O3 -m64 --Werror=all-warnings>)
 target_include_directories(lorasp PRIVATE ./)
 target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
+set_target_properties(lorasp PROPERTIES CUDA_ARCHITECTURES "60;70;72;80")
 
 if (GSL_FOUND)
 target_compile_options(lorasp PRIVATE -D_GSL ${GSL_CFLAGS})

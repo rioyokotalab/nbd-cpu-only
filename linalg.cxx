@@ -88,19 +88,19 @@ void qr_full(struct Matrix* Q, struct Matrix* R) {
   LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, k, Q->A, ldq, &tau[0]);
 }
 
-int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64_t rank_max, 
+int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int64_t rank_max, 
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]) {
 
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
     int64_t ldm = std::max(M, Nclose + Nfar);
     std::vector<double> Aall(M * ldm, 0.);
     std::vector<MKL_INT> ipiv(M);
-    gen_matrix(func, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
-    gen_matrix(func, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
+    gen_matrix(eval, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
+    gen_matrix(eval, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
     if (Nclose > 0) {
       std::vector<double> Aclose(Nclose * Nclose);
-      gen_matrix(func, Nclose, Nclose, Cbodies, Cbodies, &Aclose[0], Nclose);
+      gen_matrix(eval, Nclose, Nclose, Cbodies, Cbodies, &Aclose[0], Nclose);
       cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, Nclose, M, 1., &Aclose[0], Nclose, &Aall[0], ldm);
     }
 
@@ -133,6 +133,26 @@ int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64
     return rank;
   }
   return 0;
+}
+
+
+void mat_vec_reference(const EvalDouble& eval, int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]) {
+  int64_t M = end - begin;
+  int64_t N = nbodies;
+  int64_t size = 1024;
+  std::vector<double> A(size * size);
+  
+  for (int64_t i = 0; i < M; i += size) {
+    int64_t y = begin + i;
+    int64_t m = std::min(M - i, size);
+    const double* bi = &bodies[y * 3];
+    for (int64_t j = 0; j < N; j += size) {
+      const double* bj = &bodies[j * 3];
+      int64_t n = std::min(N - j, size);
+      gen_matrix(eval, m, n, bi, bj, &A[0], size);
+      cblas_dgemv(CblasColMajor, CblasNoTrans, m, n, 1., &A[0], size, &Xbodies[j], 1, 1., &B[i], 1);
+    }
+  }
 }
 
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE) {

@@ -1,72 +1,132 @@
 
-#include "nbd.hxx"
+#include "kernel.hxx"
 
-#include <cstdio>
-#include <cstdlib>
-#include <cmath>
+#include <thrust/transform.h>
+#include <thrust/execution_policy.h>
+#include <thrust/device_vector.h>
 
-#ifdef _GSL
-#include <gsl/gsl_sf_gamma.h>
-#include <gsl/gsl_sf_bessel.h>
-#endif
+BodiesIter::BodiesIter(int64_t m, const double* bi, const double* bj) : M(m), Bodies_i(bi), Bodies_j(bj) {}
 
-double _singularity = 1.e-8;
-double _alpha = 1.;
-double _smoothness = 1.;
-__constant__ double _singularity_gpu = 1.e-8;
-__constant__ double _alpha_gpu = 1.;
-__constant__ double _smoothness_gpu = 1.;
-
-double __laplace3d_h(double r2) {
-  double r = sqrt(r2) + _singularity;
-  return 1. / r;
+__host__ __device__ thrust::pair<const double*, const double*> BodiesIter::operator()(int64_t i) const {
+  int64_t x = i / M;
+  int64_t y = i - x * M;
+  return thrust::make_pair(&Bodies_i[y * 3], &Bodies_j[x * 3]);
 }
 
-__device__ double __laplace3d_d(double r2) {
-  double r = sqrt(r2) + _singularity_gpu;
-  return 1. / r;
-}
-__constant__ double(*laplace3d_ptr)(double) = __laplace3d_d;
+ArrIter::ArrIter(int64_t m, int64_t lda) : M(m), LDA_M_diff(lda - m) {}
 
-double (*laplace3d_cpu(void)) (double) {
-  return &__laplace3d_h;
-}
+__host__ __device__ int64_t ArrIter::operator()(int64_t x) const
+{ return x + (x / M) * LDA_M_diff; }
 
-double (*laplace3d_gpu(void)) (double) {
-  double(*func)(double);
-  cudaMemcpyFromSymbol(&func, &laplace3d_ptr, sizeof(double(*)(double)));
-  return func;
+thrust::transform_iterator<BodiesIter, thrust::counting_iterator<int64_t>>
+  createBodiesIter(int64_t m, const double* bi, const double* bj) {
+  return thrust::make_transform_iterator(thrust::make_counting_iterator<int64_t>(0), BodiesIter(m, bi, bj));
 }
 
-double __yukawa3d_h(double r2) {
-  double r = sqrt(r2) + _singularity;
-  return exp(_alpha * -r) / r;
+thrust::permutation_iterator<double*, thrust::transform_iterator<ArrIter, thrust::counting_iterator<int64_t>>>
+  createArrIter(int64_t m, double A[], int64_t lda) {
+  return thrust::make_permutation_iterator(A, thrust::make_transform_iterator(thrust::make_counting_iterator<int64_t>(0), ArrIter(m, lda)));
 }
 
-__device__ double __yukawa3d_d(double r2) {
-  double r = sqrt(r2) + _singularity_gpu;
-  return exp(_alpha_gpu * -r) / r;
-}
-__constant__ double(*yukawa3d_ptr)(double) = __yukawa3d_d;
-
-double (*yukawa3d_cpu(void)) (double) {
-  return &__yukawa3d_h;
+__host__ __device__ double computeR2(const double bi[], const double bj[]) {
+  double dX = bi[0] - bj[0];
+  double dY = bi[1] - bj[1];
+  double dZ = bi[2] - bj[2];
+  return dX * dX + dY * dY + dZ * dZ;
 }
 
-double (*yukawa3d_gpu(void)) (double) {
-  double(*func)(double);
-  cudaMemcpyFromSymbol(&func, &yukawa3d_ptr, sizeof(double(*)(double)));
-  return func;
+__host__ __device__ double Laplace3D::operator()(thrust::pair<const double*, const double*> x) const {
+  double r2 = computeR2(thrust::get<0>(x), thrust::get<1>(x));
+  return r2 == 0. ? singularity : (1. / sqrt(r2));
 }
 
-double __gauss_h(double r2) {
-  return exp(-r2 / (_alpha * _alpha));
+void Laplace3D::genMatrixHost(int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda) const {
+  auto id_iter = createBodiesIter(m, bi, bj);
+  if (m < lda) {
+    auto A_iter = createArrIter(m, Aij, lda);
+    thrust::transform(thrust::host, id_iter, id_iter + m * n, A_iter, *this);
+  }
+  else
+    thrust::transform(thrust::host, id_iter, id_iter + m * n, Aij, *this);
 }
 
-double (*gauss_cpu(void)) (double) {
-  return &__gauss_h;
+void Laplace3D::genMatrixDevice(int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda, cudaStream_t stream) const {
+  auto id_iter = createBodiesIter(m, bi, bj);
+  if (m < lda) {
+    auto A_iter = createArrIter(m, Aij, lda);
+    thrust::transform(thrust::cuda::par.on(stream), id_iter, id_iter + m * n, A_iter, *this);
+  }
+  else
+    thrust::transform(thrust::cuda::par.on(stream), id_iter, id_iter + m * n, Aij, *this);
 }
 
+__host__ __device__ double Yukawa3D::operator()(thrust::pair<const double*, const double*> x) const {
+  double r2 = computeR2(thrust::get<0>(x), thrust::get<1>(x));
+  if (r2 == 0.)
+    return singularity;
+  else {
+    double r = sqrt(r2);
+    return exp(alpha * -r) / r;
+  }
+}
+
+void Yukawa3D::genMatrixHost(int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda) const {
+  auto id_iter = createBodiesIter(m, bi, bj);
+  if (m < lda) {
+    auto A_iter = createArrIter(m, Aij, lda);
+    thrust::transform(thrust::host, id_iter, id_iter + m * n, A_iter, *this);
+  }
+  else
+    thrust::transform(thrust::host, id_iter, id_iter + m * n, Aij, *this);
+}
+
+void Yukawa3D::genMatrixDevice(int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda, cudaStream_t stream) const {
+  auto id_iter = createBodiesIter(m, bi, bj);
+  if (m < lda) {
+    auto A_iter = createArrIter(m, Aij, lda);
+    thrust::transform(thrust::cuda::par.on(stream), id_iter, id_iter + m * n, A_iter, *this);
+  }
+  else
+    thrust::transform(thrust::cuda::par.on(stream), id_iter, id_iter + m * n, Aij, *this);
+}
+
+__host__ __device__ double Gaussian::operator()(thrust::pair<const double*, const double*> x) const {
+  double r2 = computeR2(thrust::get<0>(x), thrust::get<1>(x));
+  return exp(-r2 * alpha);
+}
+
+void Gaussian::genMatrixHost(int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda) const {
+  auto id_iter = createBodiesIter(m, bi, bj);
+  if (m < lda) {
+    auto A_iter = createArrIter(m, Aij, lda);
+    thrust::transform(thrust::host, id_iter, id_iter + m * n, A_iter, *this);
+  }
+  else
+    thrust::transform(thrust::host, id_iter, id_iter + m * n, Aij, *this);
+}
+
+void Gaussian::genMatrixDevice(int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda, cudaStream_t stream) const {
+  auto id_iter = createBodiesIter(m, bi, bj);
+  if (m < lda) {
+    auto A_iter = createArrIter(m, Aij, lda);
+    thrust::transform(thrust::cuda::par.on(stream), id_iter, id_iter + m * n, A_iter, *this);
+  }
+  else
+    thrust::transform(thrust::cuda::par.on(stream), id_iter, id_iter + m * n, Aij, *this);
+}
+
+void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda) {
+  //Eval.genMatrixHost(m, n, bi, bj, Aij, lda);
+  thrust::device_vector<double> bi_dev(m * 3), bj_dev(n * 3), A_dev(lda * n);
+  cudaMemcpy(thrust::raw_pointer_cast(&bi_dev[0]), bi, sizeof(double) * m * 3, cudaMemcpyHostToDevice);
+  cudaMemcpy(thrust::raw_pointer_cast(&bj_dev[0]), bj, sizeof(double) * n * 3, cudaMemcpyHostToDevice);
+  
+  Eval.genMatrixDevice(m, n, thrust::raw_pointer_cast(&bi_dev[0]), thrust::raw_pointer_cast(&bj_dev[0]), thrust::raw_pointer_cast(&A_dev[0]), lda, 0);
+  cudaMemcpy2D(Aij, sizeof(double) * lda, thrust::raw_pointer_cast(&A_dev[0]), sizeof(double) * lda, sizeof(double) * m, n, cudaMemcpyDeviceToHost);
+}
+
+
+/*
 #ifdef _GSL
 double __matern_h(double r2) {
   double sigma_square = _singularity * _singularity;
@@ -80,72 +140,7 @@ double __matern_h(double r2) {
     return sigma_square;
 }
 
-double (*matern_cpu(void)) (double) {
-  return &__matern_h;
-}
 #endif
 
-void set_kernel_constants(double singularity, double alpha, double smoothness) {
-  _singularity = singularity;
-  _alpha = alpha;
-  _smoothness = smoothness;
-  cudaMemcpyToSymbol(_singularity_gpu, &singularity, sizeof(double));
-  cudaMemcpyToSymbol(_alpha_gpu, &alpha, sizeof(double));
-  cudaMemcpyToSymbol(_smoothness_gpu, &smoothness, sizeof(double));
-}
+*/
 
-void gen_matrix(double(*func)(double), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda) {
-  if (m > 0)
-    for (int64_t x = 0; x < n; x++) {
-      const double* bjj = &bj[x * 3];
-      for (int64_t y = 0; y < m; y++) {
-        const double* bii = &bi[y * 3];
-        double dX = bii[0] - bjj[0];
-        double dY = bii[1] - bjj[1];
-        double dZ = bii[2] - bjj[2];
-        double r2 = dX * dX + dY * dY + dZ * dZ;
-        Aij[y + x * lda] = func(r2);
-      }
-    }
-}
-
-__global__ void gen_matrix_kernel(double(*func)(double), int m, int n, const double* bi, const double* bj, double Aij[], int lda) {
-  if (m > 0)
-    for (int x = 0; x < n; x++) {
-      const double* bjj = &bj[x * 3];
-      for (int y = 0; y < m; y++) {
-        const double* bii = &bi[y * 3];
-        double dX = bii[0] - bjj[0];
-        double dY = bii[1] - bjj[1];
-        double dZ = bii[2] - bjj[2];
-        double r2 = dX * dX + dY * dY + dZ * dZ;
-        Aij[y + x * lda] = func(r2);
-      }
-    }
-}
-
-void gen_matrix_gpu(double(*func)(double), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda, cudaStream_t stream) {
-  //double(*ef1)(double) = NULL;
-  //double(*ef2)(double) = NULL;
-  double(*ef2)(double) = yukawa3d_gpu();
-  gen_matrix_kernel <<< 1, 1, 0, stream >>> (ef2, m, n, bi, bj, Aij, lda);
-}
-
-void mat_vec_reference(double(*func)(double), int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]) {
-  int64_t m = end - begin;
-  int64_t n = nbodies;
-  for (int64_t i = 0; i < m; i++) {
-    int64_t y = begin + i;
-    const double* bi = &bodies[y * 3];
-    double s = 0.;
-    for (int64_t j = 0; j < n; j++) {
-      const double* bj = &bodies[j * 3];
-      double dX = bi[0] - bj[0];
-      double dY = bi[1] - bj[1];
-      double dZ = bi[2] - bj[2];
-      double r2 = dX * dX + dY * dY + dZ * dZ;
-      s = s + func(r2) * Xbodies[j];
-    }
-    B[i] = s;
-  }
-}

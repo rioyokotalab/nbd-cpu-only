@@ -7,6 +7,15 @@
 #include <stdlib.h>
 #include <math.h>
 
+/*struct Laplace3D : EvalDouble {
+  double singularity;
+  Laplace3D (double s) : singularity(1. / s) {}
+  __host__ __device__ double operator()(thrust::pair<const double*, const double*> x) const override {
+    double r2 = computeR2(thrust::get<0>(x), thrust::get<1>(x));
+    return r2 == 0. ? singularity : (1. / sqrt(r2));
+  }
+};*/
+
 int main(int argc, char* argv[]) {
   init_libs(&argc, &argv);
 
@@ -25,12 +34,9 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  //double(*func)(double) = laplace3d_cpu();
-  double(*func)(double) = yukawa3d_cpu();
-  //double(*func)(double) = gauss_cpu();
-  //double(*func)(double) = matern_cpu();
-  set_kernel_constants(1.e-9, 1., 1.);
-  //set_kernel_constants(1., 0.3, 0.5);
+  //Laplace3D eval(1.e-9);
+  Yukawa3D eval(1.e-9, 1.);
+  //Gaussian eval(0.3);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -71,16 +77,16 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  buildBasis(func, basis, ncells, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
+  buildBasis(eval, basis, ncells, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
   stopTimer(&construct_time, &construct_comm_time);
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
   allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
-  evalD(func, nodes[levels].A, ncells, cell, body, &cellNear, levels);
+  evalD(eval, nodes[levels].A, ncells, cell, body, &cellNear, levels);
   for (int64_t i = 0; i <= levels; i++)
-    evalS(func, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
+    evalS(eval, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
 
   int64_t lenX = rels_near[levels].N * basis[levels].dimN;
   double* X1 = (double*)calloc(lenX, sizeof(double));
@@ -95,7 +101,7 @@ int main(int argc, char* argv[]) {
     int64_t body_local[2];
     local_bodies(body_local, ncells, cell, levels);
     std::vector<double> X3(lenX);
-    mat_vec_reference(func, body_local[0], body_local[1], &X3[0], Nbody, body, Xbody);
+    mat_vec_reference(eval, body_local[0], body_local[1], &X3[0], Nbody, body, Xbody);
 
     int64_t ibegin = 0, iend = ncells;
     int mpi_rank;

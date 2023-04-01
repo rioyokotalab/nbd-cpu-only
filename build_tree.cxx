@@ -321,7 +321,7 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
   }
 }
 
-void evalD(double(*func)(double), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* rels, int64_t level) {
+void evalD(const EvalDouble& eval, struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* rels, int64_t level) {
   int __mpi_rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   int64_t mpi_rank = __mpi_rank;
@@ -348,12 +348,12 @@ void evalD(double(*func)(double), struct Matrix* D, int64_t ncells, const struct
       const struct Cell* cj = &cells[lj];
       int64_t y_begin = cj->Body[0];
       int64_t m = cj->Body[1] - y_begin;
-      gen_matrix(func, m, n, &bodies[y_begin * 3], &bodies[x_begin * 3], D[offsetD + j].A, D[offsetD + j].LDA);
+      gen_matrix(eval, m, n, &bodies[y_begin * 3], &bodies[x_begin * 3], D[offsetD + j].A, D[offsetD + j].LDA);
     }
   }
 }
 
-void evalS(double(*func)(double), struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm) {
+void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm) {
   int64_t ibegin = 0;
   content_length(NULL, NULL, &ibegin, comm);
   int64_t seg = basis->dimS * 3;
@@ -365,7 +365,7 @@ void evalS(double(*func)(double), struct Matrix* S, const struct Base* basis, co
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       int64_t m = basis->DimsLr[y];
-      gen_matrix(func, m, n, &basis->M_cpu[y * seg], &basis->M_cpu[(x + ibegin) * seg], S[yx].A, S[yx].LDA);
+      gen_matrix(eval, m, n, &basis->M_cpu[y * seg], &basis->M_cpu[(x + ibegin) * seg], S[yx].A, S[yx].LDA);
       upper_tri_reflec_mult('L', 1, &basis->R[y], &S[yx]);
       upper_tri_reflec_mult('R', 1, &basis->R[x + ibegin], &S[yx]);
     }

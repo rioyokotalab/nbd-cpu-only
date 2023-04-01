@@ -12,6 +12,7 @@
 
 #include "comm.hxx"
 #include "basis.hxx"
+#include "kernel.hxx"
 
 struct Matrix { double* A; int64_t M, N, LDA; };
 
@@ -37,10 +38,11 @@ struct Node {
 };
 
 struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo, *B; };
+struct EvalDouble;
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 
-int64_t compute_basis(double(*func)(double), double epi, int64_t rank_min, int64_t rank_max, 
+int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int64_t rank_max, 
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]);
 
 void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A);
@@ -66,26 +68,6 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
 void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm);
 void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm);
 
-double (*laplace3d_cpu(void)) (double);
-
-double (*laplace3d_gpu(void)) (double);
-
-double (*yukawa3d_cpu(void)) (double);
-
-double (*yukawa3d_gpu(void)) (double);
-
-double (*gauss_cpu(void)) (double);
-
-#ifdef _GSL
-double (*matern_cpu(void)) (double);
-#endif
-
-void set_kernel_constants(double singularity, double alpha, double smoothness);
-
-void gen_matrix(double(*func)(double), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda);
-
-void gen_matrix_gpu(double(*func)(double), int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda, cudaStream_t stream);
-
 void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim);
 
 void uniform_unit_cube_rnd(double* bodies, int64_t nbodies, int64_t dim, unsigned int seed);
@@ -104,7 +86,7 @@ void sort_bodies(double* bodies, int64_t nbodies, int64_t sdim);
 
 void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, double* bodies, int64_t buckets[], const char* fname);
 
-void mat_vec_reference(double(*func)(double), int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]);
+void mat_vec_reference(const EvalDouble& eval, int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]);
 
 void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbodies, int64_t levels);
 
@@ -124,9 +106,9 @@ void loadX(double* X, int64_t seg, const double Xbodies[], int64_t ncells, const
 
 void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
 
-void evalD(double(*func)(double), struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* csc, int64_t level);
+void evalD(const EvalDouble& eval, struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* csc, int64_t level);
 
-void evalS(double(*func)(double), struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm);
+void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm);
 
 void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels);
 
