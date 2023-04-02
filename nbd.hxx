@@ -42,11 +42,10 @@ struct EvalDouble;
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 
+void mul_AS(const struct Matrix* RU, const struct Matrix* RV, struct Matrix* A);
+
 int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int64_t rank_max, 
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]);
-
-void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A);
-void qr_full(struct Matrix* Q, struct Matrix* R);
 
 void init_libs(int* argc, char*** argv);
 void fin_libs();

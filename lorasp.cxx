@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
   
   //Laplace3D eval(1.e-9);
   Yukawa3D eval(1.e-9, 1.);
-  //Gaussian eval(0.3);
+  //Gaussian eval(1);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);

@@ -116,13 +116,13 @@ void Gaussian::genMatrixDevice(int64_t m, int64_t n, const double* bi, const dou
 }
 
 void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda) {
-  //Eval.genMatrixHost(m, n, bi, bj, Aij, lda);
-  thrust::device_vector<double> bi_dev(m * 3), bj_dev(n * 3), A_dev(lda * n);
+  Eval.genMatrixHost(m, n, bi, bj, Aij, lda);
+  /*thrust::device_vector<double> bi_dev(m * 3), bj_dev(n * 3), A_dev(lda * n);
   cudaMemcpy(thrust::raw_pointer_cast(&bi_dev[0]), bi, sizeof(double) * m * 3, cudaMemcpyHostToDevice);
   cudaMemcpy(thrust::raw_pointer_cast(&bj_dev[0]), bj, sizeof(double) * n * 3, cudaMemcpyHostToDevice);
   
   Eval.genMatrixDevice(m, n, thrust::raw_pointer_cast(&bi_dev[0]), thrust::raw_pointer_cast(&bj_dev[0]), thrust::raw_pointer_cast(&A_dev[0]), lda, 0);
-  cudaMemcpy2D(Aij, sizeof(double) * lda, thrust::raw_pointer_cast(&A_dev[0]), sizeof(double) * lda, sizeof(double) * m, n, cudaMemcpyDeviceToHost);
+  cudaMemcpy2D(Aij, sizeof(double) * lda, thrust::raw_pointer_cast(&A_dev[0]), sizeof(double) * lda, sizeof(double) * m, n, cudaMemcpyDeviceToHost);*/
 }
 
 

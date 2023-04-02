@@ -58,35 +58,39 @@ void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, str
   cblas_dgemm(CblasColMajor, tac, tbc, C->M, C->N, k, alpha, A->A, lda, B->A, ldb, beta, C->A, ldc);
 }
 
-void upper_tri_reflec_mult(char side, int64_t lenR, const struct Matrix* R, struct Matrix* A) {
-  int64_t lda = 1 < A->LDA ? A->LDA : 1;
-  std::vector<double> work(A->M * A->N);
-  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'F', A->M, A->N, A->A, lda, &work[0], A->M);
-  int64_t y = 0;
-  if (side == 'L' || side == 'l')
-    for (int64_t i = 0; i < lenR; i++) {
-      int64_t ldr = 1 < R[i].LDA ? R[i].LDA : 1;
-      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, R[i].M, A->N, R[i].M, 1., R[i].A, ldr, &work[y], A->M, 0., &A->A[y], lda);
-      y = y + R[i].M;
-    }
-  else if (side == 'R' || side == 'r')
-    for (int64_t i = 0; i < lenR; i++) {
-      int64_t ldr = 1 < R[i].LDA ? R[i].LDA : 1;
-      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, A->M, R[i].M, R[i].M, 1., &work[y * A->M], A->M, R[i].A, ldr, 0., &A->A[y * lda], lda);
-      y = y + R[i].M;
-    }
+void mul_AS(const struct Matrix* RU, const struct Matrix* RV, struct Matrix* A) {
+  if (A->M > 0 && A->N > 0) {
+    cblas_dtrmm(CblasColMajor, CblasLeft, CblasUpper, CblasNoTrans, CblasNonUnit, A->M, A->N, 1., RU->A, RU->LDA, A->A, A->LDA);
+    cblas_dtrmm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, A->M, A->N, 1., RV->A, RV->LDA, A->A, A->LDA);
+  }
 }
 
-void qr_full(struct Matrix* Q, struct Matrix* R) {
-  int64_t ldq = 1 < Q->LDA ? Q->LDA : 1;
-  int64_t k = R->N;
-  int64_t ldr = 1 < R->LDA ? R->LDA : 1;
-  std::vector<double> tau(Q->N);
-  LAPACKE_dgeqrf(LAPACK_COL_MAJOR, Q->M, k, Q->A, ldq, &tau[0]);
-  LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', R->M, R->N, 0., 0., R->A, ldr);
-  LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'U', R->M, R->N, Q->A, ldq, R->A, ldr);
-  LAPACKE_dorgqr(LAPACK_COL_MAJOR, Q->M, Q->N, k, Q->A, ldq, &tau[0]);
-}
+/*int64_t compute_null_space(const EvalDouble& eval, double epi, int64_t M, double* XA, int64_t LDX, double Xbodies[]) {
+  if (M > 0 && epi > 0) {
+    std::vector<double> A(M * M), S(M * 2);
+    std::vector<MKL_INT> ipiv(M);
+    gen_matrix(eval, M, M, Xbodies, Xbodies, &A[0], M);
+    LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M, &A[0], M, &S[0], NULL, M, NULL, M, &S[M]);
+    double s0 = S[0] * epi;
+    int64_t ns = std::distance(S.begin(), std::find_if(S.begin(), S.begin() + M, [s0](double& s) { return s < s0; }));
+
+    if (ns < M) {
+      LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'F', M, ns, &A[0], M, XA, LDX);
+      LAPACKE_dgetrf(LAPACK_COL_MAJOR, M, ns, &A[0], M, &ipiv[0]);
+      cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, M, ns, 1., &A[0], M, XA, LDX);
+      cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, M, ns, 1., &A[0], M, XA, LDX);
+
+      for (MKL_INT i = 0; i < ns; i++) {
+        MKL_INT piv = ipiv[i] - 1;
+        if (piv != i)
+          for (MKL_INT k = 0; k < 3; k++)
+            std::iter_swap(&Xbodies[i * 3 + k], &Xbodies[piv * 3 + k]);
+      }
+      return M - ns;
+    }
+  }
+  return 0;
+}*/
 
 int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int64_t rank_max, 
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]) {
@@ -129,6 +133,11 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
           for (MKL_INT k = 0; k < 3; k++)
             std::iter_swap(&Xbodies[i * 3 + k], &Xbodies[piv * 3 + k]);
       }
+
+      LAPACKE_dgeqrf(LAPACK_COL_MAJOR, M, rank, A, LDA, &S[0]);
+      LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', rank, rank, 0., 0., &A[M * M], rank);
+      LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'U', rank, rank, A, LDA, &A[M * M], rank);
+      LAPACKE_dorgqr(LAPACK_COL_MAJOR, M, M, rank, A, LDA, &S[0]);
     }
     return rank;
   }

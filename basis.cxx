@@ -135,17 +135,6 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], int64_t ncells, str
           Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
       
       int64_t rank = compute_basis(eval, epi, 20, mrank, ske_len, mat, ske_len, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
-
-      if (rank > 0) {
-        struct Matrix Q = (struct Matrix){ mat, ske_len, ske_len, ske_len };
-        struct Matrix Qo = (struct Matrix){ mat, ske_len, rank, ske_len };
-        struct Matrix R = (struct Matrix){ &mat[ske_len * ske_len], rank, rank, rank };
-        int64_t childi = std::get<0>(comm[l].LocalChild[i + ibegin]);
-        int64_t clen = std::get<1>(comm[l].LocalChild[i + ibegin]);
-        if (childi >= 0)
-          upper_tri_reflec_mult('L', clen, &(basis[l + 1].R)[childi], &Qo);
-        qr_full(&Q, &R);
-      }
       basis[l].DimsLr[i + ibegin] = rank;
     }
     neighbor_bcast_sizes_cpu(basis[l].DimsLr.data(), &comm[l]);
