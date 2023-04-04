@@ -11,7 +11,7 @@
 #include <cstddef>
 
 struct CellComm { 
-  int64_t Proc[2];
+  int64_t Proc;
   std::vector<int64_t> ProcTargets;
   std::vector<std::pair<int64_t, int64_t>> LocalChild;
   std::vector<std::pair<int64_t, int64_t>> ProcBoxes;
@@ -23,9 +23,7 @@ struct CellComm {
 
 void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels);
 
-void buildCommGPU(struct CellComm* comms, int64_t levels);
-
-void cellComm_free(struct CellComm* comm);
+void cellComm_free(struct CellComm* comms, int64_t levels);
 
 void i_local(int64_t* ilocal, const struct CellComm* comm);
 

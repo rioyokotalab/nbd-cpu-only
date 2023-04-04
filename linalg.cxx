@@ -19,7 +19,8 @@ cublasHandle_t cublasH = NULL;
 cusolverDnHandle_t cusolverH = NULL;
 
 void init_libs(int* argc, char*** argv) {
-  assert(MPI_Init(argc, argv) == MPI_SUCCESS);
+  if (MPI_Init(argc, argv) != MPI_SUCCESS)
+    fprintf(stderr, "MPI Init Error\n");
   int mpi_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   int num_device;
@@ -64,33 +65,6 @@ void mul_AS(const struct Matrix* RU, const struct Matrix* RV, struct Matrix* A) 
     cblas_dtrmm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, A->M, A->N, 1., RV->A, RV->LDA, A->A, A->LDA);
   }
 }
-
-/*int64_t compute_null_space(const EvalDouble& eval, double epi, int64_t M, double* XA, int64_t LDX, double Xbodies[]) {
-  if (M > 0 && epi > 0) {
-    std::vector<double> A(M * M), S(M * 2);
-    std::vector<MKL_INT> ipiv(M);
-    gen_matrix(eval, M, M, Xbodies, Xbodies, &A[0], M);
-    LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M, &A[0], M, &S[0], NULL, M, NULL, M, &S[M]);
-    double s0 = S[0] * epi;
-    int64_t ns = std::distance(S.begin(), std::find_if(S.begin(), S.begin() + M, [s0](double& s) { return s < s0; }));
-
-    if (ns < M) {
-      LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'F', M, ns, &A[0], M, XA, LDX);
-      LAPACKE_dgetrf(LAPACK_COL_MAJOR, M, ns, &A[0], M, &ipiv[0]);
-      cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, M, ns, 1., &A[0], M, XA, LDX);
-      cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, M, ns, 1., &A[0], M, XA, LDX);
-
-      for (MKL_INT i = 0; i < ns; i++) {
-        MKL_INT piv = ipiv[i] - 1;
-        if (piv != i)
-          for (MKL_INT k = 0; k < 3; k++)
-            std::iter_swap(&Xbodies[i * 3 + k], &Xbodies[piv * 3 + k]);
-      }
-      return M - ns;
-    }
-  }
-  return 0;
-}*/
 
 int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int64_t rank_max, 
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]) {

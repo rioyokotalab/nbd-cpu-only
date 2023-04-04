@@ -3,7 +3,23 @@
 #include "nbd.hxx"
 
 #include <algorithm>
-#include <cmath>
+
+MPI_Comm MPI_Comm_split_unique(std::vector<MPI_Comm>& unique_comms, int color, int mpi_rank) {
+  MPI_Comm comm = MPI_COMM_NULL;
+  MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comm);
+
+  if (comm != MPI_COMM_NULL) {
+    auto iter = std::find_if(unique_comms.begin(), unique_comms.end(), [comm](MPI_Comm c) -> bool { 
+      int result; MPI_Comm_compare(comm, c, &result); return result == MPI_IDENT || result == MPI_CONGRUENT; });
+    if (iter == unique_comms.end())
+      unique_comms.emplace_back(comm);
+    else {
+      MPI_Comm_free(&comm);
+      comm = *iter;
+    }
+  }
+  return comm;
+}
 
 void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
   int __mpi_rank = 0, __mpi_size = 1;
@@ -11,6 +27,7 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
   MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
   int64_t mpi_rank = __mpi_rank;
   int64_t mpi_size = __mpi_size;
+  std::vector<MPI_Comm> unique_comms;
 
   for (int64_t i = levels; i >= 0; i--) {
     int64_t ibegin = 0, iend = ncells;
@@ -20,8 +37,7 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     get_level(&mbegin, &mend, cells, i, mpi_rank);
     int64_t p = cells[mbegin].Procs[0];
     int64_t lenp = cells[mbegin].Procs[1] - p;
-    comms[i].Proc[0] = p;
-    comms[i].Proc[1] = p + lenp;
+    comms[i].Proc = p;
 
     for (int64_t j = 0; j < mpi_size; j++) {
       int is_ngb = 0;
@@ -33,13 +49,13 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
           is_ngb = 1;
       
       int color = (is_ngb && p == mpi_rank) ? 1 : MPI_UNDEFINED;
-      MPI_Comm comm = MPI_COMM_NULL;
-      MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comm);
+      MPI_Comm comm = MPI_Comm_split_unique(unique_comms, color, mpi_rank);
 
       if (comm != MPI_COMM_NULL) {
         int root = 0;
         if (j == p)
           MPI_Comm_rank(comm, &root);
+        MPI_Allreduce(MPI_IN_PLACE, &root, 1, MPI_INT, MPI_SUM, comm);
         comms[i].Comm_box.emplace_back(root, comm);
       }
       if (is_ngb)
@@ -53,23 +69,22 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
       for (int64_t j = 0; j < clen; j++)
         if (cells[cc + j].Procs[0] == mpi_rank)
           color = p;
-    MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_merge);
+    comms[i].Comm_merge = MPI_Comm_split_unique(unique_comms, color, mpi_rank);
   
     color = lenp > 1 ? p : MPI_UNDEFINED;
-    MPI_Comm_split(MPI_COMM_WORLD, color, mpi_rank, &comms[i].Comm_share);
+    comms[i].Comm_share = MPI_Comm_split_unique(unique_comms, color, mpi_rank);
 
-    for (size_t j = 0; j < comms[i].ProcTargets.size(); j++) {
-      int64_t local[2] { mbegin - ibegin, mend - mbegin };
-      if (p == mpi_rank) {
-        MPI_Allreduce(MPI_IN_PLACE, &std::get<0>(comms[i].Comm_box[j]), 1, MPI_INT, MPI_SUM, std::get<1>(comms[i].Comm_box[j]));
-        MPI_Bcast(local, 2, MPI_INT64_T, std::get<0>(comms[i].Comm_box[j]), std::get<1>(comms[i].Comm_box[j]));
-      }
-      if (comms[i].Comm_share != MPI_COMM_NULL)
-        MPI_Bcast(local, 2, MPI_INT64_T, 0, comms[i].Comm_share);
-      comms[i].ProcBoxes.emplace_back(local[0], local[1]);
+    std::pair<int64_t, int64_t> local = std::make_pair(mbegin - ibegin, mend - mbegin);
+    comms[i].ProcBoxes = std::vector<std::pair<int64_t, int64_t>>(comms[i].ProcTargets.size(), local);
 
-      for (int64_t k = 0; k < local[1]; k++) {
-        int64_t ki = k + local[0] + ibegin;
+    for (size_t j = 0; j < comms[i].Comm_box.size(); j++)
+      MPI_Bcast(&comms[i].ProcBoxes[j], sizeof(std::pair<int64_t, int64_t>), MPI_BYTE, std::get<0>(comms[i].Comm_box[j]), std::get<1>(comms[i].Comm_box[j]));
+    if (comms[i].Comm_share != MPI_COMM_NULL)
+      MPI_Bcast(&comms[i].ProcBoxes[0], sizeof(std::pair<int64_t, int64_t>) * comms[i].ProcTargets.size(), MPI_BYTE, 0, comms[i].Comm_share);
+
+    for (size_t j = 0; j < comms[i].ProcTargets.size(); j++)
+      for (int64_t k = 0; k < std::get<1>(comms[i].ProcBoxes[j]); k++) {
+        int64_t ki = k + std::get<0>(comms[i].ProcBoxes[j]) + ibegin;
         int64_t lc = cells[ki].Child[0];
         int64_t lclen = cells[ki].Child[1] - lc;
         if (lc >= 0 && i < levels) {
@@ -78,72 +93,78 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
         }
         comms[i].LocalChild.emplace_back(lc, lclen);
       }
-    }
   }
-}
 
-void buildCommGPU(struct CellComm* comms, int64_t levels) {
-  for (int64_t i = 0; i <= levels; i++) {
-    ncclUniqueId id;
+  std::vector<ncclUniqueId> nccl_ids(unique_comms.size());
+  std::vector<ncclComm_t> nccl_comms(unique_comms.size());
+  ncclGroupStart();
+  for (int64_t i = 0; i < (int64_t)unique_comms.size(); i++) {
+    int rank, size;
+    MPI_Comm_rank(unique_comms[i], &rank);
+    MPI_Comm_size(unique_comms[i], &size);
+    if (rank == 0)
+      ncclGetUniqueId(&nccl_ids[i]);
+    MPI_Bcast((void*)&nccl_ids[i], sizeof(ncclUniqueId), MPI_BYTE, 0, unique_comms[i]);
+    ncclCommInitRank(&nccl_comms[i], size, nccl_ids[i], rank);
+  }
+  ncclGroupEnd();
+
+  for (int64_t i = levels; i >= 0; i--) {
+    comms[i].NCCL_box = std::vector<std::pair<int, ncclComm_t>>(comms[i].Comm_box.size(), std::make_pair(0, (ncclComm_t)NULL));
+    comms[i].NCCL_merge = NULL;
+    comms[i].NCCL_share = NULL; 
+
     for (size_t j = 0; j < comms[i].Comm_box.size(); j++) {
-      int rank, size, root = std::get<0>(comms[i].Comm_box[j]);
-      MPI_Comm_rank(std::get<1>(comms[i].Comm_box[j]), &rank);
-      MPI_Comm_size(std::get<1>(comms[i].Comm_box[j]), &size);
-
-      if (rank == root) 
-        ncclGetUniqueId(&id);
-
-      MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, root, std::get<1>(comms[i].Comm_box[j]));
-      ncclComm_t comm = NULL;
-      ncclResult_t err = ncclCommInitRank(&comm, size, id, rank);
-      if (err == ncclSuccess)
-        comms[i].NCCL_box.emplace_back(root, comm);
+      int64_t k = std::distance(unique_comms.begin(), std::find(unique_comms.begin(), unique_comms.end(), std::get<1>(comms[i].Comm_box[j])));
+      comms[i].NCCL_box[j] = std::make_pair(std::get<0>(comms[i].Comm_box[j]), nccl_comms[k]);
     }
-
     if (comms[i].Comm_merge != MPI_COMM_NULL) {
-      int rank, size;
-      MPI_Comm_rank(comms[i].Comm_merge, &rank);
-      MPI_Comm_size(comms[i].Comm_merge, &size);
-
-      if (rank == 0) 
-        ncclGetUniqueId(&id);
-
-      MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, comms[i].Comm_merge);
-      ncclComm_t comm = NULL;
-      ncclResult_t err = ncclCommInitRank(&comm, size, id, rank);
-      comms[i].NCCL_merge = (err == ncclSuccess) ? comm : NULL;
+      int64_t k = std::distance(unique_comms.begin(), std::find(unique_comms.begin(), unique_comms.end(), comms[i].Comm_merge));
+      comms[i].NCCL_merge = nccl_comms[k];
     }
-
-    if (comms[i].Comm_share!= MPI_COMM_NULL) {
-      int rank, size;
-      MPI_Comm_rank(comms[i].Comm_share, &rank);
-      MPI_Comm_size(comms[i].Comm_share, &size);
-
-      if (rank == 0) 
-        ncclGetUniqueId(&id);
-
-      MPI_Bcast((void*)&id, sizeof(ncclUniqueId), MPI_BYTE, 0, comms[i].Comm_share);
-      ncclComm_t comm = NULL;
-      ncclResult_t err = ncclCommInitRank(&comm, size, id, rank);
-      comms[i].NCCL_share = (err == ncclSuccess) ? comm : NULL;
+    if (comms[i].Comm_share != MPI_COMM_NULL) {
+      int64_t k = std::distance(unique_comms.begin(), std::find(unique_comms.begin(), unique_comms.end(), comms[i].Comm_share));
+      comms[i].NCCL_share = nccl_comms[k];
     }
   }
 }
 
-void cellComm_free(struct CellComm* comm) {
-  for (int64_t i = 0; i < (int64_t)comm->Comm_box.size(); i++)
-    MPI_Comm_free(&std::get<1>(comm->Comm_box[i]));
-  if (comm->Comm_share != MPI_COMM_NULL)
-    MPI_Comm_free(&comm->Comm_share);
-  if (comm->Comm_merge != MPI_COMM_NULL)
-    MPI_Comm_free(&comm->Comm_merge);
+void cellComm_free(struct CellComm* comms, int64_t levels) {
+  std::vector<MPI_Comm> mpi_comms;
+  std::vector<ncclComm_t> nccl_comms;
 
-  for (int64_t i = 0; i < (int64_t)comm->NCCL_box.size(); i++)
-    ncclCommDestroy(std::get<1>(comm->NCCL_box[i]));
-  if (comm->NCCL_share != NULL)
-    ncclCommDestroy(comm->NCCL_share);
-  if (comm->NCCL_merge != NULL)
-    ncclCommDestroy(comm->NCCL_merge);
+  for (int64_t i = 0; i <= levels; i++) {
+    for (size_t j = 0; j < comms[i].Comm_box.size(); j++)
+      mpi_comms.emplace_back(std::get<1>(comms[i].Comm_box[j]));
+    if (comms[i].Comm_merge != MPI_COMM_NULL)
+      mpi_comms.emplace_back(comms[i].Comm_merge);
+    if (comms[i].Comm_share != MPI_COMM_NULL)
+      mpi_comms.emplace_back(comms[i].Comm_share);
+
+    for (size_t j = 0; j < comms[i].NCCL_box.size(); j++)
+      nccl_comms.emplace_back(std::get<1>(comms[i].NCCL_box[j]));
+    if (comms[i].NCCL_merge != NULL)
+      nccl_comms.emplace_back(comms[i].NCCL_merge);
+    if (comms[i].NCCL_share != NULL)
+      nccl_comms.emplace_back(comms[i].NCCL_share);
+    
+    comms[i].Comm_box.clear();
+    comms[i].Comm_merge = MPI_COMM_NULL;
+    comms[i].Comm_share = MPI_COMM_NULL;
+    comms[i].NCCL_box.clear();
+    comms[i].NCCL_merge = NULL;
+    comms[i].NCCL_share = NULL;
+  }
+
+  std::sort(mpi_comms.begin(), mpi_comms.end());
+  std::sort(nccl_comms.begin(), nccl_comms.end());
+  mpi_comms.erase(std::unique(mpi_comms.begin(), mpi_comms.end()), mpi_comms.end());
+  nccl_comms.erase(std::unique(nccl_comms.begin(), nccl_comms.end()), nccl_comms.end());
+
+  for (int64_t i = 0; i < (int64_t)mpi_comms.size(); i++)
+    MPI_Comm_free(&mpi_comms[i]);
+  for (int64_t i = 0; i < (int64_t)nccl_comms.size(); i++)
+    ncclCommDestroy(nccl_comms[i]);
 }
 
 void i_local(int64_t* ilocal, const struct CellComm* comm) {
@@ -177,7 +198,7 @@ void i_global(int64_t* iglobal, const struct CellComm* comm) {
 void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, const struct CellComm* comm) {
   int64_t slen = 0, offset = -1, len_self = -1;
   for (size_t i = 0; i < comm->ProcTargets.size(); i++) {
-    if (comm->ProcTargets[i] == comm->Proc[0])
+    if (comm->ProcTargets[i] == comm->Proc)
     { offset = slen; len_self = std::get<1>(comm->ProcBoxes[i]); }
     slen = slen + std::get<1>(comm->ProcBoxes[i]);
   }

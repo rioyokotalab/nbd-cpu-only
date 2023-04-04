@@ -71,7 +71,6 @@ int main(int argc, char* argv[]) {
   traverse('F', &cellFar, ncells, cell, theta);
 
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
-  buildCommGPU(cell_comm, levels);
   relations(rels_near, ncells, cell, &cellNear, levels, cell_comm);
   relations(rels_far, ncells, cell, &cellFar, levels, cell_comm);
 
@@ -187,8 +186,8 @@ int main(int argc, char* argv[]) {
     basis_free(&basis[i]);
     node_free(&nodes[i]);
     rightHandSides_free(&rhs[i]);
-    cellComm_free(&cell_comm[i]);
   }
+  cellComm_free(cell_comm, levels);
   csc_free(&cellFar);
   csc_free(&cellNear);
   
