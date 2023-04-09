@@ -103,7 +103,6 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], int64_t ncells, str
     int64_t seg_matrix = seg_dim * seg_dim * 2;
     std::vector<double> matrix_data(nodes * seg_matrix, 0.);
 
-#pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ske_len = basis[l].Dims[i + ibegin];
       double* mat = &matrix_data[seg_matrix * i];

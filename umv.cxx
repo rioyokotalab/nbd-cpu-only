@@ -11,7 +11,6 @@
 
 void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struct Base basis[], const struct CSC rels_near[], const struct CSC rels_far[], const struct CellComm comm[], int64_t levels) {
   int64_t work_size = 0;
-  int64_t pers_work = 0;
 
   for (int64_t i = levels; i >= 0; i--) {
     int64_t n_i = 0, ulen = 0, nloc = 0;
@@ -40,9 +39,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     allocBufferedList((void**)&A[i].X_ptr, (void**)&A[i].X_buf, sizeof(double), dimn * ulen);
 
     int64_t work_required = n_i * stride * 2;
-    int64_t pers_required = dimr * (ulen + n_i * (dimr + 1));
-    pers_work = pers_work + pers_required;
-    work_size = std::max(work_size, work_required + pers_work);
+    work_size = std::max(work_size, work_required);
 
     for (int64_t x = 0; x < n_i; x++) {
       int64_t box_x = nloc + x;
@@ -121,9 +118,8 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
           X_next[child + j] = &A[i - 1].X_ptr[j * basis[i].dimS + x * n_next];
     }
 
-    int64_t alloc = batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, A_next, X_next,
+    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, A_next, X_next,
       *Workspace, work_size, basis[i].Ulen, rels_near[i].N, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex);
-    work_size = work_size - alloc;
     free(A_next);
     free(X_next);
   }
