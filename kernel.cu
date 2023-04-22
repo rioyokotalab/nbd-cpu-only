@@ -126,21 +126,3 @@ void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, 
 }
 
 
-/*
-#ifdef _GSL
-double __matern_h(double r2) {
-  double sigma_square = _singularity * _singularity;
-
-  if (r2 > 0.) {
-    double con = sigma_square / (pow(2, (_smoothness - 1)) * tgamma(_smoothness));
-    double expr = sqrt(2 * _smoothness * r2) / _alpha;
-    return con * pow(expr, _smoothness) * gsl_sf_bessel_Knu(_smoothness, expr);
-  }
-  else
-    return sigma_square;
-}
-
-#endif
-
-*/
-

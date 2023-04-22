@@ -7,15 +7,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-/*struct Laplace3D : EvalDouble {
-  double singularity;
-  Laplace3D (double s) : singularity(1. / s) {}
-  __host__ __device__ double operator()(thrust::pair<const double*, const double*> x) const override {
-    double r2 = computeR2(thrust::get<0>(x), thrust::get<1>(x));
-    return r2 == 0. ? singularity : (1. / sqrt(r2));
-  }
-};*/
-
 int main(int argc, char* argv[]) {
   init_libs(&argc, &argv);
 

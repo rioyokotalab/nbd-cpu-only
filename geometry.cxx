@@ -41,136 +41,105 @@ void uniform_unit_cube_rnd(double* bodies, int64_t nbodies, int64_t dim, unsigne
   }
 }
 
-void mesh_unit_sphere(double* bodies, int64_t nbodies) {
-  int64_t mlen = nbodies - 2;
-  if (mlen < 0) {
-    std::cerr << "Error spherical mesh size (GT/EQ. 2 required): %" << nbodies << "." << std::endl;
+void mesh_unit_cube(double* bodies, int64_t nbodies) {
+  if (nbodies < 8) {
+    std::cerr << "Error cubic mesh size (GT/EQ. 8 required): %" << nbodies << "." << std::endl;
     return;
   }
 
-  double alen = sqrt(mlen);
-  int64_t m = (int64_t)ceil(alen);
-  int64_t n = (int64_t)ceil((double)mlen / m);
-
-  double pi = M_PI;
-  double seg_theta = pi / (m + 1);
-  double seg_phi = 2. * pi / n;
-
-  for (int64_t i = 0; i < mlen; i++) {
-    int64_t x = i / m;
-    int64_t y = 1 + i - x * m;
-    int64_t x2 = !(y & 1);
-
-    double theta = y * seg_theta;
-    double phi = (0.5 * x2 + x) * seg_phi;
-
-    double cost = cos(theta);
-    double sint = sin(theta);
-    double cosp = cos(phi);
-    double sinp = sin(phi);
-
-    double* x_bi = &bodies[(i + 1) * 3];
-    x_bi[0] = sint * cosp;
-    x_bi[1] = sint * sinp;
-    x_bi[2] = cost;
+  // compute splits: solution to 6x^2 + 12x + 8 = nbodies.
+  int64_t x_lower_bound = (int64_t)floor(sqrt(6 * nbodies - 12) / 6 - 1);
+  int64_t x_splits[3] = { x_lower_bound, x_lower_bound, x_lower_bound };
+  
+  for (int64_t i = 0; i < 3; i++) {
+    int64_t x = x_splits[0];
+    int64_t y = x_splits[1];
+    int64_t z = x_splits[2];
+    int64_t mesh_points = 8 + 4 * x + 4 * y + 4 * z + 2 * x * y + 2 * x * z + 2 * y * z;
+    if (mesh_points < nbodies)
+      x_splits[i] = x_splits[i] + 1;
   }
 
-  bodies[0] = 0.;
-  bodies[1] = 0.;
-  bodies[2] = 1.;
+  int64_t lens[7] = { 8, 4 * x_splits[0], 4 * x_splits[1], 4 * x_splits[2],
+    2 * x_splits[0] * x_splits[1], 2 * x_splits[0] * x_splits[2], 2 * x_splits[1] * x_splits[2] };
 
-  bodies[nbodies * 3 - 3] = 0.;
-  bodies[nbodies * 3 - 2] = 0.;
-  bodies[nbodies * 3 - 1] = -1.;
+  double segment_x = 2. / (1. + x_splits[0]);
+  double segment_y = 2. / (1. + x_splits[1]);
+  double segment_z = 2. / (1. + x_splits[2]);
+
+  for (int64_t i = 0; i < nbodies; i++) {
+    int64_t region = 0;
+    int64_t ri = i;
+    while (region < 6 && ri >= lens[region]) {
+      ri = ri - lens[region];
+      region = region + 1;
+    }
+
+    switch (region) {
+    case 0: { // Vertex
+      bodies[i * 3] = (double)(1 - 2 * ((ri & 4) >> 2));
+      bodies[i * 3 + 1] = (double)(1 - 2 * ((ri & 2) >> 1));
+      bodies[i * 3 + 2] = (double)(1 - 2 * (ri & 1));
+      break;
+    }
+    case 1: { // edges parallel to X-axis
+      bodies[i * 3] = -1 + ((ri >> 2) + 1) * segment_x;
+      bodies[i * 3 + 1] = (double)(1 - 2 * ((ri & 2) >> 1));
+      bodies[i * 3 + 2] = (double)(1 - 2 * (ri & 1));
+      break;
+    }
+    case 2: { // edges parallel to Y-axis
+      bodies[i * 3] = (double)(1 - 2 * ((ri & 2) >> 1));
+      bodies[i * 3 + 1] = -1 + ((ri >> 2) + 1) * segment_y;
+      bodies[i * 3 + 2] = (double)(1 - 2 * (ri & 1));
+      break;
+    }
+    case 3: { // edges parallel to Z-axis
+      bodies[i * 3] = (double)(1 - 2 * ((ri & 2) >> 1));
+      bodies[i * 3 + 1] = (double)(1 - 2 * (ri & 1));
+      bodies[i * 3 + 2] = -1 + ((ri >> 2) + 1) * segment_z;
+      break;
+    }
+    case 4: { // surface parallel to X-Y plane
+      int64_t x = (ri >> 1) / x_splits[1];
+      int64_t y = (ri >> 1) - x * x_splits[1];
+      bodies[i * 3] = -1 + (x + 1) * segment_x;
+      bodies[i * 3 + 1] = -1 + (y + 1) * segment_y;
+      bodies[i * 3 + 2] = (double)(1 - 2 * (ri & 1));
+      break;
+    }
+    case 5: { // surface parallel to X-Z plane
+      int64_t x = (ri >> 1) / x_splits[2];
+      int64_t z = (ri >> 1) - x * x_splits[2];
+      bodies[i * 3] = -1 + (x + 1) * segment_x;
+      bodies[i * 3 + 1] = (double)(1 - 2 * (ri & 1));
+      bodies[i * 3 + 2] = -1 + (z + 1) * segment_z;
+      break;
+    }
+    case 6: { // surface parallel to Y-Z plane
+      int64_t y = (ri >> 1) / x_splits[2];
+      int64_t z = (ri >> 1) - y * x_splits[2];
+      bodies[i * 3] = (double)(1 - 2 * (ri & 1));
+      bodies[i * 3 + 1] = -1 + (y + 1) * segment_y;
+      bodies[i * 3 + 2] = -1 + (z + 1) * segment_z;
+      break;
+    }
+    default:
+      break;
+    }
+  }
 }
 
-void mesh_unit_cube(double* bodies, int64_t nbodies) {
-  if (nbodies < 0) {
-    std::cerr << "Error cubic mesh size (GT/EQ. 0 required): %" << nbodies << "." << std::endl;
-    return;
-  }
-
-  int64_t mlen = (int64_t)ceil((double)nbodies / 6.);
-  double alen = sqrt(mlen);
-  int64_t m = (int64_t)ceil(alen);
-  int64_t n = (int64_t)ceil((double)mlen / m);
-
-  double seg_fv = 1. / (m - 1);
-  double seg_fu = 1. / n;
-  double seg_sv = 1. / (m + 1);
-  double seg_su = 1. / (n + 1);
-
-  for (int64_t i = 0; i < mlen; i++) {
-    int64_t x = i / m;
-    int64_t y = i - x * m;
-    int64_t x2 = y & 1;
-    double* x_bi = &bodies[i * 3];
-    double v = y * seg_fv;
-    double u = (0.5 * x2 + x) * seg_fu;
-    x_bi[0] = 1.;
-    x_bi[1] = 2. * v - 1.;
-    x_bi[2] = -2. * u + 1.;
-  }
-
-  for (int64_t i = 0; i < mlen; i++) {
-    int64_t x = i / m;
-    int64_t y = i - x * m;
-    int64_t x2 = y & 1;
-    double* x_bi = &bodies[(i + mlen) * 3];
-    double v = y * seg_fv;
-    double u = (0.5 * x2 + x) * seg_fu;
-    x_bi[0] = -1.;
-    x_bi[1] = 2. * v - 1.;
-    x_bi[2] = 2. * u - 1.;
-  }
-
-  for (int64_t i = 0; i < mlen; i++) {
-    int64_t x = i / m;
-    int64_t y = i - x * m;
-    int64_t x2 = y & 1;
-    double* x_bi = &bodies[(i + mlen * 2) * 3];
-    double v = (y + 1) * seg_sv;
-    double u = (0.5 * x2 + x + 1) * seg_su;
-    x_bi[0] = 2. * u - 1.;
-    x_bi[1] = 1.;
-    x_bi[2] = -2. * v + 1.;
-  }
-
-  for (int64_t i = 0; i < mlen; i++) {
-    int64_t x = i / m;
-    int64_t y = i - x * m;
-    int64_t x2 = y & 1;
-    double* x_bi = &bodies[(i + mlen * 3) * 3];
-    double v = (y + 1) * seg_sv;
-    double u = (0.5 * x2 + x + 1) * seg_su;
-    x_bi[0] = 2. * u - 1.;
-    x_bi[1] = -1.;
-    x_bi[2] = 2. * v - 1.;
-  }
-
-  for (int64_t i = 0; i < mlen; i++) {
-    int64_t x = i / m;
-    int64_t y = i - x * m;
-    int64_t x2 = y & 1;
-    double* x_bi = &bodies[(i + mlen * 4) * 3];
-    double v = y * seg_fv;
-    double u = (0.5 * x2 + x) * seg_fu;
-    x_bi[0] = 2. * u - 1.;
-    x_bi[1] = 2. * v - 1.;
-    x_bi[2] = 1.;
-  }
-
-  int64_t last = nbodies - mlen * 5;
-  for (int64_t i = 0; i < last; i++) {
-    int64_t x = i / m;
-    int64_t y = i - x * m;
-    int64_t x2 = y & 1;
-    double* x_bi = &bodies[(i + mlen * 5) * 3];
-    double v = y * seg_fv;
-    double u = (0.5 * x2 + x) * seg_fu;
-    x_bi[0] = -2. * u + 1.;
-    x_bi[1] = 2. * v - 1.;
-    x_bi[2] = -1.;
+void mesh_unit_sphere(double* bodies, int64_t nbodies) {
+  mesh_unit_cube(bodies, nbodies);
+  for (int64_t i = 0; i < nbodies; i++) { // project to spherical surface
+    double x = bodies[i * 3];
+    double y = bodies[i * 3 + 1];
+    double z = bodies[i * 3 + 2];
+    double nrm = 1. / sqrt(x * x + y * y + z * z);
+    bodies[i * 3] = x * nrm;
+    bodies[i * 3 + 1] = y * nrm;
+    bodies[i * 3 + 2] = z * nrm;
   }
 }
 

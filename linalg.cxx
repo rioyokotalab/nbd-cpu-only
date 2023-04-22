@@ -72,21 +72,20 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
 
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
     int64_t ldm = std::max(M, Nclose + Nfar);
-    std::vector<double> Aall(M * ldm, 0.);
+    std::vector<double> Aall(M * ldm, 0.), U(M * M), S(M * 2);
     std::vector<MKL_INT> ipiv(M);
     gen_matrix(eval, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
     gen_matrix(eval, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
-    if (Nclose > 0) {
-      std::vector<double> Aclose(Nclose * Nclose);
-      gen_matrix(eval, Nclose, Nclose, Cbodies, Cbodies, &Aclose[0], Nclose);
-      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, Nclose, M, 1., &Aclose[0], Nclose, &Aall[0], ldm);
+    for (int64_t i = 0; i < Nclose; i += Nclose) {
+      int64_t len = std::min(M, Nclose - i);
+      gen_matrix(eval, len, len, &Cbodies[i * 3], &Cbodies[i * 3], &U[0], M);
+      cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasNonUnit, len, M, 1., &U[0], M, &Aall[i], ldm);
     }
 
     LAPACKE_dgetrf(LAPACK_COL_MAJOR, Nclose + Nfar, M, &Aall[0], ldm, &ipiv[0]);
     LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', M - 1, M - 1, 0., 0., &Aall[1], ldm);
 
-    std::vector<double> U(M * M), S(M * 2);
     mkl_domatcopy('C', 'T', M, M, 1., &Aall[0], ldm, &U[0], M);
     LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M, &U[0], M, &S[0], NULL, M, NULL, M, &S[M]);
 

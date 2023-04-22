@@ -10,6 +10,25 @@ int rand_int(int min, int max) {
   return min + ((double)rand() / RAND_MAX) * (max - min);
 }
 
+#include <cmath>
+
+double singularity = 1.;
+double nu = 0.03;
+double smoothness = 0.5;
+
+double __matern_h(double r2) {
+  double sigma_square = singularity * singularity;
+
+  if (r2 > 0.) {
+    double con = sigma_square / (pow(2, (smoothness - 1)) * std::tgamma(smoothness));
+    double expr = sqrt(2 * smoothness * r2) / nu;
+    return con * pow(expr, smoothness) * std::cyl_bessel_k(smoothness, expr);
+  }
+  else
+    return sigma_square;
+}
+
+
 int main() {
   magma_init();
   const long long m = 256, n = m, k = m, b = 1000;
