@@ -51,6 +51,11 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], int64_t ncells, str
     basis[l].Dims = std::vector<int64_t>(xlen, 0);
     basis[l].DimsLr = std::vector<int64_t>(xlen, 0);
 
+    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
+    basis[l].Uo = arr_m;
+    basis[l].Uc = &arr_m[xlen];
+    basis[l].R = &arr_m[xlen * 2];
+
     int64_t jbegin = 0, jend = ncells;
     get_level(&jbegin, &jend, cells, l, -1);
     std::vector<int64_t> celli(xlen, 0);
@@ -69,19 +74,23 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], int64_t ncells, str
         basis[l].Dims[i] = cells[celli[i]].Body[1] - cells[celli[i]].Body[0];
     }
 
-    int64_t seg_dim = 4 + neighbor_bcast_sizes_cpu(&basis[l].Dims[0], &comm[l]);
+    int64_t seg_dim = neighbor_bcast_sizes_cpu(&basis[l].Dims[0], &comm[l]);
     int64_t seg_skeletons = 3 * seg_dim;
+    int64_t seg_matrix = seg_dim * seg_dim * 2;
     std::vector<double> Skeletons(xlen * seg_skeletons, 0.);
+    std::vector<double> matrix_data(nodes * seg_matrix, 0.);
     
     if (l < levels) {
-      int64_t seg = basis[l + 1].dimS * 3;
+      int64_t seg = basis[l + 1].dimS;
       for (int64_t i = 0; i < nodes; i++) {
         int64_t childi = std::get<0>(comm[l].LocalChild[i + ibegin]);
         int64_t clen = std::get<1>(comm[l].LocalChild[i + ibegin]);
         int64_t y = 0;
         for (int64_t j = 0; j < clen; j++) {
-          int64_t len = 3 * basis[l + 1].DimsLr[childi + j];
-          memcpy(&Skeletons[(i + ibegin) * seg_skeletons + y], &basis[l + 1].M_cpu[(childi + j) * seg], len * sizeof(double));
+          int64_t len = basis[l + 1].DimsLr[childi + j];
+          memcpy(&Skeletons[(i + ibegin) * seg_skeletons + y * 3], &basis[l + 1].M_cpu[(childi + j) * seg * 3], len * 3 * sizeof(double));
+          memcpy2d(&matrix_data[i * seg_matrix + y * (seg_dim + 1)], 
+            &basis[l + 1].R_cpu[(childi + j) * seg * seg], len, len, seg_dim, seg, sizeof(double));
           y = y + len;
         }
       }
@@ -90,18 +99,13 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], int64_t ncells, str
     }
     else 
       for (int64_t i = 0; i < xlen; i++) {
-        int64_t len = 3 * (cells[celli[i]].Body[1] - cells[celli[i]].Body[0]);
+        int64_t len = cells[celli[i]].Body[1] - cells[celli[i]].Body[0];
         int64_t offset = 3 * cells[celli[i]].Body[0];
-        memcpy(&Skeletons[i * seg_skeletons], &bodies[offset], len * sizeof(double));
+        memcpy(&Skeletons[i * seg_skeletons], &bodies[offset], len * 3 * sizeof(double));
+        if (ibegin <= i && i < iend)
+          for (int64_t j = 0; j < len; j++)
+            matrix_data[seg_matrix * (i - ibegin) + j * (seg_dim + 1)] = 1.;
       }
-
-    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
-    basis[l].Uo = arr_m;
-    basis[l].Uc = &arr_m[xlen];
-    basis[l].R = &arr_m[xlen * 2];
-
-    int64_t seg_matrix = seg_dim * seg_dim * 2;
-    std::vector<double> matrix_data(nodes * seg_matrix, 0.);
 
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ske_len = basis[l].Dims[i + ibegin];
@@ -133,7 +137,7 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], int64_t ncells, str
         for (int64_t k = 0; k < 3; k++)
           Fbodies[j * 3 + k] = bodies[remote[j] * 3 + k];
       
-      int64_t rank = compute_basis(eval, epi, 20, mrank, ske_len, mat, ske_len, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
+      int64_t rank = compute_basis(eval, epi, 10, mrank, ske_len, mat, seg_dim, &Xbodies[0], Cbodies.size() / 3, &Cbodies[0], Fbodies.size() / 3, &Fbodies[0]);
       basis[l].DimsLr[i + ibegin] = rank;
     }
     neighbor_bcast_sizes_cpu(basis[l].DimsLr.data(), &comm[l]);
@@ -188,16 +192,16 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], int64_t ncells, str
           for (int64_t j = 0; j < clen; j++) {
             int64_t N = basis[l + 1].DimsLr[child + j];
             int64_t Urow = j * basis[l + 1].dimS;
-            memcpy2d(&Uc_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix] + No * M + row, N, Nc, LD, M, sizeof(double));
-            memcpy2d(&Uo_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix] + row, N, No, LD, M, sizeof(double));
+            memcpy2d(&Uc_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix + No * seg_dim + row], N, Nc, LD, seg_dim, sizeof(double));
+            memcpy2d(&Uo_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix + row], N, No, LD, seg_dim, sizeof(double));
             row = row + N;
           }
         }
         else {
-          memcpy2d(Uc_ptr, &matrix_data[(i - ibegin) * seg_matrix] + No * M, M, Nc, LD, M, sizeof(double));
-          memcpy2d(Uo_ptr, &matrix_data[(i - ibegin) * seg_matrix], M, No, LD, M, sizeof(double));
+          memcpy2d(Uc_ptr, &matrix_data[(i - ibegin) * seg_matrix + No * seg_dim], M, Nc, LD, seg_dim, sizeof(double));
+          memcpy2d(Uo_ptr, &matrix_data[(i - ibegin) * seg_matrix], M, No, LD, seg_dim, sizeof(double));
         }
-        memcpy2d(R_ptr, &matrix_data[(i - ibegin) * seg_matrix] + M * M, No, No, basis[l].dimS, No, sizeof(double));
+        memcpy2d(R_ptr, &matrix_data[(i - ibegin) * seg_matrix + M * seg_dim], No, No, basis[l].dimS, seg_dim, sizeof(double));
         memcpy(M_ptr, &Skeletons[i * seg_skeletons], 3 * No * sizeof(double));
 
         double* Ui_ptr = basis[l].U_cpu + xlen * stride + (i - ibegin) * basis[l].dimR; 
