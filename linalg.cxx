@@ -78,7 +78,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
     gen_matrix(eval, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
     gen_matrix(eval, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
-    for (int64_t i = 0; i < Nclose; i += Nclose) {
+    for (int64_t i = 0; i < M; i += Nclose) {
       int64_t len = std::min(M, Nclose - i);
       gen_matrix(eval, len, len, &Cbodies[i * 3], &Cbodies[i * 3], &U[0], M);
       LAPACKE_dgesv(LAPACK_COL_MAJOR, len, M, &U[0], M, &ipiv[0], &Aall[i], ldm);
@@ -379,10 +379,14 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
     S, R, &one, params->A_x, N, params->A_s, N, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_T, S, S, R, &minus_one, 
     params->A_s, N, params->A_s, N, &one, params->A_upper, U, D);
+  cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, 
+    S, R, &one, params->A_x, N, params->A_s, N, D);
 
   if (D < params->L_nnz) {
     cublasDcopy(cublasH, N * N * D, params->U_d0, 1, params->V_data, 1);
     cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
+      N, R, &one, params->A_x, N, params->V_x, N, D);
+    cublasDtrsmBatched(cublasH, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, 
       N, R, &one, params->A_x, N, params->V_x, N, D);
   }
 
@@ -430,8 +434,12 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
     params->U_s, N, params->X_d, N, &zero, params->Xo_Y, S, D);
   cudaMemsetAsync(params->X_data, 0, sizeof(double) * params->L_rows * R, stream);
   cublasDcopy(cublasH, R * D, params->B_d0, 1, params->Xc_d0, 1);
-  cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_x, N, params->B_X, R, D);
+
+  cudaMemsetAsync(params->ACC_DATA, 0, sizeof(double) * params->L_rows * N * K, stream);
+  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, S, ONE, R, &one, 
+    params->A_s, N, params->Xc_X, R, &zero, params->ACC_Y, N, params->L_nnz);
+  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, S, ONE, K, &minus_one,
+    params->ACC_I, N, params->ONE_LIST, K, &one, params->Xo_I, S, params->L_rows);
 
   cudaMemsetAsync(params->ACC_DATA, 0, sizeof(double) * params->L_rows * N * K, stream);
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, R, ONE, R, &one, 
@@ -450,15 +458,6 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
 #ifdef _PROF
   cudaEventRecord(e4, stream);
 #endif
-
-  cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_x, N, params->Xc_X, R, D);
-
-  cudaMemsetAsync(params->ACC_DATA, 0, sizeof(double) * params->L_rows * N * K, stream);
-  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, S, ONE, R, &one, 
-    params->A_s, N, params->Xc_X, R, &zero, params->ACC_Y, N, params->L_nnz);
-  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, S, ONE, K, &minus_one,
-    params->ACC_I, N, params->ONE_LIST, K, &one, params->Xo_I, S, params->L_rows);
     
   cudaStreamSynchronize(stream);
 #ifdef _PROF
@@ -479,13 +478,8 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
   int64_t K = params->K;
   double one = 1., zero = 0., minus_one = -1.;
 
-  cudaMemsetAsync(params->ACC_DATA, 0, sizeof(double) * D * N * K, stream);
-  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, S, &one, 
-    params->A_s, N, params->Xo_Y, S, &zero, params->ACC_X, N, params->L_nnz);
-  cublasDgemmStridedBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, R, ONE, K, &minus_one,
-    params->ACC_DATA, N, N * K, params->ONE_DATA, K, 0, &one, params->Xc_d0, R, R, D);
-  
-  cublasDcopy(cublasH, R * D, params->Xc_d0, 1, params->B_d0, 1);
+  cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, 
+    R, ONE, &one, params->A_x, N, params->Xc_X, R, D);
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
     R, ONE, &one, params->A_x, N, params->Xc_X, R, D);
 
@@ -500,15 +494,17 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
 #ifdef _PROF
   cudaEventRecord(e2, stream);
 #endif
-  
+
+  cublasDcopy(cublasH, R * D, params->Xc_d0, 1, params->B_d0, 1);
   cudaMemsetAsync(params->ACC_DATA, 0, sizeof(double) * D * N * K, stream);
+  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, S, &one, 
+    params->A_s, N, params->Xo_Y, S, &zero, params->ACC_X, N, params->L_nnz);
+  
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, R, &one, 
-    &params->A_x[D], N, &params->Xc_Y[D], R, &zero, &params->ACC_X[D], N, params->L_lower);
+    &params->A_x[D], N, &params->Xc_Y[D], R, &one, &params->ACC_X[D], N, params->L_lower);
   cublasDgemmStridedBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, R, ONE, K, &minus_one,
     params->ACC_DATA, N, N * K, params->ONE_DATA, K, 0, &one, params->B_d0, R, R, D);
   
-  cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_x, N, params->B_X, R, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, ONE, R, &one,
     params->U_r, N, params->B_X, R, &zero, params->X_d, N, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, ONE, S, &one,

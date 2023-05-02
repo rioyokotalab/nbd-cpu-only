@@ -25,9 +25,9 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  //Laplace3D eval(1.e-3);
+  Laplace3D eval(1.e-3);
   //Yukawa3D eval(1.e-9, 1.);
-  Gaussian eval(1);
+  //Gaussian eval(1);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);

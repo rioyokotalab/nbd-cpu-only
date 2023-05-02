@@ -131,15 +131,19 @@ void mesh_unit_cube(double* bodies, int64_t nbodies) {
 }
 
 void mesh_unit_sphere(double* bodies, int64_t nbodies) {
-  mesh_unit_cube(bodies, nbodies);
-  for (int64_t i = 0; i < nbodies; i++) { // project to spherical surface
-    double x = bodies[i * 3];
-    double y = bodies[i * 3 + 1];
-    double z = bodies[i * 3 + 2];
-    double nrm = 1. / sqrt(x * x + y * y + z * z);
-    bodies[i * 3] = x * nrm;
-    bodies[i * 3 + 1] = y * nrm;
-    bodies[i * 3 + 2] = z * nrm;
+  const double phi = M_PI * (3. - std::sqrt(5.));  // golden angle in radians
+  for (int64_t i = 0; i < nbodies; i++) {
+    const double y = 1. - ((double)i / ((double)nbodies - 1)) * 2.;  // y goes from 1 to -1
+
+    // Note: setting constant radius = 1 will produce a cylindrical shape
+    const double radius = std::sqrt(1. - y * y);  // radius at y
+    const double theta = (double)i * phi;
+
+    const double x = radius * std::cos(theta);
+    const double z = radius * std::sin(theta);
+    bodies[i * 3] = x;
+    bodies[i * 3 + 1] = y;
+    bodies[i * 3 + 2] = z;
   }
 }
 
