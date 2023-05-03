@@ -281,20 +281,15 @@ void loadX(double* X, int64_t seg, const double Xbodies[], int64_t ncells, const
   }
 }
 
-void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  
+void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, const struct CellComm* comm) {
+ 
   for (int64_t i = 0; i <= levels; i++) {
-    int64_t jbegin = 0, jend = ncells;
-    get_level(&jbegin, &jend, cells, i, -1);
-    int64_t ibegin = jbegin, iend = jend;
-    get_level(&ibegin, &iend, cells, i, mpi_rank);
-    int64_t nodes = iend - ibegin;
+    int64_t nodes, neighbors, ibegin;
+    content_length(&nodes, &neighbors, &ibegin, &comm[i]);
+    i_global(&ibegin, &comm[i]);
     struct CSC* csc = &rels[i];
 
-    csc->M = jend - jbegin;
+    csc->M = neighbors;
     csc->N = nodes;
     int64_t ent_max = nodes * csc->M;
     int64_t* cols = (int64_t*)malloc(sizeof(int64_t) * (nodes + 1 + ent_max));

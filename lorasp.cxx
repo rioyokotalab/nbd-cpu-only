@@ -62,8 +62,8 @@ int main(int argc, char* argv[]) {
   traverse('F', &cellFar, ncells, cell, theta);
 
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
-  relations(rels_near, ncells, cell, &cellNear, levels, cell_comm);
-  relations(rels_far, ncells, cell, &cellFar, levels, cell_comm);
+  relations(rels_near, &cellNear, levels, cell_comm);
+  relations(rels_far, &cellFar, levels, cell_comm);
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);

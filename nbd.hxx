@@ -32,7 +32,7 @@ struct BatchedFactorParams {
 
 struct Node {
   int64_t lenA, lenS;
-  struct Matrix *A, *S, *A_cc, *A_oc, *A_oo;
+  struct Matrix *A, *S;
   double* A_ptr, *A_buf, *X_ptr, *X_buf;
   struct BatchedFactorParams params; 
 };
@@ -103,7 +103,7 @@ void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int
 
 void loadX(double* X, int64_t seg, const double Xbodies[], int64_t ncells, const struct Cell cells[], int64_t levels);
 
-void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
+void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
 
 void evalD(const EvalDouble& eval, struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* csc, int64_t level);
 

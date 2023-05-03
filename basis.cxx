@@ -7,12 +7,13 @@
 #include <cmath>
 #include <cstring>
 
-void memcpy2d(void* dst, const void* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src, size_t elm_size) {
-  for (int64_t i = 0; i < cols; i++) {
-    unsigned char* _dst = (unsigned char*)dst + i * ld_dst * elm_size;
-    const unsigned char* _src = (const unsigned char*)src + i * ld_src * elm_size;
-    memcpy(_dst, _src, elm_size * rows);
-  }
+template <typename T>
+void memcpy2d(T* dst, const T* src, int64_t rows, int64_t cols, int64_t ld_dst, int64_t ld_src) {
+  if (rows == ld_dst && rows == ld_src)
+    std::copy(src, src + rows * cols, dst);
+  else 
+    for (int64_t i = 0; i < cols; i++)
+      std::copy(&src[i * ld_src], &src[i * ld_src + rows], &dst[i * ld_dst]);
 }
 
 int64_t generate_far(int64_t flen, int64_t far[], int64_t ngbs, const int64_t ngbs_body[], const int64_t ngbs_len[], int64_t nbody) {
@@ -87,7 +88,7 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
           int64_t len = basis[l + 1].DimsLr[childi + j];
           memcpy(&Skeletons[(i + ibegin) * seg_skeletons + y * 3], &basis[l + 1].M_cpu[(childi + j) * seg * 3], len * 3 * sizeof(double));
           memcpy2d(&matrix_data[i * seg_matrix + y * (seg_dim + 1)], 
-            &basis[l + 1].R_cpu[(childi + j) * seg * seg], len, len, seg_dim, seg, sizeof(double));
+            &basis[l + 1].R_cpu[(childi + j) * seg * seg], len, len, seg_dim, seg);
           y = y + len;
         }
       }
@@ -189,16 +190,16 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
           for (int64_t j = 0; j < clen; j++) {
             int64_t N = basis[l + 1].DimsLr[child + j];
             int64_t Urow = j * basis[l + 1].dimS;
-            memcpy2d(&Uc_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix + No * seg_dim + row], N, Nc, LD, seg_dim, sizeof(double));
-            memcpy2d(&Uo_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix + row], N, No, LD, seg_dim, sizeof(double));
+            memcpy2d(&Uc_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix + No * seg_dim + row], N, Nc, LD, seg_dim);
+            memcpy2d(&Uo_ptr[Urow], &matrix_data[(i - ibegin) * seg_matrix + row], N, No, LD, seg_dim);
             row = row + N;
           }
         }
         else {
-          memcpy2d(Uc_ptr, &matrix_data[(i - ibegin) * seg_matrix + No * seg_dim], M, Nc, LD, seg_dim, sizeof(double));
-          memcpy2d(Uo_ptr, &matrix_data[(i - ibegin) * seg_matrix], M, No, LD, seg_dim, sizeof(double));
+          memcpy2d(Uc_ptr, &matrix_data[(i - ibegin) * seg_matrix + No * seg_dim], M, Nc, LD, seg_dim);
+          memcpy2d(Uo_ptr, &matrix_data[(i - ibegin) * seg_matrix], M, No, LD, seg_dim);
         }
-        memcpy2d(R_ptr, &matrix_data[(i - ibegin) * seg_matrix + M * seg_dim], No, No, basis[l].dimS, seg_dim, sizeof(double));
+        memcpy2d(R_ptr, &matrix_data[(i - ibegin) * seg_matrix + M * seg_dim], No, No, basis[l].dimS, seg_dim);
         memcpy(M_ptr, &Skeletons[i * seg_skeletons], 3 * No * sizeof(double));
 
         double* Ui_ptr = basis[l].U_cpu + xlen * stride + (i - ibegin) * basis[l].dimR; 
