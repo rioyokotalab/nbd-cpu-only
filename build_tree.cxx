@@ -307,7 +307,7 @@ void relations(struct CSC rels[], int64_t ncells, const struct Cell* cells, cons
       int64_t cbegin = cellRel->ColIndex[lc];
       int64_t ent = cellRel->ColIndex[lc + 1] - cbegin;
       for (int64_t k = 0; k < ent; k++) {
-        rows[count + k] = cellRel->RowIndex[cbegin + k] - jbegin;
+        rows[count + k] = cellRel->RowIndex[cbegin + k];
         i_local(&rows[count + k], &comm[i]);
       }
       count = count + ent;

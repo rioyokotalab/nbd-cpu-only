@@ -12,9 +12,9 @@
 
 struct CellComm { 
   int64_t Proc;
-  std::vector<int64_t> ProcTargets;
-  std::vector<std::pair<int64_t, int64_t>> LocalChild;
   std::vector<std::pair<int64_t, int64_t>> ProcBoxes;
+  std::vector<std::pair<int64_t, int64_t>> LocalChild, LocalParent;
+  
   std::vector<std::pair<int, MPI_Comm>> Comm_box;
   MPI_Comm Comm_share, Comm_merge;
   std::vector<std::pair<int, ncclComm_t>> NCCL_box;

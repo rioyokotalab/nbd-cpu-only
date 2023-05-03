@@ -25,9 +25,9 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  Laplace3D eval(1.e-3);
-  //Yukawa3D eval(1.e-9, 1.);
-  //Gaussian eval(1);
+  //Laplace3D eval(1.e-6);
+  //Yukawa3D eval(1.e-6, 1.);
+  Gaussian eval(1);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
 
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
-  buildBasis(eval, basis, ncells, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
+  buildBasis(eval, basis, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
   stopTimer(&construct_time, &construct_comm_time);
 
   double* Workspace = NULL;
