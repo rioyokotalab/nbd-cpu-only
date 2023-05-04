@@ -64,28 +64,78 @@ int64_t pnx_to_global(std::pair<int64_t, int64_t> pnx, const std::vector<std::pa
     return -1;
 }
 
+void get_level_procs(std::vector<std::pair<int64_t, int64_t>>& Procs, std::vector<std::pair<int64_t, int64_t>>& Levels, 
+  int64_t mpi_rank, int64_t mpi_size, const std::vector<std::pair<int64_t, int64_t>>& Child, int64_t levels) {
+  int64_t ncells = (int64_t)Child.size();
+  std::vector<int64_t> levels_cell(ncells);
+  Procs[0] = std::make_pair(0, mpi_size);
+  levels_cell[0] = 0;
+
+  for (int64_t i = 0; i < ncells; i++) {
+    int64_t child = std::get<0>(Child[i]);
+    int64_t lenC = std::get<1>(Child[i]);
+    int64_t lenP = std::get<1>(Procs[i]) - std::get<0>(Procs[i]);
+    int64_t p = std::get<0>(Procs[i]);
+    
+    if (child >= 0 && lenC > 0) {
+      double divP = (double)lenP / (double)lenC;
+      for (int64_t j = 0; j < lenC; j++) {
+        int64_t p0 = j == 0 ? 0 : (int64_t)std::floor(j * divP);
+        int64_t p1 = j == (lenC - 1) ? lenP : (int64_t)std::floor((j + 1) * divP);
+        p1 = std::max(p1, p0 + 1);
+        Procs[child + j] = std::make_pair(p + p0, p + p1);
+        levels_cell[child + j] = levels_cell[i] + 1;
+      }
+    }
+  }
+  
+  int64_t begin = 0;
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t ibegin = std::distance(levels_cell.begin(), 
+      std::find(levels_cell.begin() + begin, levels_cell.end(), i));
+    int64_t iend = std::distance(levels_cell.begin(), 
+      std::find(levels_cell.begin() + begin, levels_cell.end(), i + 1));
+    int64_t pbegin = std::distance(Procs.begin(), 
+      std::find_if(Procs.begin() + ibegin, Procs.begin() + iend, [=](std::pair<int64_t, int64_t>& p) -> bool {
+        return std::get<0>(p) <= mpi_rank && mpi_rank < std::get<1>(p);
+      }));
+    int64_t pend = std::distance(Procs.begin(), 
+      std::find_if_not(Procs.begin() + pbegin, Procs.begin() + iend, [=](std::pair<int64_t, int64_t>& p) -> bool {
+        return std::get<0>(p) <= mpi_rank && mpi_rank < std::get<1>(p);
+      }));
+    Levels[i] = std::make_pair(pbegin, pend);
+    begin = iend;
+  }
+}
+
 void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells, const struct CSC* cellFar, const struct CSC* cellNear, int64_t levels) {
   int __mpi_rank = 0, __mpi_size = 1;
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
   int64_t mpi_rank = __mpi_rank;
   int64_t mpi_size = __mpi_size;
+
   std::vector<MPI_Comm> unique_comms;
+  std::vector<std::pair<int64_t, int64_t>> Child(ncells), Procs(ncells), Levels(levels + 1);
+  std::transform(cells, &cells[ncells], Child.begin(), [](const struct Cell& c) {
+    return std::make_pair(c.Child[0], c.Child[1] - c.Child[0]);
+  });
+  get_level_procs(Procs, Levels, mpi_rank, mpi_size, Child, levels);
 
   for (int64_t i = levels; i >= 0; i--) {
-    int64_t mbegin = 0, mend = ncells;
-    get_level(&mbegin, &mend, cells, i, mpi_rank);
-    int64_t p = cells[mbegin].Procs[0];
-    int64_t lenp = cells[mbegin].Procs[1] - p;
+    int64_t mbegin = std::get<0>(Levels[i]);
+    int64_t mend = std::get<1>(Levels[i]);
+    int64_t p = std::get<0>(Procs[mbegin]);
+    int64_t lenp = std::get<1>(Procs[mbegin]) - p;
 
     std::vector<int64_t> ProcTargets;
     for (int64_t j = 0; j < mpi_size; j++) {
       int is_ngb = 0;
       for (int64_t k = cellNear->ColIndex[mbegin]; k < cellNear->ColIndex[mend]; k++)
-        if (cells[cellNear->RowIndex[k]].Procs[0] == j)
+        if (std::get<0>(Procs[cellNear->RowIndex[k]]) == j)
           is_ngb = 1;
       for (int64_t k = cellFar->ColIndex[mbegin]; k < cellFar->ColIndex[mend]; k++)
-        if (cells[cellFar->RowIndex[k]].Procs[0] == j)
+        if (std::get<0>(Procs[cellFar->RowIndex[k]]) == j)
           is_ngb = 1;
       
       int color = (is_ngb && p == mpi_rank) ? 1 : MPI_UNDEFINED;
@@ -104,11 +154,11 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
     comms[i].Proc = std::distance(ProcTargets.begin(), std::find(ProcTargets.begin(), ProcTargets.end(), p));
 
     int color = MPI_UNDEFINED;
-    int64_t cc = cells[mbegin].Child[0];
-    int64_t clen = cells[mbegin].Child[1] - cc;
+    int64_t cc = std::get<0>(Child[mbegin]);
+    int64_t clen = std::get<1>(Child[mbegin]);
     if (lenp > 1 && cc >= 0)
       for (int64_t j = 0; j < clen; j++)
-        if (cells[cc + j].Procs[0] == mpi_rank)
+        if (std::get<0>(Procs[cc + j]) == mpi_rank)
           color = p;
     comms[i].Comm_merge = MPI_Comm_split_unique(unique_comms, color, mpi_rank);
   
@@ -127,8 +177,8 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
       for (int64_t k = 0; k < std::get<1>(comms[i].ProcBoxes[j]); k++) {
         int64_t ki = k + std::get<0>(comms[i].ProcBoxes[j]);
         int64_t li = pnx_to_local(std::make_pair(j, k), comms[i].ProcBoxes);
-        int64_t lc = cells[ki].Child[0];
-        int64_t lclen = cells[ki].Child[1] - lc;
+        int64_t lc = std::get<0>(Child[ki]);
+        int64_t lclen = std::get<1>(Child[ki]);
         if (i < levels) {
           std::pair<int64_t, int64_t> pnx = global_to_pnx(lc, comms[i + 1].ProcBoxes);
           lc = pnx_to_local(pnx, comms[i + 1].ProcBoxes);
@@ -213,6 +263,41 @@ void cellComm_free(struct CellComm* comms, int64_t levels) {
     MPI_Comm_free(&mpi_comms[i]);
   for (int64_t i = 0; i < (int64_t)nccl_comms.size(); i++)
     ncclCommDestroy(nccl_comms[i]);
+}
+
+void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, const struct CellComm* comm) {
+ 
+  for (int64_t i = 0; i <= levels; i++) {
+    int64_t nodes, neighbors, ibegin;
+    content_length(&nodes, &neighbors, &ibegin, &comm[i]);
+    i_global(&ibegin, &comm[i]);
+    struct CSC* csc = &rels[i];
+
+    csc->M = neighbors;
+    csc->N = nodes;
+    int64_t ent_max = nodes * csc->M;
+    int64_t* cols = (int64_t*)malloc(sizeof(int64_t) * (nodes + 1 + ent_max));
+    int64_t* rows = &cols[nodes + 1];
+
+    int64_t count = 0;
+    for (int64_t j = 0; j < nodes; j++) {
+      int64_t lc = ibegin + j;
+      cols[j] = count;
+      int64_t cbegin = cellRel->ColIndex[lc];
+      int64_t ent = cellRel->ColIndex[lc + 1] - cbegin;
+      for (int64_t k = 0; k < ent; k++) {
+        rows[count + k] = cellRel->RowIndex[cbegin + k];
+        i_local(&rows[count + k], &comm[i]);
+      }
+      count = count + ent;
+    }
+
+    if (count < ent_max)
+      cols = (int64_t*)realloc(cols, sizeof(int64_t) * (nodes + 1 + count));
+    cols[nodes] = count;
+    csc->ColIndex = cols;
+    csc->RowIndex = &cols[nodes + 1];
+  }
 }
 
 void i_local(int64_t* ilocal, const struct CellComm* comm) {

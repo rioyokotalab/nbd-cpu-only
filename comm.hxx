@@ -25,6 +25,8 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
 
 void cellComm_free(struct CellComm* comms, int64_t levels);
 
+void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
+
 void i_local(int64_t* ilocal, const struct CellComm* comm);
 
 void i_global(int64_t* iglobal, const struct CellComm* comm);

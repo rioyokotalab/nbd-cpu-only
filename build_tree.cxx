@@ -8,16 +8,10 @@
 #include "string.h"
 
 void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbodies, int64_t levels) {
-  int __mpi_size = 1;
-  MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
-  int64_t mpi_size = __mpi_size;
-
   struct Cell* root = &cells[0];
   root->Body[0] = 0;
   root->Body[1] = nbodies;
   root->Level = 0;
-  root->Procs[0] = 0;
-  root->Procs[1] = mpi_size;
   get_bounds(bodies, nbodies, root->R, root->C);
 
   int64_t len = 1;
@@ -54,19 +48,6 @@ void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbod
       
       c0->Level = ci->Level + 1;
       c1->Level = ci->Level + 1;
-      c0->Procs[0] = ci->Procs[0];
-      c1->Procs[1] = ci->Procs[1];
-
-      int64_t divp = (ci->Procs[1] - ci->Procs[0]) / 2;
-      if (divp >= 1) {
-        int64_t p = divp + ci->Procs[0];
-        c0->Procs[1] = p;
-        c1->Procs[0] = p;
-      }
-      else {
-        c0->Procs[1] = ci->Procs[1];
-        c1->Procs[0] = ci->Procs[0];
-      }
 
       get_bounds(&bodies[i_begin * 3], loc - i_begin, c0->R, c0->C);
       get_bounds(&bodies[loc * 3], i_end - loc, c1->R, c1->C);
@@ -101,30 +82,6 @@ void buildTreeBuckets(struct Cell* cells, const double* bodies, const int64_t bu
     cells[i].Body[1] = begin + len;
     cells[i].Level = cells[c0].Level - 1;
     get_bounds(&bodies[begin * 3], len, cells[i].R, cells[i].C);
-  }
-
-  int __mpi_size = 1;
-  MPI_Comm_size(MPI_COMM_WORLD, &__mpi_size);
-  int64_t mpi_size = __mpi_size;
-  cells[0].Procs[0] = 0;
-  cells[0].Procs[1] = mpi_size;
-
-  for (int64_t i = 0; i < nleaf - 1; i++) {
-    struct Cell* ci = &cells[i];
-    struct Cell* c0 = &cells[ci->Child[0]];
-    struct Cell* c1 = c0 + 1;
-    int64_t divp = (ci->Procs[1] - ci->Procs[0]) / 2;
-    if (divp >= 1) {
-      int64_t p = divp + ci->Procs[0];
-      c0->Procs[1] = p;
-      c1->Procs[0] = p;
-    }
-    else {
-      c0->Procs[1] = ci->Procs[1];
-      c1->Procs[0] = ci->Procs[0];
-    }
-    c0->Procs[0] = ci->Procs[0];
-    c1->Procs[1] = ci->Procs[1];
   }
 }
 
@@ -214,34 +171,6 @@ void csc_free(struct CSC* csc) {
   free(csc->ColIndex);
 }
 
-void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank) {
-  int64_t low = *begin;
-  int64_t high = *end;
-  while (low < high) {
-    int64_t mid = low + (high - low) / 2;
-    const struct Cell* c = &cells[mid];
-    int64_t l = c->Level - level;
-    int ri = (int)(mpi_rank < c->Procs[0]) - (int)(mpi_rank >= c->Procs[1]);
-    int cmp = l < 0 ? -1 : (l > 0 ? 1 : (mpi_rank == -1 ? 0 : ri));
-    low = cmp < 0 ? mid + 1 : low;
-    high = cmp < 0 ? high : mid;
-  }
-  *begin = high;
-
-  low = high;
-  high = *end;
-  while (low < high) {
-    int64_t mid = low + (high - low) / 2;
-    const struct Cell* c = &cells[mid];
-    int64_t l = c->Level - level;
-    int ri = (int)(mpi_rank < c->Procs[0]) - (int)(mpi_rank >= c->Procs[1]);
-    int cmp = l < 0 ? -1 : (l > 0 ? 1 : (mpi_rank == -1 ? 0 : ri));
-    low = cmp <= 0 ? mid + 1 : low;
-    high = cmp <= 0 ? high : mid;
-  }
-  *end = low;
-}
-
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
   if (j < 0 || j >= rels->N)
   { *ij = -1; return; }
@@ -264,49 +193,10 @@ void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64
   }
 }
 
-void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, const struct CellComm* comm) {
- 
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes, neighbors, ibegin;
-    content_length(&nodes, &neighbors, &ibegin, &comm[i]);
-    i_global(&ibegin, &comm[i]);
-    struct CSC* csc = &rels[i];
-
-    csc->M = neighbors;
-    csc->N = nodes;
-    int64_t ent_max = nodes * csc->M;
-    int64_t* cols = (int64_t*)malloc(sizeof(int64_t) * (nodes + 1 + ent_max));
-    int64_t* rows = &cols[nodes + 1];
-
-    int64_t count = 0;
-    for (int64_t j = 0; j < nodes; j++) {
-      int64_t lc = ibegin + j;
-      cols[j] = count;
-      int64_t cbegin = cellRel->ColIndex[lc];
-      int64_t ent = cellRel->ColIndex[lc + 1] - cbegin;
-      for (int64_t k = 0; k < ent; k++) {
-        rows[count + k] = cellRel->RowIndex[cbegin + k];
-        i_local(&rows[count + k], &comm[i]);
-      }
-      count = count + ent;
-    }
-
-    if (count < ent_max)
-      cols = (int64_t*)realloc(cols, sizeof(int64_t) * (nodes + 1 + count));
-    cols[nodes] = count;
-    csc->ColIndex = cols;
-    csc->RowIndex = &cols[nodes + 1];
-  }
-}
-
-void evalD(const EvalDouble& eval, struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* rels, int64_t level) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  
-  int64_t ibegin = 0, iend = ncells;
-  get_level(&ibegin, &iend, cells, level, mpi_rank);
-  int64_t nodes = iend - ibegin;
+void evalD(const EvalDouble& eval, struct Matrix* D, const struct CSC* rels, const struct Cell* cells, const double* bodies, const struct CellComm* comm) {
+  int64_t ibegin = 0, nodes = 0;
+  content_length(&nodes, NULL, &ibegin, comm);
+  i_global(&ibegin, comm);
 
 #pragma omp parallel for
   for (int64_t i = 0; i < nodes; i++) {

@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
   int64_t Lwork = 0;
   allocNodes(nodes, &Workspace, &Lwork, basis, rels_near, rels_far, cell_comm, levels);
 
-  evalD(eval, nodes[levels].A, ncells, cell, body, &cellNear, levels);
+  evalD(eval, nodes[levels].A, &cellNear, cell, body, &cell_comm[levels]);
   for (int64_t i = 0; i <= levels; i++)
     evalS(eval, nodes[i].S, &basis[i], &rels_far[i], &cell_comm[i]);
 

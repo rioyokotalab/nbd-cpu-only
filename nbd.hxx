@@ -16,7 +16,7 @@
 
 struct Matrix { double* A; int64_t M, N, LDA; };
 
-struct Cell { int64_t Child[2], Body[2], Level, Procs[2]; double R[3], C[3]; };
+struct Cell { int64_t Child[2], Body[2], Level; double R[3], C[3]; };
 struct CSC { int64_t M, N, *ColIndex, *RowIndex; };
 
 struct BatchedFactorParams { 
@@ -95,15 +95,11 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
 
 void csc_free(struct CSC* csc);
 
-void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t level, int64_t mpi_rank);
-
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
 
 void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64_t ncells, const struct Cell cells[]);
 
-void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
-
-void evalD(const EvalDouble& eval, struct Matrix* D, int64_t ncells, const struct Cell* cells, const double* bodies, const struct CSC* csc, int64_t level);
+void evalD(const EvalDouble& eval, struct Matrix* D, const struct CSC* rels, const struct Cell* cells, const double* bodies, const struct CellComm* comm);
 
 void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, const struct CSC* rels, const struct CellComm* comm);
 
