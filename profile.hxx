@@ -12,8 +12,6 @@ struct RightHandSides;
 
 void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA);
 
-void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels);
-
 void node_mem(int64_t* bytes, const struct Node* node, int64_t levels);
 
 void rightHandSides_mem(int64_t* bytes, const struct RightHandSides* st, int64_t levels);

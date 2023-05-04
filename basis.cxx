@@ -48,14 +48,12 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
     int64_t xlen = 0, ibegin = 0, nodes = 0;
     content_length(&nodes, &xlen, &ibegin, &comm[l]);
     int64_t iend = ibegin + nodes;
-    basis[l].Ulen = xlen;
     basis[l].Dims = std::vector<int64_t>(xlen, 0);
     basis[l].DimsLr = std::vector<int64_t>(xlen, 0);
 
-    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 3, sizeof(struct Matrix));
+    struct Matrix* arr_m = (struct Matrix*)calloc(xlen * 2, sizeof(struct Matrix));
     basis[l].Uo = arr_m;
-    basis[l].Uc = &arr_m[xlen];
-    basis[l].R = &arr_m[xlen * 2];
+    basis[l].R = &arr_m[xlen];
     std::vector<int64_t> celli(xlen, 0);
 
     for (int64_t i = 0; i < xlen; i++) {
@@ -208,7 +206,6 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
       }
 
       basis[l].Uo[i] = (struct Matrix) { Uo_ptr, basis[l].dimN, basis[l].dimS, basis[l].dimN };
-      basis[l].Uc[i] = (struct Matrix) { Uc_ptr, basis[l].dimN, basis[l].dimR, basis[l].dimN };
       basis[l].R[i] = (struct Matrix) { R_ptr, No, No, basis[l].dimS };
     }
     neighbor_bcast_cpu(basis[l].M_cpu, 3 * basis[l].dimS, &comm[l]);

@@ -65,6 +65,11 @@ int main(int argc, char* argv[]) {
   relations(rels_near, &cellNear, levels, cell_comm);
   relations(rels_far, &cellFar, levels, cell_comm);
 
+  int64_t lbegin = 0, llen = 0;
+  content_length(&llen, NULL, &lbegin, &cell_comm[levels]);
+  int64_t gbegin = lbegin;
+  i_global(&gbegin, &cell_comm[levels]);
+
   double construct_time, construct_comm_time;
   startTimer(&construct_time, &construct_comm_time);
   buildBasis(eval, basis, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
@@ -82,30 +87,17 @@ int main(int argc, char* argv[]) {
   double* X1 = (double*)calloc(lenX, sizeof(double));
   double* X2 = (double*)calloc(lenX, sizeof(double));
 
-  loadX(X1, basis[levels].dimN, Xbody, ncells, cell, levels);
+  loadX(X1, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
   allocRightHandSidesMV(rhs, basis, cell_comm, levels);
   matVecA(rhs, nodes, basis, rels_near, X1, cell_comm, levels);
 
   double cerr = 0.;
   if (Nbody < 20000) {
-    int64_t body_local[2];
-    local_bodies(body_local, ncells, cell, levels);
+    int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
     std::vector<double> X3(lenX);
     mat_vec_reference(eval, body_local[0], body_local[1], &X3[0], Nbody, body, Xbody);
+    loadX(X2, basis[levels].dimN, &X3[0], body_local[0], llen, &cell[gbegin]);
 
-    int64_t ibegin = 0, iend = ncells;
-    int mpi_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-    get_level(&ibegin, &iend, cell, levels, mpi_rank);
-
-    for (int64_t i = 0; i < (iend - ibegin); i++) {
-      int64_t b0 = cell[i + ibegin].Body[0];
-      int64_t b1 = cell[i + ibegin].Body[1];
-      const double* x3 = &X3[b0 - body_local[0]];
-      double* x2 = &X2[i * basis[levels].dimN];
-      for (int64_t j = 0; j < (b1 - b0); j++)
-        x2[j] = x3[j];
-    }
     solveRelErr(&cerr, X1, X2, lenX);
     std::iter_swap(&X1, &X2);
   }
@@ -123,8 +115,6 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < 3; i++)
     percent[i] = (double)factor_flops[i] / (double)sum_flops * (double)100;
 
-  int64_t lbegin = 0;
-  content_length(NULL, NULL, &lbegin, &cell_comm[levels]);
   cudaMemcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1, lenX * sizeof(double), cudaMemcpyHostToDevice);
 
   double solve_time, solve_comm_time;
@@ -139,12 +129,11 @@ int main(int argc, char* argv[]) {
 
   cudaMemcpy(X1, &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double), cudaMemcpyDeviceToHost);
 
-  loadX(X2, basis[levels].dimN, Xbody, ncells, cell, levels);
+  loadX(X2, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
   double err;
   solveRelErr(&err, X1, X2, lenX);
 
-  int64_t mem_basis, mem_A, mem_X;
-  basis_mem(&mem_basis, basis, levels);
+  int64_t mem_basis = 0, mem_A, mem_X;
   node_mem(&mem_A, nodes, levels);
   rightHandSides_mem(&mem_X, rhs, levels);
 

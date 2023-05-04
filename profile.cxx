@@ -11,20 +11,6 @@ void matrix_mem(int64_t* bytes, const struct Matrix* A, int64_t lenA) {
   *bytes = count;
 }
 
-void basis_mem(int64_t* bytes, const struct Base* basis, int64_t levels) {
-  int64_t count = sizeof(struct Base) * levels;
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t nodes = basis[i].Ulen;
-    int64_t bytes_o, bytes_c, bytes_r;
-    matrix_mem(&bytes_o, &basis[i].Uo[0], nodes);
-    matrix_mem(&bytes_c, &basis[i].Uc[0], nodes);
-    matrix_mem(&bytes_r, &basis[i].R[0], nodes);
-
-    count = count + bytes_o + bytes_c + bytes_r;
-  }
-  *bytes = count;
-}
-
 void node_mem(int64_t* bytes, const struct Node* node, int64_t levels) {
   int64_t count = sizeof(struct Node) * levels;
   for (int64_t i = 0; i <= levels; i++) {

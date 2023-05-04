@@ -73,10 +73,7 @@ void buildComm(struct CellComm* comms, int64_t ncells, const struct Cell* cells,
   std::vector<MPI_Comm> unique_comms;
 
   for (int64_t i = levels; i >= 0; i--) {
-    int64_t ibegin = 0, iend = ncells;
-    get_level(&ibegin, &iend, cells, i, -1);
-
-    int64_t mbegin = ibegin, mend = iend;
+    int64_t mbegin = 0, mend = ncells;
     get_level(&mbegin, &mend, cells, i, mpi_rank);
     int64_t p = cells[mbegin].Procs[0];
     int64_t lenp = cells[mbegin].Procs[1] - p;

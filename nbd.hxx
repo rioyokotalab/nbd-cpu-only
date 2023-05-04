@@ -99,9 +99,7 @@ void get_level(int64_t* begin, int64_t* end, const struct Cell* cells, int64_t l
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
 
-void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int64_t levels);
-
-void loadX(double* X, int64_t seg, const double Xbodies[], int64_t ncells, const struct Cell cells[], int64_t levels);
+void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64_t ncells, const struct Cell cells[]);
 
 void relations(struct CSC rels[], const struct CSC* cellRel, int64_t levels, const struct CellComm* comm);
 

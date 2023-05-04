@@ -6,9 +6,9 @@
 #include <cstddef>
 
 struct Base { 
-  int64_t Ulen, Llen, LocalOffset, dimR, dimS, dimN;
+  int64_t dimR, dimS, dimN;
   std::vector<int64_t> Dims, DimsLr;
-  struct Matrix *Uo, *Uc, *R;
+  struct Matrix *Uo, *R;
   double *M_gpu, *M_cpu, *U_gpu, *U_cpu, *R_gpu, *R_cpu; 
 };
 

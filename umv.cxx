@@ -151,7 +151,8 @@ void factorA(struct Node A[], const struct Base basis[], const struct CellComm c
 
 void allocRightHandSidesMV(struct RightHandSides rhs[], const struct Base base[], const struct CellComm comm[], int64_t levels) {
   for (int64_t l = levels; l >= 0; l--) {
-    int64_t len = base[l].Ulen;
+    int64_t len;
+    content_length(NULL, &len, NULL, &comm[l]);
     int64_t len_arr = len * 4;
     struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
     rhs[l].Xlen = len;

@@ -255,28 +255,11 @@ void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
   *ij = (k < jend) ? k : -1;
 }
 
-void local_bodies(int64_t body[], int64_t ncells, const struct Cell cells[], int64_t levels) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  int64_t ibegin = 0, iend = ncells;
-  get_level(&ibegin, &iend, cells, levels, mpi_rank);
-  body[0] = cells[ibegin].Body[0];
-  body[1] = cells[iend - 1].Body[1];
-}
-
-void loadX(double* X, int64_t seg, const double Xbodies[], int64_t ncells, const struct Cell cells[], int64_t levels) {
-  int __mpi_rank = 0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
-  int64_t mpi_rank = __mpi_rank;
-  int64_t ibegin = 0, iend = ncells;
-  get_level(&ibegin, &iend, cells, levels, mpi_rank);
-  memset(X, 0, sizeof(double) * (iend - ibegin) * seg);
-
-  for (int64_t i = 0; i < (iend - ibegin); i++) {
-    int64_t b0 = cells[i + ibegin].Body[0];
-    int64_t b1 = cells[i + ibegin].Body[1];
-    for (int64_t j = 0; j < (b1 - b0); j++)
+void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64_t ncells, const struct Cell cells[]) {
+  for (int64_t i = 0; i < ncells; i++) {
+    int64_t b0 = cells[i].Body[0] - Xbegin;
+    int64_t lenB = cells[i].Body[1] - cells[i].Body[0];
+    for (int64_t j = 0; j < lenB; j++)
       X[i * seg + j] = Xbodies[j + b0];
   }
 }
@@ -321,9 +304,7 @@ void evalD(const EvalDouble& eval, struct Matrix* D, int64_t ncells, const struc
   MPI_Comm_rank(MPI_COMM_WORLD, &__mpi_rank);
   int64_t mpi_rank = __mpi_rank;
   
-  int64_t jbegin = 0, jend = ncells;
-  get_level(&jbegin, &jend, cells, level, -1);
-  int64_t ibegin = jbegin, iend = jend;
+  int64_t ibegin = 0, iend = ncells;
   get_level(&ibegin, &iend, cells, level, mpi_rank);
   int64_t nodes = iend - ibegin;
 
