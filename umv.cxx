@@ -1,6 +1,5 @@
 
 #include "nbd.hxx"
-#include "profile.hxx"
 
 #include "stdio.h"
 #include "string.h"
@@ -132,30 +131,14 @@ void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64
   }
 }
 
-void factorA(struct Node A[], const struct Base basis[], const struct CellComm comm[], int64_t levels) {
-
-  for (int64_t i = levels; i > 0; i--) {
-    batchCholeskyFactor(&A[i].params, &comm[i]);
-#ifdef _PROF
-    int64_t ibegin = 0, ilen = 0;
-    content_length(&ilen, NULL, &ibegin, &comm[i]);
-    int64_t nnz = A[i].lenA;
-    record_factor_flops(basis[i].dimR, basis[i].dimS, nnz, ilen);
-#endif
-  }
-  chol_decomp(&A[0].params, &comm[0]);
-#ifdef _PROF
-  record_factor_flops(0, basis[0].dimN, 1, 1);
-#endif
-}
+struct RightHandSides { struct Matrix *X, *Xc, *Xo, *B; };
 
 void allocRightHandSidesMV(struct RightHandSides rhs[], const struct Base base[], const struct CellComm comm[], int64_t levels) {
-  for (int64_t l = levels; l >= 0; l--) {
+  for (int64_t l = 0; l <= levels; l++) {
     int64_t len;
     content_length(NULL, &len, NULL, &comm[l]);
     int64_t len_arr = len * 4;
     struct Matrix* arr_m = (struct Matrix*)malloc(sizeof(struct Matrix) * len_arr);
-    rhs[l].Xlen = len;
     rhs[l].X = arr_m;
     rhs[l].B = &arr_m[len];
     rhs[l].Xo = &arr_m[len * 2];
@@ -164,21 +147,15 @@ void allocRightHandSidesMV(struct RightHandSides rhs[], const struct Base base[]
     int64_t len_data = len * base[l].dimN * 2;
     double* data = (double*)calloc(len_data, sizeof(double));
     for (int64_t i = 0; i < len; i++) {
+      std::pair<int64_t, int64_t> p = comm[l].LocalParent[i];
       arr_m[i] = (struct Matrix) { &data[i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // X
       arr_m[i + len] = (struct Matrix) { &data[len * base[l].dimN + i * base[l].dimN], base[l].dimN, 1, base[l].dimN }; // B
-      arr_m[i + len * 2] = (struct Matrix) { NULL, base[l].dimS, 1, base[l].dimS }; // Xo
-      arr_m[i + len * 3] = (struct Matrix) { NULL, base[l].dimS, 1, base[l].dimS }; // Xc
-    }
 
-    for (int64_t i = 0; i < len; i++) {
-      int64_t child = std::get<0>(comm[l].LocalChild[i]);
-      int64_t clen = std::get<1>(comm[l].LocalChild[i]);
-      
-      if (child >= 0 && l < levels)
-        for (int64_t j = 0; j < clen; j++) {
-          rhs[l + 1].Xo[child + j].A = &rhs[l].X[i].A[j * base[l + 1].dimS];
-          rhs[l + 1].Xc[child + j].A = &rhs[l].B[i].A[j * base[l + 1].dimS];
-        }
+      double* x_next = (l == 0) ? NULL : &rhs[l - 1].X[0].A[std::get<1>(p) * base[l].dimS + std::get<0>(p) * base[l - 1].dimN];
+      arr_m[i + len * 2] = (struct Matrix) { x_next, base[l].dimS, 1, base[l].dimS }; // Xo
+
+      double* b_next = (l == 0) ? NULL : &rhs[l - 1].B[0].A[std::get<1>(p) * base[l].dimS + std::get<0>(p) * base[l - 1].dimN];
+      arr_m[i + len * 3] = (struct Matrix) { b_next, base[l].dimS, 1, base[l].dimS }; // Xc
     }
   }
 }
@@ -190,19 +167,22 @@ void rightHandSides_free(struct RightHandSides* rhs) {
   free(rhs->X);
 }
 
-void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], double* X, const struct CellComm comm[], int64_t levels) {
+void matVecA(const struct Node A[], const struct Base basis[], const struct CSC rels_near[], double* X, const struct CellComm comm[], int64_t levels) {
   int64_t lbegin = 0, llen = 0;
   content_length(&llen, NULL, &lbegin, &comm[levels]);
+
+  std::vector<RightHandSides> rhs(levels + 1);
+  allocRightHandSidesMV(&rhs[0], basis, comm, levels);
   memcpy(rhs[levels].X[lbegin].A, X, llen * basis[levels].dimN * sizeof(double));
 
   for (int64_t i = levels; i > 0; i--) {
-    int64_t xlen = rhs[i].Xlen;
+    int64_t ibegin = 0, iboxes = 0, xlen = 0;
+    content_length(&iboxes, &xlen, &ibegin, &comm[i]);
+
     level_merge_cpu(rhs[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
     neighbor_bcast_cpu(rhs[i].X[0].A, basis[i].dimN, &comm[i]);
     dup_bcast_cpu(rhs[i].X[0].A, xlen * basis[i].dimN, &comm[i]);
 
-    int64_t ibegin = 0, iboxes = 0;
-    content_length(&iboxes, NULL, &ibegin, &comm[i]);
     for (int64_t j = 0; j < iboxes; j++)
       mmult('T', 'N', &basis[i].Uo[j + ibegin], &rhs[i].X[j + ibegin], &rhs[i].Xo[j + ibegin], 1., 0.);
   }
@@ -214,13 +194,15 @@ void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Ba
     content_length(&iboxes, NULL, &ibegin, &comm[i]);
     for (int64_t j = 0; j < iboxes; j++)
       mmult('N', 'N', &basis[i].Uo[j + ibegin], &rhs[i].Xc[j + ibegin], &rhs[i].B[j + ibegin], 1., 0.);
-    for (int64_t y = 0; y < rels_near[i].N; y++)
+    for (int64_t y = 0; y < iboxes; y++)
       for (int64_t xy = rels_near[i].ColIndex[y]; xy < rels_near[i].ColIndex[y + 1]; xy++) {
         int64_t x = rels_near[i].RowIndex[xy];
         mmult('T', 'N', &A[i].A[xy], &rhs[i].X[x], &rhs[i].B[y + ibegin], 1., 1.);
       }
   }
   memcpy(X, rhs[levels].B[lbegin].A, llen * basis[levels].dimN * sizeof(double));
+  for (int64_t i = 0; i <= levels; i++)
+    rightHandSides_free(&rhs[i]);
 }
 
 

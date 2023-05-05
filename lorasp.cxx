@@ -1,4 +1,5 @@
 
+#include "geometry.hxx"
 #include "nbd.hxx"
 #include "profile.hxx"
 
@@ -8,7 +9,7 @@
 #include <math.h>
 
 int main(int argc, char* argv[]) {
-  init_libs(&argc, &argv);
+  cudaStream_t stream = init_libs(&argc, &argv);
 
   double prog_time = MPI_Wtime();
 
@@ -38,7 +39,6 @@ int main(int argc, char* argv[]) {
   struct CellComm* cell_comm = (struct CellComm*)calloc(levels + 1, sizeof(struct CellComm));
   struct Base* basis = (struct Base*)calloc(levels + 1, sizeof(struct Base));
   struct Node* nodes = (struct Node*)malloc(sizeof(struct Node) * (levels + 1));
-  struct RightHandSides* rhs = (struct RightHandSides*)malloc(sizeof(struct RightHandSides) * (levels + 1));
 
   if (fname == NULL) {
     mesh_unit_sphere(body, Nbody);
@@ -61,7 +61,12 @@ int main(int argc, char* argv[]) {
   traverse('N', &cellNear, ncells, cell, theta);
   traverse('F', &cellFar, ncells, cell, theta);
 
+  struct CommTimer timer;
   buildComm(cell_comm, ncells, cell, &cellFar, &cellNear, levels);
+  for (int64_t i = 0; i <= levels; i++) {
+    cell_comm[i].stream = stream;
+    cell_comm[i].timer = &timer;
+  }
   relations(rels_near, &cellNear, levels, cell_comm);
   relations(rels_far, &cellFar, levels, cell_comm);
 
@@ -70,10 +75,13 @@ int main(int argc, char* argv[]) {
   int64_t gbegin = lbegin;
   i_global(&gbegin, &cell_comm[levels]);
 
-  double construct_time, construct_comm_time;
-  startTimer(&construct_time, &construct_comm_time);
+  MPI_Barrier(MPI_COMM_WORLD);
+  double construct_time = MPI_Wtime(), construct_comm_time;
   buildBasis(eval, basis, cell, &cellNear, levels, cell_comm, body, Nbody, epi, rank_max, sp_pts, 4);
-  stopTimer(&construct_time, &construct_comm_time);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  construct_time = MPI_Wtime() - construct_time;
+  construct_comm_time = timer.get_comm_timing();
 
   double* Workspace = NULL;
   int64_t Lwork = 0;
@@ -88,8 +96,7 @@ int main(int argc, char* argv[]) {
   double* X2 = (double*)calloc(lenX, sizeof(double));
 
   loadX(X1, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
-  allocRightHandSidesMV(rhs, basis, cell_comm, levels);
-  matVecA(rhs, nodes, basis, rels_near, X1, cell_comm, levels);
+  matVecA(nodes, basis, rels_near, X1, cell_comm, levels);
 
   double cerr = 0.;
   if (Nbody < 20000) {
@@ -103,13 +110,27 @@ int main(int argc, char* argv[]) {
   }
   
   factorA_mov_mem('S', nodes, basis, levels);
-  double factor_time, factor_comm_time;
-  startTimer(&factor_time, &factor_comm_time);
-  factorA(nodes, basis, cell_comm, levels);
-  stopTimer(&factor_time, &factor_comm_time);
+  MPI_Barrier(MPI_COMM_WORLD);
+  double factor_time = MPI_Wtime(), factor_comm_time;
 
-  int64_t factor_flops[3];
-  get_factor_flops(factor_flops);
+  for (int64_t i = levels; i > 0; i--)
+    batchCholeskyFactor(&nodes[i].params, &cell_comm[i]);
+  chol_decomp(&nodes[0].params, &cell_comm[0]);
+
+  cudaStreamSynchronize(stream);
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  factor_time = MPI_Wtime() - factor_time;
+  factor_comm_time = timer.get_comm_timing();
+
+  Profile profile;
+  for (int64_t i = 0; i <= levels; i++)
+    profile.record_factor(basis[i].dimR, basis[i].dimN, nodes[i].params.L_nnz, nodes[i].params.L_diag, nodes[i].params.L_rows);
+  
+  int64_t factor_flops[3], mem_A[3];
+  profile.get_profile(factor_flops, mem_A);
+  MPI_Allreduce(MPI_IN_PLACE, factor_flops, 3, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
+  
   int64_t sum_flops = factor_flops[0] + factor_flops[1] + factor_flops[2];
   double percent[3];
   for (int i = 0; i < 3; i++)
@@ -117,15 +138,20 @@ int main(int argc, char* argv[]) {
 
   cudaMemcpy(&nodes[levels].X_ptr[lbegin * basis[levels].dimN], X1, lenX * sizeof(double), cudaMemcpyHostToDevice);
 
-  double solve_time, solve_comm_time;
-  startTimer(&solve_time, &solve_comm_time);
+  MPI_Barrier(MPI_COMM_WORLD);
+  double solve_time = MPI_Wtime(), solve_comm_time;
 
   for (int64_t i = levels; i > 0; i--)
     batchForwardULV(&nodes[i].params, &cell_comm[i]);
   chol_solve(&nodes[0].params, &cell_comm[0]);
   for (int64_t i = 1; i <= levels; i++)
     batchBackwardULV(&nodes[i].params, &cell_comm[i]);
-  stopTimer(&solve_time, &solve_comm_time);
+
+  cudaStreamSynchronize(stream);
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  solve_time = MPI_Wtime() - solve_time;
+  solve_comm_time = timer.get_comm_timing();
 
   cudaMemcpy(X1, &nodes[levels].X_ptr[lbegin * basis[levels].dimN], lenX * sizeof(double), cudaMemcpyDeviceToHost);
 
@@ -133,17 +159,11 @@ int main(int argc, char* argv[]) {
   double err;
   solveRelErr(&err, X1, X2, lenX);
 
-  int64_t mem_basis = 0, mem_A, mem_X;
-  node_mem(&mem_A, nodes, levels);
-  rightHandSides_mem(&mem_X, rhs, levels);
-
   int mpi_rank, mpi_size;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
   prog_time = MPI_Wtime() - prog_time;
-  double cm_time;
-  getCommTime(&cm_time);
 
   if (mpi_rank == 0)
     printf("LORASP: %d,%d,%lf,%d,%d,%d\nConstruct: %lf s. COMM: %lf s.\n"
@@ -151,21 +171,20 @@ int main(int argc, char* argv[]) {
       "Solution: %lf s. COMM: %lf s.\n"
       "Factorization GFLOPS: %lf GFLOPS/s.\n"
       "GEMM: %lf%%, POTRF: %lf%%, TRSM: %lf%%\n"
-      "Basis Memory: %lf GiB.\n"
       "Matrix Memory: %lf GiB.\n"
+      "Basis Memory: %lf GiB.\n"
       "Vector Memory: %lf GiB.\n"
       "Err: Compress %e, Factor %e\n"
-      "Program: %lf s. COMM: %lf s.\n",
+      "Program: %lf s.\n",
       (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size, omp_get_max_threads(),
       construct_time, construct_comm_time, factor_time, factor_comm_time, solve_time, solve_comm_time, (double)sum_flops * 1.e-9 / factor_time,
-      percent[0], percent[1], percent[2], (double)mem_basis * 1.e-9, (double)mem_A * 1.e-9, (double)mem_X * 1.e-9, cerr, err, prog_time, cm_time);
+      percent[0], percent[1], percent[2], (double)mem_A[0] * 1.e-9, (double)mem_A[1] * 1.e-9, (double)mem_A[2] * 1.e-9, cerr, err, prog_time);
 
   for (int64_t i = 0; i <= levels; i++) {
     csc_free(&rels_far[i]);
     csc_free(&rels_near[i]);
     basis_free(&basis[i]);
     node_free(&nodes[i]);
-    rightHandSides_free(&rhs[i]);
   }
   cellComm_free(cell_comm, levels);
   csc_free(&cellFar);
@@ -179,7 +198,6 @@ int main(int argc, char* argv[]) {
   free(cell_comm);
   free(basis);
   free(nodes);
-  free(rhs);
   free(X1);
   free(X2);
   set_work_size(0, &Workspace, &Lwork);

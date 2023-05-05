@@ -37,7 +37,6 @@ struct Node {
   struct BatchedFactorParams params; 
 };
 
-struct RightHandSides { int64_t Xlen; struct Matrix *X, *Xc, *Xo, *B; };
 struct EvalDouble;
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
@@ -47,7 +46,7 @@ void mul_AS(const struct Matrix* RU, const struct Matrix* RV, struct Matrix* A);
 int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int64_t rank_max, 
   int64_t M, double* A, int64_t LDA, double Xbodies[], int64_t Nclose, const double Cbodies[], int64_t Nfar, const double Fbodies[]);
 
-void init_libs(int* argc, char*** argv);
+cudaStream_t init_libs(int* argc, char*** argv);
 void fin_libs();
 void set_work_size(int64_t Lwork, double** D_DATA, int64_t* D_DATA_SIZE);
 
@@ -66,24 +65,6 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
 void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm);
 void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm);
 void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm);
-
-void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim);
-
-void uniform_unit_cube_rnd(double* bodies, int64_t nbodies, int64_t dim, unsigned int seed);
-
-void mesh_unit_sphere(double* bodies, int64_t nbodies);
-
-void mesh_unit_cube(double* bodies, int64_t nbodies);
-
-void magnify_reloc(double* bodies, int64_t nbodies, const double Ccur[], const double Cnew[], const double R[], double alpha);
-
-void body_neutral_charge(double X[], int64_t nbodies, double cmax, unsigned int seed);
-
-void get_bounds(const double* bodies, int64_t nbodies, double R[], double C[]);
-
-void sort_bodies(double* bodies, int64_t nbodies, int64_t sdim);
-
-void read_sorted_bodies(int64_t* nbodies, int64_t lbuckets, double* bodies, int64_t buckets[], const char* fname);
 
 void mat_vec_reference(const EvalDouble& eval, int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]);
 
@@ -109,13 +90,7 @@ void node_free(struct Node* node);
 
 void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels);
 
-void factorA(struct Node A[], const struct Base B[], const struct CellComm comm[], int64_t levels);
-
-void allocRightHandSidesMV(struct RightHandSides st[], const struct Base base[], const struct CellComm comm[], int64_t levels);
-
-void rightHandSides_free(struct RightHandSides* rhs);
-
-void matVecA(struct RightHandSides rhs[], const struct Node A[], const struct Base basis[], const struct CSC rels_near[], double* X, const struct CellComm comm[], int64_t levels);
+void matVecA(const struct Node A[], const struct Base basis[], const struct CSC rels_near[], double* X, const struct CellComm comm[], int64_t levels);
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 

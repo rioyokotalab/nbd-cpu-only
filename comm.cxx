@@ -326,6 +326,7 @@ void content_length(int64_t* local, int64_t* neighbors, int64_t* local_off, cons
 }
 
 int64_t neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
+  double start_time = MPI_Wtime();
   int64_t y = 0;
   for (size_t p = 0; p < comm->Comm_box.size(); p++) {
     int64_t llen = std::get<1>(comm->ProcBoxes[p]);
@@ -342,10 +343,13 @@ int64_t neighbor_bcast_sizes_cpu(int64_t* data, const struct CellComm* comm) {
   for (int64_t i = 0; i < len; i++)
     max = std::max(max, data[i]);
   MPI_Allreduce(MPI_IN_PLACE, &max, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
+  if (comm->timer)
+    comm->timer->record_mpi(start_time, MPI_Wtime());
   return max;
 }
 
 void neighbor_bcast_cpu(double* data, int64_t seg, const struct CellComm* comm) {
+  double start_time = MPI_Wtime();
   int64_t y = 0;
   for (size_t p = 0; p < comm->Comm_box.size(); p++) {
     int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
@@ -353,9 +357,12 @@ void neighbor_bcast_cpu(double* data, int64_t seg, const struct CellComm* comm) 
     MPI_Bcast(loc, llen, MPI_DOUBLE, std::get<0>(comm->Comm_box[p]), std::get<1>(comm->Comm_box[p]));
     y = y + llen;
   }
+  if (comm->timer)
+    comm->timer->record_mpi(start_time, MPI_Wtime());
 }
 
 void neighbor_reduce_cpu(double* data, int64_t seg, const struct CellComm* comm) {
+  double start_time = MPI_Wtime();
   int64_t y = 0;
   for (size_t p = 0; p < comm->Comm_box.size(); p++) {
     int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
@@ -363,45 +370,99 @@ void neighbor_reduce_cpu(double* data, int64_t seg, const struct CellComm* comm)
     MPI_Allreduce(MPI_IN_PLACE, loc, llen, MPI_DOUBLE, MPI_SUM, std::get<1>(comm->Comm_box[p]));
     y = y + llen;
   }
+  if (comm->timer)
+    comm->timer->record_mpi(start_time, MPI_Wtime());
 }
 
 void level_merge_cpu(double* data, int64_t len, const struct CellComm* comm) {
+  double start_time = MPI_Wtime();
   if (comm->Comm_merge != MPI_COMM_NULL)
     MPI_Allreduce(MPI_IN_PLACE, data, len, MPI_DOUBLE, MPI_SUM, comm->Comm_merge);
+  if (comm->timer)
+    comm->timer->record_mpi(start_time, MPI_Wtime());
 }
 
 void dup_bcast_cpu(double* data, int64_t len, const struct CellComm* comm) {
+  double start_time = MPI_Wtime();
   if (comm->Comm_share != MPI_COMM_NULL)
     MPI_Bcast(data, len, MPI_DOUBLE, 0, comm->Comm_share);
+  if (comm->timer)
+    comm->timer->record_mpi(start_time, MPI_Wtime());
 }
 
-void neighbor_bcast_gpu(double* data, int64_t seg, cudaStream_t stream, const struct CellComm* comm) {
-  int64_t y = 0;
-  for (size_t p = 0; p < comm->NCCL_box.size(); p++) {
-    int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
-    double* loc = &data[y];
-    ncclBroadcast((const void*)loc, loc, llen, ncclDouble, std::get<0>(comm->NCCL_box[p]), std::get<1>(comm->NCCL_box[p]), stream);
-    y = y + llen;
+void neighbor_bcast_gpu(double* data, int64_t seg, const struct CellComm* comm) {
+  if (comm->NCCL_box.size() > 0) {
+    cudaEvent_t e1, e2;
+    if (comm->timer) {
+      cudaEventCreate(&e1);
+      cudaEventCreate(&e2);
+      cudaEventRecord(e1, comm->stream);
+    }
+    int64_t y = 0;
+    for (size_t p = 0; p < comm->NCCL_box.size(); p++) {
+      int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
+      double* loc = &data[y];
+      ncclBroadcast((const void*)loc, loc, llen, ncclDouble, std::get<0>(comm->NCCL_box[p]), std::get<1>(comm->NCCL_box[p]), comm->stream);
+      y = y + llen;
+    }
+    if (comm->timer) {
+      cudaEventRecord(e2, comm->stream);
+      comm->timer->record_cuda(e1, e2);
+    }
   }
 }
 
-void neighbor_reduce_gpu(double* data, int64_t seg, cudaStream_t stream, const struct CellComm* comm) {
-  int64_t y = 0;
-  for (size_t p = 0; p < comm->NCCL_box.size(); p++) {
-    int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
-    double* loc = &data[y];
-    ncclAllReduce((const void*)loc, loc, llen, ncclDouble, ncclSum, std::get<1>(comm->NCCL_box[p]), stream);
-    y = y + llen;
+void neighbor_reduce_gpu(double* data, int64_t seg, const struct CellComm* comm) {
+  if (comm->NCCL_box.size() > 0) {
+    cudaEvent_t e1, e2;
+    if (comm->timer) {
+      cudaEventCreate(&e1);
+      cudaEventCreate(&e2);
+      cudaEventRecord(e1, comm->stream);
+    }
+    int64_t y = 0;
+    for (size_t p = 0; p < comm->NCCL_box.size(); p++) {
+      int64_t llen = std::get<1>(comm->ProcBoxes[p]) * seg;
+      double* loc = &data[y];
+      ncclAllReduce((const void*)loc, loc, llen, ncclDouble, ncclSum, std::get<1>(comm->NCCL_box[p]), comm->stream);
+      y = y + llen;
+    }
+    if (comm->timer) {
+      cudaEventRecord(e2, comm->stream);
+      comm->timer->record_cuda(e1, e2);
+    }
   }
 }
 
-void level_merge_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm) {
-  if (comm->NCCL_merge != NULL)
-    ncclAllReduce((const void*)data, data, len, ncclDouble, ncclSum, comm->NCCL_merge, stream);
+void level_merge_gpu(double* data, int64_t len, const struct CellComm* comm) {
+  if (comm->NCCL_merge != NULL) {
+    cudaEvent_t e1, e2;
+    if (comm->timer) {
+      cudaEventCreate(&e1);
+      cudaEventCreate(&e2);
+      cudaEventRecord(e1, comm->stream);
+    }
+      ncclAllReduce((const void*)data, data, len, ncclDouble, ncclSum, comm->NCCL_merge, comm->stream);
+    if (comm->timer) {
+      cudaEventRecord(e2, comm->stream);
+      comm->timer->record_cuda(e1, e2);
+    }
+  }
 }
 
-void dup_bcast_gpu(double* data, int64_t len, cudaStream_t stream, const struct CellComm* comm) {
-  if (comm->NCCL_share != NULL)
-    ncclBroadcast((const void*)data, data, len, ncclDouble, 0, comm->NCCL_share, stream);
+void dup_bcast_gpu(double* data, int64_t len, const struct CellComm* comm) {
+  if (comm->NCCL_share != NULL) {
+    cudaEvent_t e1, e2;
+    if (comm->timer) {
+      cudaEventCreate(&e1);
+      cudaEventCreate(&e2);
+      cudaEventRecord(e1, comm->stream);
+    }
+      ncclBroadcast((const void*)data, data, len, ncclDouble, 0, comm->NCCL_share, comm->stream);
+    if (comm->timer) {
+      cudaEventRecord(e2, comm->stream);
+      comm->timer->record_cuda(e1, e2);
+    }
+  }
 }
 

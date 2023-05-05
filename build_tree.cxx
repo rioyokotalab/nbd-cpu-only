@@ -1,11 +1,71 @@
 #include "nbd.hxx"
-#include "profile.hxx"
 
-#include <cassert>
 #include "stdio.h"
 #include "stdlib.h"
 #include "math.h"
 #include "string.h"
+
+void get_bounds(const double* bodies, int64_t nbodies, double R[], double C[]) {
+  double Xmin[3];
+  double Xmax[3];
+  Xmin[0] = Xmax[0] = bodies[0];
+  Xmin[1] = Xmax[1] = bodies[1];
+  Xmin[2] = Xmax[2] = bodies[2];
+
+  for (int64_t i = 1; i < nbodies; i++) {
+    const double* x_bi = &bodies[i * 3];
+    Xmin[0] = fmin(x_bi[0], Xmin[0]);
+    Xmin[1] = fmin(x_bi[1], Xmin[1]);
+    Xmin[2] = fmin(x_bi[2], Xmin[2]);
+
+    Xmax[0] = fmax(x_bi[0], Xmax[0]);
+    Xmax[1] = fmax(x_bi[1], Xmax[1]);
+    Xmax[2] = fmax(x_bi[2], Xmax[2]);
+  }
+
+  C[0] = (Xmin[0] + Xmax[0]) / 2.;
+  C[1] = (Xmin[1] + Xmax[1]) / 2.;
+  C[2] = (Xmin[2] + Xmax[2]) / 2.;
+
+  double d0 = Xmax[0] - Xmin[0];
+  double d1 = Xmax[1] - Xmin[1];
+  double d2 = Xmax[2] - Xmin[2];
+
+  R[0] = (d0 == 0. && Xmin[0] == 0.) ? 0. : (1.e-8 + d0 / 2.);
+  R[1] = (d1 == 0. && Xmin[1] == 0.) ? 0. : (1.e-8 + d1 / 2.);
+  R[2] = (d2 == 0. && Xmin[2] == 0.) ? 0. : (1.e-8 + d2 / 2.);
+}
+
+int comp_bodies_s0(const void *a, const void *b) {
+  double* body_a = (double*)a;
+  double* body_b = (double*)b;
+  double diff = body_a[0] - body_b[0];
+  return diff < 0. ? -1 : (int)(diff > 0.);
+}
+
+int comp_bodies_s1(const void *a, const void *b) {
+  double* body_a = (double*)a;
+  double* body_b = (double*)b;
+  double diff = body_a[1] - body_b[1];
+  return diff < 0. ? -1 : (int)(diff > 0.);
+}
+
+int comp_bodies_s2(const void *a, const void *b) {
+  double* body_a = (double*)a;
+  double* body_b = (double*)b;
+  double diff = body_a[2] - body_b[2];
+  return diff < 0. ? -1 : (int)(diff > 0.);
+}
+
+void sort_bodies(double* bodies, int64_t nbodies, int64_t sdim) {
+  size_t size3 = sizeof(double) * 3;
+  if (sdim == 0)
+    qsort(bodies, nbodies, size3, comp_bodies_s0);
+  else if (sdim == 1)
+    qsort(bodies, nbodies, size3, comp_bodies_s1);
+  else if (sdim == 2)
+    qsort(bodies, nbodies, size3, comp_bodies_s2);
+}
 
 void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbodies, int64_t levels) {
   struct Cell* root = &cells[0];

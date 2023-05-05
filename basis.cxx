@@ -1,6 +1,5 @@
 
 #include "nbd.hxx"
-#include "profile.hxx"
 
 #include <cstdio>
 #include <cstdlib>

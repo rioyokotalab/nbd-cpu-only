@@ -1,6 +1,5 @@
 
 #include "nbd.hxx"
-#include "profile.hxx"
 
 #include "cuda_runtime_api.h"
 #include "cublas_v2.h"
@@ -19,7 +18,7 @@ cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
 cusolverDnHandle_t cusolverH = NULL;
 
-void init_libs(int* argc, char*** argv) {
+cudaStream_t init_libs(int* argc, char*** argv) {
   if (MPI_Init(argc, argv) != MPI_SUCCESS)
     fprintf(stderr, "MPI Init Error\n");
   int mpi_rank;
@@ -38,6 +37,7 @@ void init_libs(int* argc, char*** argv) {
     cusolverDnCreate(&cusolverH);
     cusolverDnSetStream(cusolverH, stream);
   }
+  return stream;
 }
 
 void fin_libs() {
@@ -350,17 +350,8 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
   int64_t alen = N * N * params->L_nnz;
   double one = 1., zero = 0., minus_one = -1.;
 
-#ifdef _PROF
-  cudaEvent_t e1, e2;
-  cudaEventCreate(&e1);
-  cudaEventCreate(&e2);
-  cudaEventRecord(e1, stream);
-#endif
-  level_merge_gpu(params->A_data, alen, stream, comm);
-  dup_bcast_gpu(params->A_data, alen, stream, comm);
-#ifdef _PROF
-  cudaEventRecord(e2, stream);
-#endif
+  level_merge_gpu(params->A_data, alen, comm);
+  dup_bcast_gpu(params->A_data, alen, comm);
 
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &one, 
     params->A_x, N, params->U_r, N, &zero, params->B_x, N, D);
@@ -396,15 +387,6 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
     cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, S, S, N, &one,
       &params->U_s[i], N, params->A_sx, N, &zero, &params->A_upper[i], U, len);
   }
-  
-  cudaStreamSynchronize(stream);
-#ifdef _PROF
-  float time = 0.;
-  cudaEventElapsedTime(&time, e1, e2);
-  recordCommTime((double)time * 1.e-3);
-  cudaEventDestroy(e1);
-  cudaEventDestroy(e2);
-#endif
 }
 
 void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
@@ -412,18 +394,9 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
   int64_t K = params->K;
   double one = 1., zero = 0., minus_one = -1.;
 
-#ifdef _PROF
-  cudaEvent_t e1, e2;
-  cudaEventCreate(&e1);
-  cudaEventCreate(&e2);
-  cudaEventRecord(e1, stream);
-#endif
-  level_merge_gpu(params->X_data, params->L_rows * N, stream, comm);
-  neighbor_reduce_gpu(params->X_data, N, stream, comm);
-  dup_bcast_gpu(params->X_data, params->L_rows * N, stream, comm);
-#ifdef _PROF
-  cudaEventRecord(e2, stream);
-#endif
+  level_merge_gpu(params->X_data, params->L_rows * N, comm);
+  neighbor_reduce_gpu(params->X_data, N, comm);
+  dup_bcast_gpu(params->X_data, params->L_rows * N, comm);
 
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, N, &one,
     params->U_r, N, params->X_d, N, &zero, params->B_X, R, D);
@@ -444,30 +417,8 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
   cublasDgemmStridedBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, R, ONE, K, &minus_one,
     params->V_data, N, N * K, params->ONE_DATA, K, 0, &one, params->X_data, R, R, params->L_rows);
 
-#ifdef _PROF
-  cudaEvent_t e3, e4;
-  cudaEventCreate(&e3);
-  cudaEventCreate(&e4);
-  cudaEventRecord(e3, stream);
-#endif
-  neighbor_reduce_gpu(params->X_data, R, stream, comm);
-  dup_bcast_gpu(params->X_data, params->L_rows * R, stream, comm);
-#ifdef _PROF
-  cudaEventRecord(e4, stream);
-#endif
-    
-  cudaStreamSynchronize(stream);
-#ifdef _PROF
-  float time = 0.;
-  cudaEventElapsedTime(&time, e1, e2);
-  recordCommTime((double)time * 1.e-3);
-  cudaEventElapsedTime(&time, e3, e4);
-  recordCommTime((double)time * 1.e-3);
-  cudaEventDestroy(e1);
-  cudaEventDestroy(e2);
-  cudaEventDestroy(e3);
-  cudaEventDestroy(e4);
-#endif
+  neighbor_reduce_gpu(params->X_data, R, comm);
+  dup_bcast_gpu(params->X_data, params->L_rows * R, comm);
 }
 
 void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
@@ -480,17 +431,8 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
   cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
     R, ONE, &one, params->A_x, N, params->Xc_X, R, D);
 
-#ifdef _PROF
-  cudaEvent_t e1, e2;
-  cudaEventCreate(&e1);
-  cudaEventCreate(&e2);
-  cudaEventRecord(e1, stream);
-#endif
-  neighbor_bcast_gpu(params->X_data, R, stream, comm);
-  dup_bcast_gpu(params->X_data, params->L_rows * R, stream, comm);
-#ifdef _PROF
-  cudaEventRecord(e2, stream);
-#endif
+  neighbor_bcast_gpu(params->X_data, R, comm);
+  dup_bcast_gpu(params->X_data, params->L_rows * R, comm);
 
   cudaMemsetAsync(params->V_data, 0, sizeof(double) * D * N * K, stream);
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, S, &one, 
@@ -507,30 +449,8 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, ONE, S, &one,
     params->U_s, N, params->Xo_Y, S, &one, params->X_d, N, D);
     
-#ifdef _PROF
-  cudaEvent_t e3, e4;
-  cudaEventCreate(&e3);
-  cudaEventCreate(&e4);
-  cudaEventRecord(e3, stream);
-#endif
-  neighbor_bcast_gpu(params->X_data, N, stream, comm);
-  dup_bcast_gpu(params->X_data, params->L_rows * N, stream, comm);
-#ifdef _PROF
-  cudaEventRecord(e4, stream);
-#endif
-
-  cudaStreamSynchronize(stream);
-#ifdef _PROF
-  float time = 0.;
-  cudaEventElapsedTime(&time, e1, e2);
-  recordCommTime((double)time * 1.e-3);
-  cudaEventElapsedTime(&time, e3, e4);
-  recordCommTime((double)time * 1.e-3);
-  cudaEventDestroy(e1);
-  cudaEventDestroy(e2);
-  cudaEventDestroy(e3);
-  cudaEventDestroy(e4);
-#endif
+  neighbor_bcast_gpu(params->X_data, N, comm);
+  dup_bcast_gpu(params->X_data, params->L_rows * N, comm);
 }
 
 void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, int64_t N, int64_t S, int64_t clen, const int64_t cdims[]) {
@@ -558,28 +478,11 @@ void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm
   int64_t alen = N * N;
   double one = 1.;
 
-#ifdef _PROF
-  cudaEvent_t e1, e2;
-  cudaEventCreate(&e1);
-  cudaEventCreate(&e2);
-  cudaEventRecord(e1, stream);
-#endif
-  level_merge_gpu(params->A_data, alen, stream, comm);
-  dup_bcast_gpu(params->A_data, alen, stream, comm);
-#ifdef _PROF
-  cudaEventRecord(e2, stream);
-#endif
+  level_merge_gpu(params->A_data, alen, comm);
+  dup_bcast_gpu(params->A_data, alen, comm);
 
   cublasDaxpy(cublasH, N, &one, params->ONE_DATA, 1, A, N + 1);
   cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, params->ONE_DATA, params->L_tmp, NULL);
-  cudaStreamSynchronize(stream);
-#ifdef _PROF
-  float time = 0.;
-  cudaEventElapsedTime(&time, e1, e2);
-  recordCommTime((double)time * 1.e-3);
-  cudaEventDestroy(e1);
-  cudaEventDestroy(e2);
-#endif
 }
 
 
@@ -588,27 +491,10 @@ void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm)
   double* X = params->X_data;
   int64_t N = params->N_r;
 
-#ifdef _PROF
-  cudaEvent_t e1, e2;
-  cudaEventCreate(&e1);
-  cudaEventCreate(&e2);
-  cudaEventRecord(e1, stream);
-#endif
-  level_merge_gpu(X, N, stream, comm);
-  dup_bcast_gpu(X, N, stream, comm);
-#ifdef _PROF
-  cudaEventRecord(e2, stream);
-#endif
+  level_merge_gpu(X, N, comm);
+  dup_bcast_gpu(X, N, comm);
 
   cusolverDnDpotrs(cusolverH, CUBLAS_FILL_MODE_LOWER, N, 1, A, N, X, N, NULL);
-  cudaStreamSynchronize(stream);
-#ifdef _PROF
-  float time = 0.;
-  cudaEventElapsedTime(&time, e1, e2);
-  recordCommTime((double)time * 1.e-3);
-  cudaEventDestroy(e1);
-  cudaEventDestroy(e2);
-#endif
 }
 
 
