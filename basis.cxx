@@ -205,7 +205,7 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
       }
 
       basis[l].Uo[i] = (struct Matrix) { Uo_ptr, basis[l].dimN, basis[l].dimS, basis[l].dimN };
-      basis[l].R[i] = (struct Matrix) { R_ptr, No, No, basis[l].dimS };
+      basis[l].R[i] = (struct Matrix) { R_ptr, basis[l].dimS, basis[l].dimS, basis[l].dimS };
     }
     neighbor_bcast_cpu(basis[l].M_cpu, 3 * basis[l].dimS, &comm[l]);
     dup_bcast_cpu(basis[l].M_cpu, 3 * basis[l].dimS * xlen, &comm[l]);

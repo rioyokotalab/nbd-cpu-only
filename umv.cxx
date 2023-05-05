@@ -34,17 +34,11 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     work_size = std::max(work_size, work_required);
 
     for (int64_t x = 0; x < n_i; x++) {
-      int64_t box_x = nloc + x;
-      int64_t diml_x = basis[i].DimsLr[box_x];
-
       for (int64_t yx = rels_near[i].ColIndex[x]; yx < rels_near[i].ColIndex[x + 1]; yx++)
         arr_m[yx] = (struct Matrix) { &A[i].A_buf[yx * stride], dimn, dimn, dimn }; // A
 
-      for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++) {
-        int64_t y = rels_far[i].RowIndex[yx];
-        int64_t diml_y = basis[i].DimsLr[y];
-        arr_m[yx + nnz] = (struct Matrix) { NULL, diml_y, diml_x, dimn_up }; // S
-      }
+      for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++)
+        arr_m[yx + nnz] = (struct Matrix) { NULL, basis[i].dimS, basis[i].dimS, dimn_up }; // S
     }
 
     if (i < levels) {
@@ -66,7 +60,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
               for (int64_t yx = rels_far[i + 1].ColIndex[x + x0]; yx < rels_far[i + 1].ColIndex[x + x0 + 1]; yx++)
                 for (int64_t y = 0; y < leny; y++)
                   if (rels_far[i + 1].RowIndex[yx] == (y + y0))
-                    A[i + 1].S[yx].A = &A[i].A[ij].A[(y + dimn * x) * seg];
+                    A[i + 1].S[yx].A = &A[i].A[ij].A[(y * dimn + x) * seg];
         }
       }
     }
@@ -92,7 +86,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
         std::pair<int64_t, int64_t> py = comm[i].LocalParent[y];
         int64_t ij = -1;
         lookupIJ(&ij, &rels_near[i - 1], std::get<0>(py), std::get<0>(px) - ibegin_next);
-        A_next[yx] = &A[i - 1].A_ptr[(std::get<1>(py) + n_next * std::get<1>(px)) * basis[i].dimS + ij * n_next * n_next];
+        A_next[yx] = &A[i - 1].A_ptr[(std::get<1>(py) * n_next + std::get<1>(px)) * basis[i].dimS + ij * n_next * n_next];
       }
 
     std::vector<double*> X_next(N_rows);
@@ -197,7 +191,7 @@ void matVecA(const struct Node A[], const struct Base basis[], const struct CSC 
     for (int64_t y = 0; y < iboxes; y++)
       for (int64_t xy = rels_near[i].ColIndex[y]; xy < rels_near[i].ColIndex[y + 1]; xy++) {
         int64_t x = rels_near[i].RowIndex[xy];
-        mmult('T', 'N', &A[i].A[xy], &rhs[i].X[x], &rhs[i].B[y + ibegin], 1., 1.);
+        mmult('N', 'N', &A[i].A[xy], &rhs[i].X[x], &rhs[i].B[y + ibegin], 1., 1.);
       }
   }
   memcpy(X, rhs[levels].B[lbegin].A, llen * basis[levels].dimN * sizeof(double));

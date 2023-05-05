@@ -274,7 +274,7 @@ void evalD(const EvalDouble& eval, struct Matrix* D, const struct CSC* rels, con
       const struct Cell* cj = &cells[lj];
       int64_t y_begin = cj->Body[0];
       int64_t m = cj->Body[1] - y_begin;
-      gen_matrix(eval, m, n, &bodies[y_begin * 3], &bodies[x_begin * 3], D[offsetD + j].A, D[offsetD + j].LDA);
+      gen_matrix(eval, n, m, &bodies[x_begin * 3], &bodies[y_begin * 3], D[offsetD + j].A, D[offsetD + j].LDA);
     }
   }
 }
@@ -291,8 +291,8 @@ void evalS(const EvalDouble& eval, struct Matrix* S, const struct Base* basis, c
     for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
       int64_t y = rels->RowIndex[yx];
       int64_t m = basis->DimsLr[y];
-      gen_matrix(eval, m, n, &basis->M_cpu[y * seg], &basis->M_cpu[(x + ibegin) * seg], S[yx].A, S[yx].LDA);
-      mul_AS(&basis->R[y], &basis->R[x + ibegin], &S[yx]);
+      gen_matrix(eval, n, m, &basis->M_cpu[(x + ibegin) * seg], &basis->M_cpu[y * seg], S[yx].A, S[yx].LDA);
+      mul_AS(&basis->R[x + ibegin], &basis->R[y], &S[yx]);
     }
   }
 }
