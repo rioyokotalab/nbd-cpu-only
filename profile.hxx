@@ -15,7 +15,7 @@ struct Profile {
 
   void record_factor(int64_t dimr, int64_t dimn, int64_t nnz, int64_t ndiag, int64_t nrows) {
     if (dimr == 0 && nnz == 1) {
-      potrf_flops = potrf_flops + dimn * dimn * dimn / 3;
+      potrf_flops += + dimn * dimn * dimn / 3;
       bytes_matrix += dimn * dimn * sizeof(double);
       bytes_vector += dimn * sizeof(double);
     }
@@ -26,9 +26,9 @@ struct Profile {
       int64_t fchol = dimr * dimr * dimr * ndiag / 3;
       int64_t ftrsm = dimn * dimr * dimr * ndiag;
       int64_t fschur = 2 * dims * dims * dimr * ndiag;
-      gemm_flops = gemm_flops + fgemm + fsplit + fschur;
-      potrf_flops = potrf_flops + fchol;
-      trsm_flops = trsm_flops + ftrsm;
+      gemm_flops += + fgemm + fsplit + fschur;
+      potrf_flops += fchol;
+      trsm_flops += ftrsm;
       bytes_matrix += dimn * dimn * nnz * sizeof(double);
       bytes_basis += dimn * dimn * nrows * sizeof(double);
       bytes_vector += dimn * nrows * sizeof(double);

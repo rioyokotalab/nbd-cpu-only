@@ -11,8 +11,6 @@
 #include <numeric>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
-#include <cassert>
 
 cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
@@ -179,20 +177,20 @@ int64_t partition_DLU(int64_t row_coords[], int64_t col_coords[], int64_t orders
     int64_t begin = col_A[x] - col_A[0];
     int64_t end = col_A[x + 1] - col_A[0];
     std::transform(row_A + begin, row_A + end, orders + begin, coo_list.begin() + begin, 
-      [x, col_offset](int64_t y, int64_t yx) -> std::tuple<int64_t, int64_t, int64_t> { return std::make_tuple(y, x + col_offset, yx); });
+      [=](int64_t y, int64_t yx) { return std::make_tuple(y, x + col_offset, yx); });
   }
 
   auto iter = std::stable_partition(coo_list.begin(), coo_list.end(), 
-    [](std::tuple<int64_t, int64_t, int64_t> i) -> bool { return std::get<0>(i) == std::get<1>(i); });
+    [](std::tuple<int64_t, int64_t, int64_t> i) { return std::get<0>(i) == std::get<1>(i); });
   auto iterL = std::stable_partition(iter, coo_list.end(),
-    [](std::tuple<int64_t, int64_t, int64_t> i) -> bool { return std::get<0>(i) > std::get<1>(i); });
+    [](std::tuple<int64_t, int64_t, int64_t> i) { return std::get<0>(i) > std::get<1>(i); });
 
   std::transform(coo_list.begin(), coo_list.end(), row_coords,
-    [](std::tuple<int64_t, int64_t, int64_t> i) -> int64_t { return std::get<0>(i); });
+    [](std::tuple<int64_t, int64_t, int64_t> i) { return std::get<0>(i); });
   std::transform(coo_list.begin(), coo_list.end(), col_coords, 
-    [](std::tuple<int64_t, int64_t, int64_t> i) -> int64_t { return std::get<1>(i); });
+    [](std::tuple<int64_t, int64_t, int64_t> i) { return std::get<1>(i); });
   std::transform(coo_list.begin(), coo_list.end(), orders, 
-    [](std::tuple<int64_t, int64_t, int64_t> i) -> int64_t { return std::get<2>(i); });
+    [](std::tuple<int64_t, int64_t, int64_t> i) { return std::get<2>(i); });
   return std::distance(iter, iterL);
 }
 
@@ -232,7 +230,7 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   cudaMalloc(&one_data_dev, sizeof(double) * K);
   cudaMemcpy(one_data_dev, &one_data[0], sizeof(double) * K, cudaMemcpyHostToDevice);
 
-  const int64_t NZ = 13, ND = 6;
+  const int64_t NZ = 13, ND = 5;
   std::vector<double*> ptrs_nnz_cpu(NZ * NNZ_aligned);
   std::vector<double*> ptrs_diag_cpu(ND * N_rows_aligned);
 
@@ -253,9 +251,8 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   double** _X_d = (double**)&ptrs_diag_cpu[0 * N_rows_aligned];
   const double** _U_i = (const double**)&ptrs_diag_cpu[1 * N_rows_aligned];
   double** _ACC_I = (double**)&ptrs_diag_cpu[2 * N_rows_aligned];
-  double** _B_X = (double**)&ptrs_diag_cpu[3 * N_rows_aligned];
-  double** _Xo_I = (double**)&ptrs_diag_cpu[4 * N_rows_aligned];
-  double** _ONE_LIST = (double**)&ptrs_diag_cpu[5 * N_rows_aligned];
+  double** _Xo_I = (double**)&ptrs_diag_cpu[3 * N_rows_aligned];
+  double** _ONE_LIST = (double**)&ptrs_diag_cpu[4 * N_rows_aligned];
 
   double* _V_data = Workspace;
   double* _B_data = &Workspace[N_cols * stride];
@@ -263,30 +260,29 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   std::vector<int64_t> ind(std::max(N_rows, NNZ) + 1);
   std::iota(ind.begin(), ind.end(), 0);
 
-  std::transform(rows.begin(), rows.end(), _U_r, [U_ptr, stride](int64_t y) -> const double* { return &U_ptr[stride * y]; });
-  std::transform(rows.begin(), rows.end(), _U_s, [U_ptr, stride, R_dim, N_dim](int64_t y) -> const double* { return &U_ptr[stride * y + R_dim * N_dim]; });
-  std::transform(cols.begin(), cols.end(), _V_x, [_V_data, stride, col_offset](int64_t x) -> double* { return &_V_data[stride * (x - col_offset)]; });
-  std::transform(orders.begin(), orders.end(), _A_x, [A_ptr, stride](int64_t yx) -> double* { return &A_ptr[stride * yx]; });
-  std::transform(orders.begin(), orders.end(), _A_s, [A_ptr, stride, R_dim](int64_t yx) -> double* { return &A_ptr[stride * yx + R_dim]; });
-  std::transform(orders.begin(), orders.end(), _A_upper, [A_up](int64_t yx) -> double* { return A_up[yx]; });
+  std::transform(rows.begin(), rows.end(), _U_r, [=](int64_t y) { return &U_ptr[stride * y]; });
+  std::transform(rows.begin(), rows.end(), _U_s, [=](int64_t y) { return &U_ptr[stride * y + R_dim * N_dim]; });
+  std::transform(cols.begin(), cols.end(), _V_x, [=](int64_t x) { return &_V_data[stride * (x - col_offset)]; });
+  std::transform(orders.begin(), orders.end(), _A_x, [=](int64_t yx) { return &A_ptr[stride * yx]; });
+  std::transform(orders.begin(), orders.end(), _A_s, [=](int64_t yx) { return &A_ptr[stride * yx + R_dim]; });
+  std::transform(orders.begin(), orders.end(), _A_upper, [=](int64_t yx) { return A_up[yx]; });
 
-  std::transform(rows.begin(), rows.end(), _Xo_Y, [X_up](int64_t y) -> double* { return X_up[y]; });
-  std::transform(rows.begin(), rows.end(), _Xc_Y, [X_ptr, R_dim](int64_t y) -> double* { return &X_ptr[y * R_dim]; });
-  std::transform(cols.begin(), cols.end(), _Xc_X, [X_ptr, R_dim](int64_t x) -> double* { return &X_ptr[x * R_dim]; });
-  std::transform(ind.begin(), ind.begin() + N_cols, _B_X, [_V_data, R_dim](int64_t x) -> double* { return &_V_data[x * R_dim]; });
-  std::transform(ind.begin(), ind.begin() + N_rows, _Xo_I, [X_up](int64_t i) -> double* { return X_up[i]; });
+  std::transform(rows.begin(), rows.end(), _Xo_Y, [=](int64_t y) { return X_up[y]; });
+  std::transform(rows.begin(), rows.end(), _Xc_Y, [=](int64_t y) { return &X_ptr[y * R_dim]; });
+  std::transform(cols.begin(), cols.end(), _Xc_X, [=](int64_t x) { return &X_ptr[x * R_dim]; });
+  std::transform(ind.begin(), ind.begin() + N_rows, _Xo_I, [=](int64_t i) { return X_up[i]; });
 
   std::transform(rows.begin(), rows.end(), urows.begin(), _ACC_Y, 
-    [_V_data, K, N_dim](int64_t y, int64_t uy) -> double* { return &_V_data[(y * K + uy) * N_dim]; });
+    [=](int64_t y, int64_t uy) { return &_V_data[(y * K + uy) * N_dim]; });
   std::transform(cols.begin(), cols.end(), ucols.begin(), _ACC_X, 
-    [_V_data, K, N_dim, col_offset](int64_t x, int64_t ux) -> double* { return &_V_data[((x - col_offset) * K + ux) * N_dim]; });
-  std::transform(ind.begin(), ind.begin() + N_rows, _ACC_I, [_V_data, K, N_dim](int64_t i) -> double* { return &_V_data[i * N_dim * K]; });
+    [=](int64_t x, int64_t ux) { return &_V_data[((x - col_offset) * K + ux) * N_dim]; });
+  std::transform(ind.begin(), ind.begin() + N_rows, _ACC_I, [=](int64_t i) { return &_V_data[i * N_dim * K]; });
   std::fill(_ONE_LIST, _ONE_LIST + N_rows, one_data_dev);
 
-  std::transform(ind.begin(), ind.begin() + lenB, _B_x, [_B_data, stride](int64_t i) -> double* { return &_B_data[i * stride]; });
-  std::transform(ind.begin(), ind.begin() + lenB, _A_sx, [_B_data, stride, R_dim, N_dim](int64_t i) -> double* { return &_B_data[i * stride + R_dim * N_dim]; });
-  std::transform(ind.begin(), ind.begin() + N_cols, _X_d, [X_ptr, N_dim, col_offset](int64_t i) -> double* { return &X_ptr[N_dim * (i + col_offset)]; });
-  std::transform(ind.begin(), ind.begin() + N_cols, _U_i, [U_ptr, stride, R_dim, N_rows](int64_t i) -> const double* { return &U_ptr[stride * N_rows + R_dim * i]; });
+  std::transform(ind.begin(), ind.begin() + lenB, _B_x, [=](int64_t i) { return &_B_data[i * stride]; });
+  std::transform(ind.begin(), ind.begin() + lenB, _A_sx, [=](int64_t i) { return &_B_data[i * stride + R_dim * N_dim]; });
+  std::transform(ind.begin(), ind.begin() + N_cols, _X_d, [=](int64_t i) { return &X_ptr[N_dim * (i + col_offset)]; });
+  std::transform(ind.begin(), ind.begin() + N_cols, _U_i, [=](int64_t i) { return &U_ptr[stride * N_rows + R_dim * i]; });
   
   memset((void*)params, 0, sizeof(struct BatchedFactorParams));
 
@@ -321,12 +317,12 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   params->X_d = (double**)&ptrs_diag[0 * N_rows_aligned];
   params->U_i = (const double**)&ptrs_diag[1 * N_rows_aligned];
   params->ACC_I = (double**)&ptrs_diag[2 * N_rows_aligned];
-  params->B_X = (double**)&ptrs_diag[3 * N_rows_aligned];
-  params->Xo_I = (double**)&ptrs_diag[4 * N_rows_aligned];
-  params->ONE_LIST = (double**)&ptrs_diag[5 * N_rows_aligned];
+  params->Xo_I = (double**)&ptrs_diag[3 * N_rows_aligned];
+  params->ONE_LIST = (double**)&ptrs_diag[4 * N_rows_aligned];
 
   params->U_d0 = U_ptr + stride * col_offset;
   params->Xc_d0 = X_ptr + R_dim * col_offset;
+  params->X_d0 = X_ptr + N_dim * col_offset;
   params->V_data = _V_data;
   params->A_data = A_ptr;
   params->X_data = X_ptr;
@@ -347,11 +343,9 @@ void batchParamsDestory(struct BatchedFactorParams* params) {
 
 void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellComm* comm) {
   int64_t U = params->N_upper, R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag;
-  int64_t alen = N * N * params->L_nnz;
   double one = 1., zero = 0., minus_one = -1.;
 
-  level_merge_gpu(params->A_data, alen, comm);
-  dup_bcast_gpu(params->A_data, alen, comm);
+  level_merge_gpu(params->A_data, N * N * params->L_nnz, comm);
 
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &one, 
     params->A_x, N, params->U_r, N, &zero, params->B_x, N, D);
@@ -396,10 +390,9 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
 
   level_merge_gpu(params->X_data, params->L_rows * N, comm);
   neighbor_reduce_gpu(params->X_data, N, comm);
-  dup_bcast_gpu(params->X_data, params->L_rows * N, comm);
 
-  cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, N, &one,
-    params->U_r, N, params->X_d, N, &zero, params->B_X, R, D);
+  cublasDgemmStridedBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, N, &one,
+    params->U_d0, N, N * N, params->X_d0, N, N * ONE, &zero, params->V_data, R, R * ONE, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, S, ONE, N, &one,
     params->U_s, N, params->X_d, N, &zero, params->Xo_Y, S, D);
   cudaMemsetAsync(params->X_data, 0, sizeof(double) * params->L_rows * R, stream);
@@ -416,9 +409,6 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
     &params->A_x[D], N, &params->Xc_X[D], R, &zero, &params->ACC_Y[D], N, params->L_lower);
   cublasDgemmStridedBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, R, ONE, K, &minus_one,
     params->V_data, N, N * K, params->ONE_DATA, K, 0, &one, params->X_data, R, R, params->L_rows);
-
-  neighbor_reduce_gpu(params->X_data, R, comm);
-  dup_bcast_gpu(params->X_data, params->L_rows * R, comm);
 }
 
 void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
@@ -426,29 +416,24 @@ void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm*
   int64_t K = params->K;
   double one = 1., zero = 0., minus_one = -1.;
 
-  cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_x, N, params->Xc_X, R, D);
-  cublasDtrsmBatched(cublasH, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT, 
-    R, ONE, &one, params->A_x, N, params->Xc_X, R, D);
-
+  neighbor_reduce_gpu(params->X_data, R, comm);
+  cusolverDnDpotrsBatched(cusolverH, CUBLAS_FILL_MODE_LOWER, R, ONE, params->A_x, N, params->Xc_X, R, NULL, D);
   neighbor_bcast_gpu(params->X_data, R, comm);
-  dup_bcast_gpu(params->X_data, params->L_rows * R, comm);
 
   cudaMemsetAsync(params->V_data, 0, sizeof(double) * D * N * K, stream);
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, S, &one, 
     params->A_s, N, params->Xo_Y, S, &zero, params->ACC_X, N, params->L_nnz);
-  
   cublasDgemmBatched(cublasH, CUBLAS_OP_T, CUBLAS_OP_N, R, ONE, R, &one, 
     &params->A_x[D], N, &params->Xc_Y[D], R, &one, &params->ACC_X[D], N, params->L_lower);
   cublasDgemmStridedBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, R, ONE, K, &minus_one,
     params->V_data, N, N * K, params->ONE_DATA, K, 0, &one, params->Xc_d0, R, R, D);
   
   cublasDcopy(cublasH, R * D, params->Xc_d0, 1, params->V_data, 1);
-  cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, ONE, R, &one,
-    params->U_r, N, params->B_X, R, &zero, params->X_d, N, D);
+  cublasDgemmStridedBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, ONE, R, &one,
+    params->U_d0, N, N * N, params->V_data, R, R * ONE, &zero, params->X_d0, N, N * ONE, D);
   cublasDgemmBatched(cublasH, CUBLAS_OP_N, CUBLAS_OP_N, N, ONE, S, &one,
     params->U_s, N, params->Xo_Y, S, &one, params->X_d, N, D);
-    
+  
   neighbor_bcast_gpu(params->X_data, N, comm);
   dup_bcast_gpu(params->X_data, params->L_rows * N, comm);
 }
@@ -475,16 +460,12 @@ void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, 
 void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm) {
   double* A = params->A_data;
   int64_t N = params->N_r;
-  int64_t alen = N * N;
   double one = 1.;
 
-  level_merge_gpu(params->A_data, alen, comm);
-  dup_bcast_gpu(params->A_data, alen, comm);
-
+  level_merge_gpu(params->A_data, N * N, comm);
   cublasDaxpy(cublasH, N, &one, params->ONE_DATA, 1, A, N + 1);
   cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, params->ONE_DATA, params->L_tmp, NULL);
 }
-
 
 void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm) {
   const double* A = params->A_data;
@@ -492,8 +473,6 @@ void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm)
   int64_t N = params->N_r;
 
   level_merge_gpu(X, N, comm);
-  dup_bcast_gpu(X, N, comm);
-
   cusolverDnDpotrs(cusolverH, CUBLAS_FILL_MODE_LOWER, N, 1, A, N, X, N, NULL);
 }
 
