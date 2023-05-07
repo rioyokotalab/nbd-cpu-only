@@ -23,7 +23,7 @@ struct BatchedFactorParams {
   double** A_x, **A_s, **A_l, **B_x, **A_upper, *V_data, *A_data;
   int* ipiv, *info;
   double** X_d, *X_data, *Xc_d0, *X_d0;
-  int64_t K;
+  int64_t Kfwd, Kback;
   double** Xo_Y, **Xc_Y, **Xc_X, **Xo_I;
   double** ACC_Y, **ACC_X, **ACC_I, *ACC_data;
   double** ONE_LIST, *ONE_DATA;
@@ -78,6 +78,8 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
 void csc_free(struct CSC* csc);
 
 void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j);
+
+void countMaxIJ(int64_t* max_i, int64_t* max_j, const struct CSC* rels);
 
 void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64_t ncells, const struct Cell cells[]);
 

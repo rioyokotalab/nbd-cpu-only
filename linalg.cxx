@@ -236,7 +236,7 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   int64_t N_dim = R_dim + S_dim;
   int64_t NNZ = col_A[N_cols] - col_A[0];
   int64_t stride = N_dim * N_dim;
-  int64_t lenB = (Lwork / stride) - N_cols;
+  int64_t lenB = Lwork / stride;
   lenB = lenB > NNZ ? NNZ : lenB;
   int64_t N_rows_aligned = ((N_rows >> 4) + ((N_rows & 15) > 0)) * 16;
   int64_t NNZ_aligned = ((NNZ >> 4) + ((NNZ & 15) > 0)) * 16;
@@ -244,13 +244,13 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   std::vector<int64_t> rows(NNZ), cols(NNZ), orders(NNZ);
   int64_t lenL = partition_DLU(&rows[0], &cols[0], &orders[0], N_cols, col_offset, row_A, col_A);
   std::vector<int64_t> urows(NNZ), ucols(NNZ);
-  int64_t K = count_apperance_x(&rows[0], &urows[0], NNZ);
-  K = std::max(K, count_apperance_x(&cols[0], &ucols[0], NNZ));
+  int64_t K1 = count_apperance_x(&rows[0], &urows[0], NNZ);
+  int64_t K2 = count_apperance_x(&cols[0], &ucols[0], NNZ);
 
-  std::vector<double> one_data(K, 1.);
+  std::vector<double> one_data(N_rows, 1.);
   double* one_data_dev;
-  cudaMalloc(&one_data_dev, sizeof(double) * K);
-  cudaMemcpy(one_data_dev, &one_data[0], sizeof(double) * K, cudaMemcpyHostToDevice);
+  cudaMalloc(&one_data_dev, sizeof(double) * N_rows);
+  cudaMemcpy(one_data_dev, &one_data[0], sizeof(double) * N_rows, cudaMemcpyHostToDevice);
 
   const int64_t NZ = 13, ND = 6;
   std::vector<double*> ptrs_nnz_cpu(NZ * NNZ_aligned);
@@ -278,7 +278,6 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   double** _ONE_LIST = (double**)&ptrs_diag_cpu[5 * N_rows_aligned];
 
   double* _V_data = Workspace;
-  double* _B_data = Workspace;
   double* _ACC_data = &Workspace[N_cols * R_dim];
 
   std::vector<int64_t> ind(std::max(N_rows, NNZ) + 1);
@@ -298,14 +297,14 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   std::transform(ind.begin(), ind.begin() + N_rows, _Xo_I, [=](int64_t i) { return X_up[i]; });
 
   std::transform(rows.begin(), rows.end(), urows.begin(), _ACC_Y, 
-    [=](int64_t y, int64_t uy) { return &_ACC_data[(y * K + uy) * N_dim]; });
+    [=](int64_t y, int64_t uy) { return &_ACC_data[(y * K1 + uy) * N_dim]; });
   std::transform(cols.begin(), cols.end(), ucols.begin(), _ACC_X, 
-    [=](int64_t x, int64_t ux) { return &_ACC_data[((x - col_offset) * K + ux) * N_dim]; });
-  std::transform(ind.begin(), ind.begin() + N_rows, _ACC_I, [=](int64_t i) { return &_ACC_data[i * N_dim * K]; });
+    [=](int64_t x, int64_t ux) { return &_ACC_data[((x - col_offset) * K2 + ux) * N_dim]; });
+  std::transform(ind.begin(), ind.begin() + N_rows, _ACC_I, [=](int64_t i) { return &_ACC_data[i * N_dim * K1]; });
   std::fill(_ONE_LIST, _ONE_LIST + N_rows, one_data_dev);
 
-  std::transform(ind.begin(), ind.begin() + lenB, _B_x, [=](int64_t i) { return &_B_data[i * stride]; });
-  std::transform(ind.begin(), ind.begin() + lenB, _A_sx, [=](int64_t i) { return &_B_data[i * stride + R_dim]; });
+  std::transform(ind.begin(), ind.begin() + lenB, _B_x, [=](int64_t i) { return &_V_data[i * stride]; });
+  std::transform(ind.begin(), ind.begin() + lenB, _A_sx, [=](int64_t i) { return &_V_data[i * stride + R_dim]; });
   std::transform(ind.begin(), ind.begin() + N_cols, _X_d, [=](int64_t i) { return &X_ptr[N_dim * (i + col_offset)]; });
   std::transform(ind.begin(), ind.begin() + N_cols, _U_i, [=](int64_t i) { return &U_ptr[stride * N_rows + R_dim * i]; });
   
@@ -319,7 +318,8 @@ void batchParamsCreate(struct BatchedFactorParams* params, int64_t R_dim, int64_
   params->L_lower = lenL;
   params->L_rows = N_rows;
   params->L_tmp = lenB;
-  params->K = K;
+  params->Kfwd = K1;
+  params->Kback = K2;
 
   void** ptrs_nnz, **ptrs_diag;
   cudaMalloc((void**)&ptrs_nnz, sizeof(double*) * NNZ_aligned * NZ);
@@ -422,7 +422,7 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
 
 void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
   int64_t R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag, ONE = 1;
-  int64_t K = params->K;
+  int64_t K = params->Kfwd;
   double one = 1., zero = 0., minus_one = -1.;
   int info_host = 0;
 
@@ -452,7 +452,7 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
 
 void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm) {
   int64_t R = params->N_r, S = params->N_s, N = R + S, D = params->L_diag, ONE = 1;
-  int64_t K = params->K;
+  int64_t K = params->Kback;
   double one = 1., zero = 0., minus_one = -1.;
   int info_host;
 

@@ -30,7 +30,10 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), stride * nnz);
     allocBufferedList((void**)&A[i].X_ptr, (void**)&A[i].X_buf, sizeof(double), dimn * ulen);
 
-    int64_t work_required = n_i * stride * 2;
+    int64_t k1, k2;
+    countMaxIJ(&k1, &k2, &rels_near[i]);
+    int64_t acc_required = std::max(k1 * ulen, k2 * n_i);
+    int64_t work_required = std::max(n_i * stride, (acc_required + n_i) * dimn);
     work_size = std::max(work_size, work_required);
 
     for (int64_t x = 0; x < n_i; x++) {

@@ -226,6 +226,20 @@ void lookupIJ(int64_t* ij, const struct CSC* rels, int64_t i, int64_t j) {
   *ij = (k < jend) ? k : -1;
 }
 
+void countMaxIJ(int64_t* max_i, int64_t* max_j, const struct CSC* rels) {
+  std::vector<int64_t> countx(rels->N, 0), county(rels->M, 0);
+  for (int64_t x = 0; x < rels->N; x++)
+    for (int64_t yx = rels->ColIndex[x]; yx < rels->ColIndex[x + 1]; yx++) {
+      int64_t y = rels->RowIndex[yx];
+      countx[x] = countx[x] + 1;
+      county[y] = county[y] + 1;
+    }
+  if (max_i)
+    *max_i = *std::max_element(county.begin(), county.end());
+  if (max_j)
+    *max_j = *std::max_element(countx.begin(), countx.end());
+}
+
 void loadX(double* X, int64_t seg, const double Xbodies[], int64_t Xbegin, int64_t ncells, const struct Cell cells[]) {
   for (int64_t i = 0; i < ncells; i++) {
     int64_t b0 = cells[i].Body[0] - Xbegin;
