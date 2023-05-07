@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <cmath>
 
 MPI_Comm MPI_Comm_split_unique(std::vector<MPI_Comm>& unique_comms, int color, int mpi_rank) {
   MPI_Comm comm = MPI_COMM_NULL;

@@ -1,5 +1,6 @@
 
 #include "geometry.hxx"
+#include "kernel.hxx"
 #include "nbd.hxx"
 #include "profile.hxx"
 
@@ -26,9 +27,9 @@ int main(int argc, char* argv[]) {
   int64_t Nleaf = (int64_t)1 << levels;
   int64_t ncells = Nleaf + Nleaf - 1;
   
-  Laplace3D eval(1.e-6);
+  //Laplace3D eval(1.e-6);
   //Yukawa3D eval(1.e-6, 1.);
-  //Gaussian eval(1);
+  Gaussian eval(1);
   
   double* body = (double*)malloc(sizeof(double) * Nbody * 3);
   double* Xbody = (double*)malloc(sizeof(double) * Nbody);
@@ -96,7 +97,11 @@ int main(int argc, char* argv[]) {
   double* X2 = (double*)calloc(lenX, sizeof(double));
 
   loadX(X1, basis[levels].dimN, Xbody, 0, llen, &cell[gbegin]);
+  double matvec_time = MPI_Wtime(), matvec_comm_time;
   matVecA(nodes, basis, rels_near, X1, cell_comm, levels);
+
+  matvec_time = MPI_Wtime() - matvec_time;
+  matvec_comm_time = timer.get_comm_timing();
 
   double cerr = 0.;
   if (Nbody < 20000) {
@@ -166,7 +171,9 @@ int main(int argc, char* argv[]) {
   prog_time = MPI_Wtime() - prog_time;
 
   if (mpi_rank == 0)
-    printf("LORASP: %d,%d,%lf,%d,%d,%d\nConstruct: %lf s. COMM: %lf s.\n"
+    printf("LORASP: %d,%d,%lf,%d,%d,%d\n"
+      "Construct: %lf s. COMM: %lf s.\n"
+      "Mat-Vec: %lf s. COMM: %lf s.\n"
       "Factorize: %lf s. COMM: %lf s.\n"
       "Solution: %lf s. COMM: %lf s.\n"
       "Factorization GFLOPS: %lf GFLOPS/s.\n"
@@ -177,8 +184,9 @@ int main(int argc, char* argv[]) {
       "Err: Compress %e, Factor %e\n"
       "Program: %lf s.\n",
       (int)Nbody, (int)(Nbody / Nleaf), theta, 3, (int)mpi_size, omp_get_max_threads(),
-      construct_time, construct_comm_time, factor_time, factor_comm_time, solve_time, solve_comm_time, (double)sum_flops * 1.e-9 / factor_time,
-      percent[0], percent[1], percent[2], (double)mem_A[0] * 1.e-9, (double)mem_A[1] * 1.e-9, (double)mem_A[2] * 1.e-9, cerr, err, prog_time);
+      construct_time, construct_comm_time, matvec_time, matvec_comm_time, factor_time, factor_comm_time, 
+      solve_time, solve_comm_time, (double)sum_flops * 1.e-9 / factor_time, percent[0], percent[1], percent[2], 
+      (double)mem_A[0] * 1.e-9, (double)mem_A[1] * 1.e-9, (double)mem_A[2] * 1.e-9, cerr, err, prog_time);
 
   for (int64_t i = 0; i <= levels; i++) {
     csc_free(&rels_far[i]);

@@ -5,6 +5,9 @@
 #include "math.h"
 #include "string.h"
 
+#include <algorithm>
+#include <array>
+
 void get_bounds(const double* bodies, int64_t nbodies, double R[], double C[]) {
   double Xmin[3];
   double Xmax[3];
@@ -36,35 +39,14 @@ void get_bounds(const double* bodies, int64_t nbodies, double R[], double C[]) {
   R[2] = (d2 == 0. && Xmin[2] == 0.) ? 0. : (1.e-8 + d2 / 2.);
 }
 
-int comp_bodies_s0(const void *a, const void *b) {
-  double* body_a = (double*)a;
-  double* body_b = (double*)b;
-  double diff = body_a[0] - body_b[0];
-  return diff < 0. ? -1 : (int)(diff > 0.);
-}
-
-int comp_bodies_s1(const void *a, const void *b) {
-  double* body_a = (double*)a;
-  double* body_b = (double*)b;
-  double diff = body_a[1] - body_b[1];
-  return diff < 0. ? -1 : (int)(diff > 0.);
-}
-
-int comp_bodies_s2(const void *a, const void *b) {
-  double* body_a = (double*)a;
-  double* body_b = (double*)b;
-  double diff = body_a[2] - body_b[2];
-  return diff < 0. ? -1 : (int)(diff > 0.);
-}
-
 void sort_bodies(double* bodies, int64_t nbodies, int64_t sdim) {
-  size_t size3 = sizeof(double) * 3;
-  if (sdim == 0)
-    qsort(bodies, nbodies, size3, comp_bodies_s0);
-  else if (sdim == 1)
-    qsort(bodies, nbodies, size3, comp_bodies_s1);
-  else if (sdim == 2)
-    qsort(bodies, nbodies, size3, comp_bodies_s2);
+  std::array<double, 3>* bodies3 = reinterpret_cast<std::array<double, 3>*>(bodies);
+  std::array<double, 3>* bodies3_end = reinterpret_cast<std::array<double, 3>*>(&bodies[3 * nbodies]);
+  std::sort(bodies3, bodies3_end, [=](std::array<double, 3>& i, std::array<double, 3>& j)->bool {
+    double x = i[sdim];
+    double y = j[sdim];
+    return x < y;
+  });
 }
 
 void buildTree(int64_t* ncells, struct Cell* cells, double* bodies, int64_t nbodies, int64_t levels) {
@@ -210,7 +192,7 @@ void traverse(char NoF, struct CSC* rels, int64_t ncells, const struct Cell* cel
   if (len < ncells * ncells)
     rel_arr = (int64_t*)realloc(rel_arr, sizeof(int64_t) * (len + ncells + 1));
   int64_t* rel_rows = &rel_arr[ncells + 1];
-  qsort(rel_rows, len, sizeof(int64_t), comp_int_64);
+  std::sort(rel_rows, rel_rows + len);
   rels->ColIndex = rel_arr;
   rels->RowIndex = rel_rows;
 

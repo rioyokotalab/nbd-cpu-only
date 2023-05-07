@@ -1,5 +1,6 @@
 
 #include "nbd.hxx"
+#include "kernel.hxx"
 
 #include "cuda_runtime_api.h"
 #include "cublas_v2.h"
@@ -11,6 +12,8 @@
 #include <numeric>
 #include <cstdio>
 #include <cstdlib>
+#include <array>
+#include <tuple>
 
 cudaStream_t stream = NULL;
 cublasHandle_t cublasH = NULL;
@@ -64,6 +67,25 @@ void mul_AS(const struct Matrix* RU, const struct Matrix* RV, struct Matrix* A) 
     cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, A->M, A->N, A->M, 1., RU->A, RU->LDA, A->A, A->LDA, 0., &tmp[0], A->M);
     cblas_dgemm(CblasColMajor, CblasNoTrans, CblasTrans, A->M, A->N, A->N, 1., &tmp[0], A->M, RV->A, RV->LDA, 0., A->A, A->LDA);
   }
+}
+
+void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda) {
+  const std::array<double, 3>* bi3 = reinterpret_cast<const std::array<double, 3>*>(bi);
+  const std::array<double, 3>* bi3_end = reinterpret_cast<const std::array<double, 3>*>(&bi[3 * m]);
+  const std::array<double, 3>* bj3 = reinterpret_cast<const std::array<double, 3>*>(bj);
+  const std::array<double, 3>* bj3_end = reinterpret_cast<const std::array<double, 3>*>(&bj[3 * n]);
+
+  std::for_each(bj3, bj3_end, [&](const std::array<double, 3>& j) -> void {
+    int64_t ix = std::distance(bj3, &j);
+    std::for_each(bi3, bi3_end, [&](const std::array<double, 3>& i) -> void {
+      int64_t iy = std::distance(bi3, &i);
+      double x = i[0] - j[0];
+      double y = i[1] - j[1];
+      double z = i[2] - j[2];
+      double d = std::sqrt(x * x + y * y + z * z);
+      Aij[iy + ix * lda] = Eval(d);
+    });
+  });
 }
 
 int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int64_t rank_max, 

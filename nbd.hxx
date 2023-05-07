@@ -12,7 +12,6 @@
 
 #include "comm.hxx"
 #include "basis.hxx"
-#include "kernel.hxx"
 
 struct Matrix { double* A; int64_t M, N, LDA; };
 
@@ -38,6 +37,8 @@ struct Node {
 };
 
 struct EvalDouble;
+
+void gen_matrix(const EvalDouble& Eval, int64_t m, int64_t n, const double* bi, const double* bj, double Aij[], int64_t lda);
 
 void mmult(char ta, char tb, const struct Matrix* A, const struct Matrix* B, struct Matrix* C, double alpha, double beta);
 

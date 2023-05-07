@@ -20,9 +20,10 @@ double __matern_h(double r2) {
   double sigma_square = singularity * singularity;
 
   if (r2 > 0.) {
-    double con = sigma_square / (pow(2, (smoothness - 1)) * std::tgamma(smoothness));
-    double expr = sqrt(2 * smoothness * r2) / nu;
-    return con * pow(expr, smoothness) * std::cyl_bessel_k(smoothness, expr);
+    //double con = sigma_square / (pow(2, (smoothness - 1)) * std::tgamma(smoothness));
+    //double expr = sqrt(2 * smoothness * r2) / nu;
+    //return con * pow(expr, smoothness) * std::cyl_bessel_k(smoothness, expr);
+    return 0.;
   }
   else
     return sigma_square;
