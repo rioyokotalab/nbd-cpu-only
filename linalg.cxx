@@ -487,7 +487,7 @@ void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, 
   params->N_r = N;
 
   int Lwork;
-  cusolverDnDpotrf_bufferSize(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, &Lwork);
+  cusolverDnDgetrf_bufferSize(cusolverH, N, N, A, N, &Lwork);
   Lwork = std::max((int64_t)Lwork, N);
   cudaMalloc((void**)&params->ONE_DATA, sizeof(double) * Lwork);
   params->L_tmp = Lwork;
@@ -496,6 +496,8 @@ void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, 
   for (int64_t i = 0; i < clen; i++)
     std::fill(I.begin() + i * S, I.begin() + i * S + cdims[i], 0.);
   cudaMemcpy(params->ONE_DATA, &I[0], sizeof(double) * N, cudaMemcpyHostToDevice);
+  cudaMalloc((void**)&params->ipiv, sizeof(int) * N);
+  cudaMalloc((void**)&params->info, sizeof(int));
 }
 
 void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm) {
@@ -505,7 +507,7 @@ void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm
 
   level_merge_gpu(params->A_data, N * N, comm);
   cublasDaxpy(cublasH, N, &one, params->ONE_DATA, 1, A, N + 1);
-  cusolverDnDpotrf(cusolverH, CUBLAS_FILL_MODE_LOWER, N, A, N, params->ONE_DATA, params->L_tmp, NULL);
+  cusolverDnDgetrf(cusolverH, N, N, A, N, params->ONE_DATA, params->ipiv, params->info);
 }
 
 void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm) {
@@ -514,7 +516,7 @@ void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm)
   int64_t N = params->N_r;
 
   level_merge_gpu(X, N, comm);
-  cusolverDnDpotrs(cusolverH, CUBLAS_FILL_MODE_LOWER, N, 1, A, N, X, N, NULL);
+  cusolverDnDgetrs(cusolverH, CUBLAS_OP_N, N, 1, A, N, params->ipiv, X, N, params->info);
 }
 
 
