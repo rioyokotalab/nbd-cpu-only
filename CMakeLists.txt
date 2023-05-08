@@ -5,7 +5,7 @@ set(CMAKE_CXX_COMPILER "g++")
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS "-O3 -m64 -Wall -Wextra")
 
-project ("shimo" LANGUAGES CXX CUDA)
+project ("shimo" LANGUAGES CXX)
 
 set(MKL_ARCH intel64)
 set(MKL_LINK dynamic)
@@ -19,14 +19,5 @@ find_package(PkgConfig REQUIRED)
 
 add_executable(lorasp lorasp.cxx linalg.cxx basis.cxx comm.cxx build_tree.cxx umv.cxx)
 target_include_directories(lorasp PRIVATE ./)
-target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL -L$ENV{CUDADIR}/lib64 -lcublas -lcudart -lcusolver -lnccl)
-set_target_properties(lorasp PROPERTIES CUDA_ARCHITECTURES "60;70;72;80")
+target_link_libraries(lorasp MPI::MPI_CXX OpenMP::OpenMP_CXX MKL::MKL)
 
-pkg_check_modules(MAGMA magma)
-
-if (MAGMA_FOUND)
-add_executable(bench benchmark/benchmark.cxx)
-target_compile_options(bench PRIVATE ${MAGMA_CFLAGS})
-target_include_directories(bench PRIVATE ./ ${MAGMA_INCLUDE_DIRS})
-target_link_libraries(bench PRIVATE OpenMP::OpenMP_CXX MKL::MKL ${MAGMA_LDFLAGS})
-endif()

@@ -27,8 +27,8 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
     int64_t dimn_up = i > 0 ? basis[i - 1].dimN : 0;
 
     int64_t stride = dimn * dimn;
-    allocBufferedList((void**)&A[i].A_ptr, (void**)&A[i].A_buf, sizeof(double), stride * nnz);
-    allocBufferedList((void**)&A[i].X_ptr, (void**)&A[i].X_buf, sizeof(double), dimn * ulen);
+    A[i].A_ptr = (double*)calloc(stride * nnz, sizeof(double));
+    A[i].X_ptr = (double*)calloc(dimn * ulen, sizeof(double));
 
     int64_t k1, k2;
     countMaxIJ(&k1, &k2, &rels_near[i]);
@@ -38,7 +38,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
 
     for (int64_t x = 0; x < n_i; x++) {
       for (int64_t yx = rels_near[i].ColIndex[x]; yx < rels_near[i].ColIndex[x + 1]; yx++)
-        arr_m[yx] = (struct Matrix) { &A[i].A_buf[yx * stride], dimn, dimn, dimn }; // A
+        arr_m[yx] = (struct Matrix) { &A[i].A_ptr[yx * stride], dimn, dimn, dimn }; // A
 
       for (int64_t yx = rels_far[i].ColIndex[x]; yx < rels_far[i].ColIndex[x + 1]; yx++)
         arr_m[yx + nnz] = (struct Matrix) { NULL, basis[i].dimS, basis[i].dimS, dimn_up }; // S
@@ -98,7 +98,7 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
       X_next[x] = &A[i - 1].X_ptr[std::get<1>(p) * basis[i].dimS + std::get<0>(p) * n_next];
     }
 
-    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_gpu, A[i].A_ptr, A[i].X_ptr, n_next, &A_next[0], &X_next[0],
+    batchParamsCreate(&A[i].params, dimc, dimr, basis[i].U_cpu, A[i].A_ptr, A[i].X_ptr, n_next, &A_next[0], &X_next[0],
       *Workspace, work_size, N_rows, N_cols, ibegin, rels_near[i].RowIndex, rels_near[i].ColIndex);
   }
 
@@ -115,17 +115,10 @@ void allocNodes(struct Node A[], double** Workspace, int64_t* Lwork, const struc
 }
 
 void node_free(struct Node* node) {
-  freeBufferedList(node->A_ptr, node->A_buf);
-  freeBufferedList(node->X_ptr, node->X_buf);
+  free(node->A_ptr);
+  free(node->X_ptr);
   free(node->A);
   batchParamsDestory(&node->params);
-}
-
-void factorA_mov_mem(char dir, struct Node A[], const struct Base basis[], int64_t levels) {
-  for (int64_t i = 0; i <= levels; i++) {
-    int64_t stride = basis[i].dimN * basis[i].dimN;
-    flushBuffer(dir, A[i].A_ptr, A[i].A_buf, sizeof(double), stride * A[i].lenA);
-  }
 }
 
 struct RightHandSides { struct Matrix *X, *Xc, *Xo, *B; };

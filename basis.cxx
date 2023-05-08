@@ -162,12 +162,6 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
     basis[l].M_cpu = (double*)calloc(basis[l].dimS * xlen * 3, sizeof(double));
     basis[l].U_cpu = (double*)calloc(stride * xlen + nodes * basis[l].dimR, sizeof(double));
     basis[l].R_cpu = (double*)calloc(stride_r * xlen, sizeof(double));
-    if (cudaMalloc(&basis[l].M_gpu, sizeof(double) * basis[l].dimS * xlen * 3) != cudaSuccess)
-      basis[l].M_gpu = NULL;
-    if (cudaMalloc(&basis[l].U_gpu, sizeof(double) * (stride * xlen + nodes * basis[l].dimR)) != cudaSuccess)
-      basis[l].U_gpu = NULL;
-    if (cudaMalloc(&basis[l].R_gpu, sizeof(double) * stride_r * xlen) != cudaSuccess)
-      basis[l].R_gpu = NULL;
 
     for (int64_t i = 0; i < xlen; i++) {
       double* M_ptr = basis[l].M_cpu + i * basis[l].dimS * 3;
@@ -213,13 +207,6 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
     dup_bcast_cpu(basis[l].U_cpu, stride * xlen, &comm[l]);
     neighbor_bcast_cpu(basis[l].R_cpu, stride_r, &comm[l]);
     dup_bcast_cpu(basis[l].R_cpu, stride_r * xlen, &comm[l]);
-
-    if (basis[l].M_gpu)
-      cudaMemcpy(basis[l].M_gpu, basis[l].M_cpu, sizeof(double) * basis[l].dimS * xlen * 3, cudaMemcpyHostToDevice);
-    if (basis[l].U_gpu)
-      cudaMemcpy(basis[l].U_gpu, basis[l].U_cpu, sizeof(double) * (stride * xlen + nodes * basis[l].dimR), cudaMemcpyHostToDevice);
-    if (basis[l].R_gpu)
-      cudaMemcpy(basis[l].R_gpu, basis[l].R_cpu, sizeof(double) * stride_r * xlen, cudaMemcpyHostToDevice);
   }
 }
 
@@ -228,14 +215,8 @@ void basis_free(struct Base* basis) {
   free(basis->Uo);
   if (basis->M_cpu)
     free(basis->M_cpu);
-  if (basis->M_gpu)
-    cudaFree(basis->M_gpu);
   if (basis->U_cpu)
     free(basis->U_cpu);
-  if (basis->U_gpu)
-    cudaFree(basis->U_gpu);
   if (basis->R_cpu)
     free(basis->R_cpu);
-  if (basis->R_gpu)
-    cudaFree(basis->R_gpu);
 }

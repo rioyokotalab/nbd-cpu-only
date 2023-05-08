@@ -9,7 +9,7 @@ struct Base {
   int64_t dimR, dimS, dimN;
   std::vector<int64_t> Dims, DimsLr;
   struct Matrix *Uo, *R;
-  double *M_gpu, *M_cpu, *U_gpu, *U_cpu, *R_gpu, *R_cpu; 
+  double *M_cpu, *U_cpu, *R_cpu; 
 };
 
 struct EvalDouble;
