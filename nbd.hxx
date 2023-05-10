@@ -88,4 +88,5 @@ void matVecA(const struct Node A[], const struct Base basis[], const struct CSC 
 
 void solveRelErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 
+void solveAbsErr(double* err_out, const double* X, const double* ref, int64_t lenX);
 
