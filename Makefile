@@ -14,10 +14,12 @@ all:
 	$(CXX) $(CFLAGS) -c comm.cxx -o comm.o
 	$(CXX) $(CFLAGS) -c umv.cxx -o umv.o
 	$(CXX) $(CFLAGS) -c lorasp.cxx -o lorasp.o
-	$(NVCC) $(NVCCFLAGS) -c kernel.cu -o kernel.o
+	$(CXX) $(CFLAGS) -c eigen.cxx -o eigen.o
 
-	$(NVCC) $(NVCCFLAGS) linalg.o basis.o build_tree.o comm.o umv.o kernel.o \
-	  lorasp.o $(LDFLAGS) $(NVCCLIBS) -o lorasp
-	
+	$(CXX) $(CFLAGS) linalg.o basis.o build_tree.o comm.o umv.o \
+	  lorasp.o $(LDFLAGS) -o lorasp
+	$(CXX) $(CFLAGS) linalg.o basis.o build_tree.o comm.o umv.o \
+	  eigen.o $(LDFLAGS) -o eigen
+
 clean:
-	rm -rf *.a *.o lorasp
+	rm -rf *.a *.o lorasp eigen
