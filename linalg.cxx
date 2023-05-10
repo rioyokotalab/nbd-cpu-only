@@ -324,6 +324,7 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
 
   level_merge_cpu(params->A_data, N * N * params->L_nnz, comm);
 
+  #pragma omp parallel for
   for (int64_t i = 0; i < D; i++) {
     cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, N, N, N, one,
       params->U_r[i], N, params->A_x[i], N, zero, params->B_x[i], N);
@@ -342,6 +343,7 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
       params->A_s[i], R, params->A_l[i], R, one, params->A_upper[i], U);
   }
 
+  // Not needed for HSS
   for (int64_t i = 0; i < params->L_lower; i += params->L_tmp) {
     int64_t len = std::min(params->L_lower - i, params->L_tmp);
     for (int64_t j = 0; j < len; j++) {
@@ -353,7 +355,7 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
         params->A_sx[j], N, params->U_s[i + D + j], N, zero, params->A_upper[i + D + j], U);
     }
   }
-
+  // Not needed for HSS
   int64_t offsetU = D + params->L_lower;
   int64_t lenU = params->L_nnz - offsetU;
   for (int64_t i = 0; i < lenU; i += params->L_tmp) {
@@ -448,6 +450,7 @@ void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, 
 
   params->A_data = A;
   params->X_data = X;
+  params->A_x = &A;
   params->N_r = N;
 
   int Lwork;
