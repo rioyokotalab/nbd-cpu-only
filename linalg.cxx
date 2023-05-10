@@ -72,7 +72,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
     mkl_domatcopy('C', 'T', M, M, 1., &Aall[0], ldm, &U[0], M);
     LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M, &U[0], M, &S[0], NULL, M, NULL, M, &S[M]);
 
-    double s0 = S[0] * epi;
+    double s0 = epi;
     rank_max = rank_max <= 0 ? M : std::min(rank_max, M);
     rank_min = rank_min <= 0 ? 0 : std::min(rank_min, M);
     int64_t rank = epi > 0. ?
