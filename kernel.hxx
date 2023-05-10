@@ -8,27 +8,47 @@ struct EvalDouble {
   virtual double operator()(double d) const = 0;
 };
 
+struct Laplace2D : public EvalDouble {
+  double singularity;
+  double diag_shift;
+  Laplace2D (double s, double diag_shift = 0.) : singularity(1. / s), diag_shift(diag_shift) {}
+  double operator()(double d) const override {
+    double x = d == 0. ? singularity : std::log(d);
+    if (d == 0.) return x + diag_shift;
+    else return x;
+  }
+};
+
 struct Laplace3D : public EvalDouble {
   double singularity;
-  Laplace3D (double s) : singularity(1. / s) {}
+  double diag_shift;
+  Laplace3D (double s, double diag_shift = 0.) : singularity(1. / s), diag_shift(diag_shift) {}
   double operator()(double d) const override {
-    return d == 0. ? singularity : (1. / d);
+    double x = d == 0. ? singularity : (1. / d);
+    if (d == 0.) return x + diag_shift;
+    else return x;
   }
 };
 
 struct Yukawa3D : public EvalDouble {
   double singularity, alpha;
-  Yukawa3D (double s, double a) : singularity(1. / s), alpha(a) {}
+  double diag_shift;
+  Yukawa3D (double s, double a, double diag_shift = 0.) : singularity(1. / s), alpha(a), diag_shift(diag_shift) {}
   double operator()(double d) const override {
-    return d == 0. ? singularity : (std::exp(-alpha * d) / d);
+    double x = d == 0. ? singularity : (std::exp(-alpha * d) / d);
+    if (d == 0.) return x + diag_shift;
+    else return x;
   }
 };
 
 struct Gaussian : public EvalDouble {
   double alpha;
-  Gaussian (double a) : alpha(1. / (a * a)) {}
+  double diag_shift;
+  Gaussian (double a, double diag_shift = 0.) : alpha(1. / (a * a)), diag_shift(diag_shift) {}
   double operator()(double d) const override {
-    return std::exp(- alpha * d * d);
+    double x = std::exp(- alpha * d * d);
+    if (d == 0.) return x + diag_shift;
+    else return x;
   }
 };
 
