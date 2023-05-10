@@ -177,7 +177,9 @@ void matVecA(const struct Node A[], const struct Base basis[], const struct CSC 
       mmult('T', 'N', &basis[i].Uo[j + ibegin], &rhs[i].X[j + ibegin], &rhs[i].Xo[j + ibegin], 1., 0.);
   }
 
-  mmult('T', 'N', &A[0].A[0], &rhs[0].X[0], &rhs[0].B[0], 1., 0.);
+  level_merge_cpu(rhs[0].X[0].A, basis[0].dimN, &comm[0]);
+  dup_bcast_cpu(rhs[0].X[0].A, basis[0].dimN, &comm[0]);
+  mmult('N', 'N', &A[0].A[0], &rhs[0].X[0], &rhs[0].B[0], 1., 0.);
 
   for (int64_t i = 1; i <= levels; i++) {
     int64_t ibegin = 0, iboxes = 0;
