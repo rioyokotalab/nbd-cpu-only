@@ -8,6 +8,61 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+void mesh_unit_square(double *bodies, int64_t nbodies) {
+  // Generate a unit square with nbodies points on the sides
+  if (nbodies < 4) {
+    std::cerr << "nbodies has to be >=4 for unit square mesh" << std::endl;
+    return;
+  }
+  // Taken from H2Lib: Library/curve2d.c
+  const double a = 0.5;
+  const int64_t top = nbodies / 4;
+  const int64_t left = nbodies / 2;
+  const int64_t bottom = 3 * nbodies / 4;
+  int64_t i = 0;
+  for (i = 0; i < top; i++) {
+    const double x = a - 2.0 * a * i / top;
+    const double y = a;
+    bodies[i * 3] = x;
+    bodies[i * 3 + 1] = y;
+    bodies[i * 3 + 2] = 0.;
+  }
+  for (; i < left; i++) {
+    const double x = -a;
+    const double y = a - 2.0 * a * (i - top) / (left - top);
+    bodies[i * 3] = x;
+    bodies[i * 3 + 1] = y;
+    bodies[i * 3 + 2] = 0.;
+  }
+  for (; i < bottom; i++) {
+    const double x = -a + 2.0 * a * (i - left) / (bottom - left);
+    const double y = -a;
+    bodies[i * 3] = x;
+    bodies[i * 3 + 1] = y;
+    bodies[i * 3 + 2] = 0.;
+  }
+  for (; i < nbodies; i++) {
+    const double x = a;
+    const double y = -a + 2.0 * a * (i - bottom) / (nbodies - bottom);
+    bodies[i * 3] = x;
+    bodies[i * 3 + 1] = y;
+    bodies[i * 3 + 2] = 0.;
+  }
+}
+
+void mesh_unit_circle(double *bodies, int64_t nbodies) {
+  // Generate a unit circle with N points on the circumference.
+  for (int64_t i = 0; i < nbodies; i++) {
+    const double theta = (i * 2.0 * M_PI) / (double)nbodies;
+    const double x = std::cos(theta);
+    const double y = std::sin(theta);
+
+    bodies[i * 3] = x;
+    bodies[i * 3 + 1] = y;
+    bodies[i * 3 + 2] = 0.;
+  }
+}
+
 void uniform_unit_cube(double* bodies, int64_t nbodies, int64_t dim) {
   int64_t side = ceil(pow(nbodies, 1. / dim));
   int64_t lens[3] = { dim > 0 ? side : 1, dim > 1 ? side : 1, dim > 2 ? side : 1 };
