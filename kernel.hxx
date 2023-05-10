@@ -52,3 +52,13 @@ struct Gaussian : public EvalDouble {
   }
 };
 
+struct Toeplitz : public EvalDouble {
+  double p;
+  double diag_shift;
+  Toeplitz (double p, double diag_shift = 0.) : p(p), diag_shift(diag_shift) {}
+  double operator()(double d) const override {
+    double x = std::pow(p, d);
+    if (d == 0.) return x + diag_shift;
+    else return x;
+  }
+};

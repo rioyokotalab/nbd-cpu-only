@@ -8,6 +8,15 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+void mesh_line(double *bodies, int64_t nbodies) {
+  for (int64_t i = 0; i < nbodies; i++) {
+    const double x = (double)i + 1;
+    bodies[i * 3] = x;
+    bodies[i * 3 + 1] = 0.;
+    bodies[i * 3 + 2] = 0.;
+  }
+}
+
 void mesh_unit_square(double *bodies, int64_t nbodies) {
   // Generate a unit square with nbodies points on the sides
   if (nbodies < 4) {
