@@ -6,6 +6,7 @@
 lorasp
 eigen
 pdsyev
+pdsyevx
 gpu
 
 # User-specific files

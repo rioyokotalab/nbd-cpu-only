@@ -19,12 +19,14 @@ all:
 	$(CXX) $(CFLAGS) -c lorasp.cxx -o lorasp.o
 	$(CXX) $(CFLAGS) -c eigen.cxx -o eigen.o
 	$(CXX) $(CFLAGS) -c pdsyev.cxx -o pdsyev.o
+	$(CXX) $(CFLAGS) -c pdsyevx.cxx -o pdsyevx.o
 
 	$(CXX) $(CFLAGS) linalg.o basis.o build_tree.o comm.o umv.o \
 	  lorasp.o $(LDFLAGS) -o lorasp
 	$(CXX) $(CFLAGS) linalg.o basis.o build_tree.o comm.o umv.o \
 	  eigen.o $(LDFLAGS) -o eigen
 	$(CXX) $(CFLAGS) pdsyev.o $(SCALAPACK_LDFLAGS) -o pdsyev
+	$(CXX) $(CFLAGS) pdsyevx.o $(SCALAPACK_LDFLAGS) -o pdsyevx
 
 clean:
-	rm -rf *.a *.o lorasp eigen pdsyev
+	rm -rf *.a *.o lorasp eigen pdsyev pdsyevx
