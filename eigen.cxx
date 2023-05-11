@@ -188,9 +188,19 @@ int main(int argc, char* argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
   construct_time = MPI_Wtime() - construct_time;
   construct_comm_time = timer.get_comm_timing();
-  // TODO Obtain the following
-  int64_t construct_min_rank = -1;
-  int64_t construct_max_rank = -1;
+
+  int64_t construct_min_rank = Nbody;
+  int64_t construct_max_rank = 0;
+  for (int64_t level = 1; level <= levels; level++) {
+    int64_t local_begin, local_len;
+    content_length(&local_len, NULL, &local_begin, &cell_comm[level]);
+    for (int64_t i = 0; i < local_len; i++) {
+      construct_min_rank = std::min(construct_min_rank, basis[level].DimsLr[i + local_begin]);
+      construct_max_rank = std::max(construct_max_rank, basis[level].DimsLr[i + local_begin]);
+    }
+  }
+  MPI_Allreduce(MPI_IN_PLACE, &construct_min_rank, 1, MPI_INT64_T, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE, &construct_max_rank, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
 
 #ifdef DEBUG_OUTPUT
   if (mpi_rank == 0) {
