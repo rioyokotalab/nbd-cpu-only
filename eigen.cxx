@@ -17,8 +17,7 @@
 // Uncomment the following line to print the computed eigenvalues(s)
 // #define PRINT_EV
 // Uncomment the following line to enable debug output
-#define DEBUG_OUTPUT
-#define USE_DENSE_INERTIA
+// #define DEBUG_OUTPUT
 
 constexpr double EPS = std::numeric_limits<double>::epsilon();
 
@@ -309,42 +308,11 @@ int main(int argc, char* argv[]) {
       }
     }
     MPI_Allreduce(MPI_IN_PLACE, &local_count, 1, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
-    int64_t dense_cnt = 0;
-    {
-      std::vector<double> A_mat(Nbody * Nbody);
-      struct Matrix A { A_mat.data(), Nbody, Nbody, Nbody };
-      // Dense LDL Inertia
-      gen_matrix(*eval_shifted, Nbody, Nbody, body, body, A.A, A.LDA);
-      ldl_decomp(&A);
-      for (int64_t i = 0; i < A.M; i++) {
-        const double di = A.A[i + i * A.LDA];
-        if (di < 0.) dense_cnt++;
-      }
-      if (mpi_rank == 0) {
-        printf("shift=%.8lf HSS_Inertia=%d vs. Dense_LDL_Inertia=%d\n",
-               -shift, (int)local_count, (int)dense_cnt);
-      }
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-#ifdef USE_DENSE_INERTIA
-    return dense_cnt;
-#else
     return local_count;
-#endif
   };
   // Check whether the interval [left,right] contain eigenvalue(s) of interest
 #ifdef DEBUG_OUTPUT
   if (mpi_rank == 0) {
-    {
-      std::vector<double> A_mat(Nbody * Nbody), actual_ev(Nbody);
-      struct Matrix A { A_mat.data(), Nbody, Nbody, Nbody };
-      gen_matrix(*eval, Nbody, Nbody, body, body, A.A, A.LDA);
-      compute_all_eigenvalues(&A, actual_ev.data());
-      printf("Actual eigenvalues\n");
-      for (int64_t i = 0; i < Nbody; i++) {
-        printf("EV[%d]=%.8lf\n", (int)i + 1, actual_ev[i]);
-      }
-    }
     printf("Checking whether starting interval contains target eigenvalue(s)...\n");
   }
 #endif
@@ -467,6 +435,7 @@ int main(int argc, char* argv[]) {
       printf("mpi_nprocs,nthreads,N,leaf_size,theta,epi,rank_max,sample_size,kernel,geometry,"
              "height,construct_min_rank,construct_max_rank,construct_error,construct_time,construct_comm_time,"
              "construct_local_mem,construct_global_mem,matvec_time,matvec_comm_time,"
+             "k_begin,k_end,start_left,start_right,ev_tol,"
              "bisection_time,bisection_comm_time,prog_time,max_ev_abs_err,max_ev_abs_ok");
 #ifdef PRINT_EV
       printf(",k,ref_ev,bisect_ev,ev_abs_err,ev_rel_err,ev_abs_ok");
@@ -479,35 +448,39 @@ int main(int argc, char* argv[]) {
       const auto k = k_begin + i;
       const std::string ev_abs_ok = bisect_ev_abs_err[i] < (0.5 * ev_tol) ? "YES" : "NO";
       printf("%d,%d,%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
-             "%d,%d,%d,%.3e,%.5e,%.5e,"
-             "%.5e,%.5e,%.3e,%.3e,"
-             "%.8e,%.8e,%.3e,%.3e,%s,"
-             "%d,%.8e,%.8e,%.3e,%.3e,%s\n",
+             "%d,%d,%d,%.3e,%.3lf,%.3lf,"
+             "%.5lf,%.5lf,%.3lf,%.3lf,"
+             "%d,%d,%.3lf,%.3lf,%.1e,"
+             "%.5lf,%.5lf,%.5lf,%.3e,%s,"
+             "%d,%.5lf,%.5lf,%.3e,%.3e,%s\n",
              mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
              (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
              (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
-             local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, bisection_time,
-             bisection_comm_time, prog_time, max_ev_abs_err, max_ev_abs_ok.c_str(),
-             (int)k, ref_ev[i], bisect_ev[i], bisect_ev_abs_err[i], bisect_ev_rel_err[i], ev_abs_ok.c_str());
+             local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, (int)k_begin, (int)k_end,
+             left, right, ev_tol, bisection_time, bisection_comm_time, prog_time, max_ev_abs_err,
+             max_ev_abs_ok.c_str(), (int)k, ref_ev[i], bisect_ev[i], bisect_ev_abs_err[i],
+             bisect_ev_rel_err[i], ev_abs_ok.c_str());
     }
 #else
     printf("%d,%d,%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
-           "%d,%d,%d,%.3e,%.5e,%.5e,"
-           "%.5e,%.5e,%.3e,%.3e,"
-           "%.8e,%.8e,%.3e,%.3e,%s\n",
+           "%d,%d,%d,%.3e,%.3lf,%.3lf,"
+           "%.5lf,%.5lf,%.3lf,%.3lf,"
+           "%d,%d,%.3lf,%.3lf,%.1e,"
+           "%.5lf,%.5lf,%.5lf,%.3e,%s\n",
            mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
            (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
            (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
-           local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, bisection_time,
-           bisection_comm_time, prog_time, max_ev_abs_err, max_ev_abs_ok.c_str());
+           local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, (int)k_begin, (int)k_end,
+           left, right, ev_tol, bisection_time, bisection_comm_time, prog_time, max_ev_abs_err,
+           max_ev_abs_ok.c_str());
 #endif
 #else
     printf("MPI_NProcs=%d NThreads=%d N=%d Leaf_Size=%d Theta=%.1lf Epi=%.1e Rank_Max=%d Sample_Size=%d\n"
            "Kernel=%s Geometry=%s Height=%d Basis_Min_Rank=%d Basis_Max_Rank=%d Construct_Error=%.3e\n"
-           "Construct_Time=%.3e Construct_Comm_Time=%.3e Local_Memory=%.3e GiB Global_Memory=%.3e GiB\n"
-           "MatVec_Time=%.3e MatVec_Comm_Time=%.3e\n"
-           "Bisection_Time=%.5e Bisection_Comm_Time=%.5e EV_Max_Abs_Err=%.3e EV_Max_Abs_OK=%s\n"
-           "Prog_Time=%.3e\n",
+           "Construct_Time=%.3lf Construct_Comm_Time=%.3lf Local_Memory=%.3lf GiB Global_Memory=%.3lf GiB\n"
+           "MatVec_Time=%.3lf MatVec_Comm_Time=%.3lf\n"
+           "Bisection_Time=%.5lf Bisection_Comm_Time=%.5lf EV_Max_Abs_Err=%.3e EV_Max_Abs_OK=%s\n"
+           "Prog_Time=%.5lf\n",
            mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
            (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
            (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
@@ -516,7 +489,7 @@ int main(int argc, char* argv[]) {
     for (int64_t i = 0; i < num_ev; i++) {
       const auto k = k_begin + i;
       const std::string ev_abs_ok = bisect_ev_abs_err[i] < (0.5 * ev_tol) ? "YES" : "NO";
-      printf("K=%d Ref_EV=%.8e Bisection_EV=%.8e EV_Abs_Err=%.2e EV_Rel_Err=%.2e EV_Abs_OK=%s\n",
+      printf("K=%d Ref_EV=%.5lf Bisection_EV=%.5lf EV_Abs_Err=%.3e EV_Rel_Err=%.3e EV_Abs_OK=%s\n",
              (int)k, ref_ev[i], bisect_ev[i], bisect_ev_abs_err[i], bisect_ev_rel_err[i], ev_abs_ok.c_str());
     }
 #endif

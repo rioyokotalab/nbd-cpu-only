@@ -244,13 +244,13 @@ int main(int argc, char* argv[]) {
   // Print outputs
   if (mpi_rank == 0) {
 #ifndef OUTPUT_CSV
-    printf("NProcs=%d NThreads=%d N=%d NB=%d Kernel=%s Geometry=%s PDSYEV_Time=%.5e\n",
+    printf("NProcs=%d NThreads=%d N=%d NB=%d Kernel=%s Geometry=%s PDSYEV_Time=%.5lf\n",
            blacs_nprocs, omp_get_max_threads(), Nbody, NB, kernel_name.c_str(), geom_name.c_str(), pdsyev_time);
 #else
     if (print_csv_header == 1) {
       printf("nprocs,nthreads,N,NB,kernel,geometry,pdsyev_time\n");
     }
-    printf("%d,%d,%d,%d,%s,%s,%.5e\n",
+    printf("%d,%d,%d,%d,%s,%s,%.5lf\n",
            blacs_nprocs, omp_get_max_threads(), Nbody, NB, kernel_name.c_str(), geom_name.c_str(), pdsyev_time);
 #endif
   }

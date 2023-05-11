@@ -270,14 +270,14 @@ int main(int argc, char* argv[]) {
   if (mpi_rank == 0) {
 #ifndef OUTPUT_CSV
     printf("NProcs=%d NThreads=%d N=%d NB=%d Kernel=%s Geometry=%s\n"
-           "K_Begin=%d K_End=%d Abs_Tol=%.1e PDSYEVX_Time=%.5e\n",
+           "K_Begin=%d K_End=%d Abs_Tol=%.1e PDSYEVX_Time=%.5lf\n",
            blacs_nprocs, omp_get_max_threads(), Nbody, NB, kernel_name.c_str(), geom_name.c_str(),
            (int)k_begin, (int)k_end, abs_tol, pdsyevx_time);
 #else
     if (print_csv_header == 1) {
       printf("nprocs,nthreads,N,NB,kernel,geometry,k_begin,k_end,abs_tol,pdsyevx_time\n");
     }
-    printf("%d,%d,%d,%d,%s,%s,%d,%d,%.1e,%.5e\n",
+    printf("%d,%d,%d,%d,%s,%s,%d,%d,%.1e,%.5lf\n",
            blacs_nprocs, omp_get_max_threads(), Nbody, NB, kernel_name.c_str(), geom_name.c_str(),
            (int)k_begin, (int)k_end, abs_tol, pdsyevx_time);
 #endif
