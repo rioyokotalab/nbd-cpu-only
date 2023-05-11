@@ -308,7 +308,27 @@ int main(int argc, char* argv[]) {
       }
     }
     MPI_Allreduce(MPI_IN_PLACE, &local_count, 1, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
+#ifdef DEBUG_OUTPUT
+    int64_t dense_cnt = 0;
+    {
+      std::vector<double> A_mat(Nbody * Nbody);
+      struct Matrix A { A_mat.data(), Nbody, Nbody, Nbody };
+      // Dense LDL Inertia
+      gen_matrix(*eval_shifted, Nbody, Nbody, body, body, A.A, A.LDA);
+      ldl_decomp(&A);
+      for (int64_t i = 0; i < A.M; i++) {
+        const double di = A.A[i + i * A.LDA];
+        if (di < 0.) dense_cnt++;
+      }
+      if (mpi_rank == 0) {
+        printf("shift=%.8lf HSS_Inertia=%d vs. Dense_LDL_Inertia=%d\n",
+               -shift, (int)local_count, (int)dense_cnt);
+      }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+#endif
     return local_count;
+
   };
   // Check whether the interval [left,right] contain eigenvalue(s) of interest
 #ifdef DEBUG_OUTPUT
