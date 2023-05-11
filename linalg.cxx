@@ -79,20 +79,22 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
       std::distance(S.begin(), std::find_if(S.begin() + rank_min, S.begin() + rank_max, [s0](double& s) { return s < s0; })) : rank_max;
 
     if (rank > 0) {
-      LAPACKE_dlacpy(LAPACK_COL_MAJOR, 'F', M, rank, &U[0], M, &Aall[0], M);
-      LAPACKE_dgetrf(LAPACK_COL_MAJOR, M, rank, &U[0], M, &ipiv[0]);
-      cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit, M, rank, 1., &U[0], M, &Aall[0], M);
-      cblas_dtrsm(CblasColMajor, CblasRight, CblasLower, CblasNoTrans, CblasUnit, M, rank, 1., &U[0], M, &Aall[0], M);
+      mkl_domatcopy('C', 'T', M, rank, 1., &U[0], M, &Aall[0], M);
+      std::fill(ipiv.begin(), ipiv.end(), 0);
+      LAPACKE_dgeqp3(LAPACK_COL_MAJOR, rank, M, &Aall[0], M, &ipiv[0], &S[0]);
+      LAPACKE_dormqr(LAPACK_COL_MAJOR, 'R', 'N', M, rank, rank, &Aall[0], M, &S[0], &U[0], M);
+      cblas_dtrsm(CblasColMajor, CblasRight, CblasUpper, CblasTrans, CblasNonUnit, M, rank, 1., &Aall[0], M, &U[0], M);
 
-      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, M, rank, M, 1., A, LDA, &Aall[0], M, 0., &U[0], M);
-      LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'O', M, rank, &U[0], M, &S[0], A, LDA, &U[0], M, &S[M]);
+      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, M, rank, M, 1., A, LDA, &U[0], M, 0., &Aall[0], M);
+      LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'A', 'O', M, rank, &Aall[0], M, &S[0], A, LDA, &Aall[0], M, &S[M]);
 
-      for (MKL_INT i = 0; i < rank; i++) {
-        MKL_INT piv = ipiv[i] - 1;
-        if (piv != i)
-          cblas_dswap(3, &Xbodies[i * 3], 1, &Xbodies[piv * 3], 1);
-        vdMul(rank, &S[0], &U[i * M], &A[(M + i) * LDA]);
+      std::vector<double> Xpiv(M * 3);
+      for (int64_t i = 0; i < rank; i++) {
+        int64_t piv = (int64_t)ipiv[i] - 1;
+        std::copy(&Xbodies[piv * 3], &Xbodies[piv * 3 + 3], &Xpiv[i * 3]);
+        vdMul(rank, &S[0], &Aall[i * M], &A[(M + i) * LDA]);
       }
+      std::copy(Xpiv.begin(), Xpiv.end(), Xbodies);
     }
     return rank;
   }
