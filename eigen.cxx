@@ -464,7 +464,7 @@ int main(int argc, char* argv[]) {
     }
 #ifdef OUTPUT_CSV
     if (print_csv_header) {
-      printf("mpi_nprocs,nthreads,N,leaf_size,theta,epi,rank_max,sample_size,kernel,geom,"
+      printf("mpi_nprocs,nthreads,N,leaf_size,theta,epi,rank_max,sample_size,kernel,geometry,"
              "height,construct_min_rank,construct_max_rank,construct_error,construct_time,construct_comm_time,"
              "construct_local_mem,construct_global_mem,matvec_time,matvec_comm_time,"
              "bisection_time,bisection_comm_time,prog_time,max_ev_abs_err,max_ev_abs_ok");
