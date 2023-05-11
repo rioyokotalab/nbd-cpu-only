@@ -337,8 +337,8 @@ void batchCholeskyFactor(struct BatchedFactorParams* params, const struct CellCo
     cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, 1, R, 1, one, 
       params->ONE_LIST[i], 1, params->U_i[i], 1, one, params->A_x[i], R + 1);
 
-    LAPACKE_dgetrf(LAPACK_COL_MAJOR, R, R, params->A_x[i], R, &params->ipiv[i * R]);
-    LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', R, S, params->A_x[i], R, &params->ipiv[i * R], params->A_l[i], R);
+    dsytrf_nopiv(R, params->A_x[i], R);
+    dsytrs_nopiv(R, S, params->A_x[i], R, params->A_l[i], R);
     cblas_dgemm(CblasColMajor, CblasTrans, CblasNoTrans, S, S, R, minus_one,
       params->A_s[i], R, params->A_l[i], R, one, params->A_upper[i], U);
   }
@@ -473,7 +473,7 @@ void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm
 
   level_merge_cpu(params->A_data, N * N, comm);
   cblas_daxpy(N, one, params->ONE_DATA, 1, A, N + 1);
-  *params->info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, N, N, A, N, params->ipiv);
+  *params->info = dsytrf_nopiv(N, A, N);
 }
 
 void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm) {
@@ -485,4 +485,44 @@ void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm)
   LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', N, 1, A, N, params->ipiv, X, N);
 }
 
+void compute_all_eigenvalues(struct Matrix* D, double* EV) {
+  LAPACKE_dsyev(LAPACK_COL_MAJOR, 'N', 'L', D->M, D->A, D->LDA, EV);
+}
 
+void compute_selected_eigenvalues(struct Matrix* D, const int64_t k0, const int64_t k1,
+                                  const double abstol, double* EV) {
+  int M, IFAIL;
+  LAPACKE_dsyevx(LAPACK_COL_MAJOR, 'N', 'I', 'L', D->M, D->A, D->LDA, 0, 0,
+                 k0, k1, abstol, &M, EV, NULL, 1, &IFAIL);
+}
+
+int dsytrf_nopiv(const int64_t n, double* a, const int64_t lda) {
+  for(int j = 0; j < n; j++) {
+    double p = 1. / a[j + (int64_t)j * lda];
+    double* ax = a + j + 1 + (int64_t)j * lda;
+    int nj = n - j - 1;
+    cblas_dscal(nj, p, ax, 1);
+
+    for(int i = j + 1; i < n; i++) {
+      double c = a[j + (int64_t)j * lda] * a[i + (int64_t)j * lda];
+      double* aii = a + i + (int64_t)i * lda;
+      double* aij = a + i + (int64_t)j * lda;
+      int ni = n - i;
+      cblas_daxpy(ni, -c, aij, 1, aii, 1);
+    }
+  }
+  return 0;
+}
+
+void dsytrs_nopiv(const int64_t n, const int64_t nrhs, const double* a,
+                  const int64_t lda, double* b, const int64_t ldb) {
+  cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasNoTrans, CblasUnit, n, nrhs, 1., a, lda, b, ldb);
+  for (int64_t i = 0; i < n; i++) {
+    cblas_dscal(nrhs, 1. / a[i + i * lda], b + i, ldb);
+  }
+  cblas_dtrsm(CblasColMajor, CblasLeft, CblasLower, CblasTrans, CblasUnit, n, nrhs, 1., a, lda, b, ldb);
+}
+
+void ldl_decomp(struct Matrix* D) {
+  dsytrf_nopiv(D->M, D->A, D->LDA);
+}

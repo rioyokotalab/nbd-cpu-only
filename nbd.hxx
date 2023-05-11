@@ -59,6 +59,11 @@ void batchForwardULV(struct BatchedFactorParams* params, const struct CellComm* 
 void batchBackwardULV(struct BatchedFactorParams* params, const struct CellComm* comm);
 void chol_decomp(struct BatchedFactorParams* params, const struct CellComm* comm);
 void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm);
+void compute_all_eigenvalues(struct Matrix* D, double* ev);
+void compute_selected_eigenvalues(struct Matrix* D, const int64_t k0, const int64_t k1, const double abstol, double* EV);
+int dsytrf_nopiv(const int64_t n, double* a, const int64_t lda);
+void dsytrs_nopiv(const int64_t n, const int64_t nrhs, const double* a, const int64_t lda, double* b, const int64_t ldb);
+void ldl_decomp(struct Matrix* D);
 
 void mat_vec_reference(const EvalDouble& eval, int64_t begin, int64_t end, double B[], int64_t nbodies, const double* bodies, const double Xbodies[]);
 
