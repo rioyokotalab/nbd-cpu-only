@@ -5,16 +5,20 @@
 #include "profile.hxx"
 
 #include "omp.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
+#include <algorithm>
 #include <cstring>
 #include <limits>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // Uncomment the following line to print output in CSV format
 #define OUTPUT_CSV
+// Uncomment the following line to print the computed eigenvalues(s)
+// #define PRINT_EV
 // Uncomment the following line to enable debug output
 #define DEBUG_OUTPUT
+#define USE_DENSE_INERTIA
 
 constexpr double EPS = std::numeric_limits<double>::epsilon();
 
@@ -41,8 +45,9 @@ int main(int argc, char* argv[]) {
   // 0: 1D Line
   // 1: 2D Unit Circle
   // 2: 2D Unit Square
-  // 3: 3D Unit Sphere
-  // 4: 3D Unit Cube
+  // 3: 2D Unit Square Grid
+  // 4: 3D Unit Sphere
+  // 5: 3D Unit Cube
   int64_t geom = argc > 8 ? atol(argv[8]) : 0;
   // Eigenvalue computation params
   double ev_tol = argc > 9 ? atof(argv[9]) : 1e-6;
@@ -50,7 +55,9 @@ int main(int argc, char* argv[]) {
   int64_t k_end = argc > 11 ? atol(argv[11]) : k_begin;
   double left = argc > 12 ? atof(argv[12]) : (double)-Nbody;
   double right = argc > 13 ? atof(argv[13]) : (double)Nbody;
-  const char* fname = argc > 14 ? argv[14] : NULL;
+  bool compute_ev_acc = argc > 14 ? (atol(argv[14]) == 1) : false;
+  bool print_csv_header = argc > 15 ? (atol(argv[15]) == 1) : true;
+  const char* fname = argc > 16 ? argv[16] : NULL;
 
   leaf_size = Nbody < leaf_size ? Nbody : leaf_size;
   int64_t levels = (int64_t)log2((double)Nbody / leaf_size);
@@ -76,25 +83,75 @@ int main(int argc, char* argv[]) {
   constexpr double singularity = 1.e-3;
   constexpr double alpha = 1.;
   constexpr double p = 0.5;
+  std::string kernel_name, geom_name;
   EvalDouble* eval;
   Laplace3D laplace(singularity);
   Yukawa3D yukawa(singularity, alpha);
   Gaussian gaussian(alpha);
   Toeplitz toeplitz(p);
   switch (kernel) {
-    case 0: eval = &laplace;   break;
-    case 1: eval = &yukawa;    break;
-    case 2: eval = &gaussian;  break;
-    case 3: eval = &toeplitz;  break;
-    default: eval = &laplace;  break;
+    case 0: {
+      kernel_name = "Laplace";
+      eval = &laplace;
+      break;
+    }
+    case 1: {
+      kernel_name = "Yukawa";
+      eval = &yukawa;
+      break;
+    }
+    case 2: {
+      kernel_name = "Gaussian";
+      eval = &gaussian;
+      break;
+    }
+    case 3: {
+      kernel_name = "Toeplitz";
+      eval = &toeplitz;
+      break;
+    }
+    default: {
+      kernel_name = "Laplace";
+      eval = &laplace;
+      break;
+    }
   }
   switch (geom) {
-    case 0: mesh_line(body, Nbody);        break;
-    case 1: mesh_unit_circle(body, Nbody); break;
-    case 2: mesh_unit_square(body, Nbody); break;
-    case 3: mesh_unit_sphere(body, Nbody); break;
-    case 4: mesh_unit_cube(body, Nbody);   break;
-    default: mesh_line(body, Nbody);       break;
+    case 0: {
+      geom_name = "Line";
+      mesh_line(body, Nbody);
+      break;
+    }
+    case 1: {
+      geom_name = "UnitCircle";
+      mesh_unit_circle(body, Nbody);
+      break;
+    }
+    case 2: {
+      geom_name = "UnitSquare";
+      mesh_unit_square(body, Nbody);
+      break;
+    }
+    case 3: {
+      geom_name = "UnitSquareGrid";
+      uniform_unit_cube(body, Nbody, 2);
+      break;
+    }
+    case 4: {
+      geom_name = "UnitSphere";
+      mesh_unit_sphere(body, Nbody);
+      break;
+    }
+    case 5:{
+      geom_name = "UnitCube";
+      mesh_unit_cube(body, Nbody);
+      break;
+    }
+    default: {
+      geom_name = "Line";
+      mesh_line(body, Nbody);
+      break;
+    }
   }
   buildTree(&ncells, cell, body, Nbody, levels);
   body_neutral_charge(Xbody, Nbody, 1., 999);
@@ -132,6 +189,9 @@ int main(int argc, char* argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
   construct_time = MPI_Wtime() - construct_time;
   construct_comm_time = timer.get_comm_timing();
+  // TODO Obtain the following
+  int64_t construct_min_rank = -1;
+  int64_t construct_max_rank = -1;
 
 #ifdef DEBUG_OUTPUT
   if (mpi_rank == 0) {
@@ -169,11 +229,11 @@ int main(int argc, char* argv[]) {
   matvec_time = MPI_Wtime() - matvec_time;
   matvec_comm_time = timer.get_comm_timing();
 
-  double cerr = 0.;
+  double construct_error = -1;
   if (Nbody < 20000) {
 #ifdef DEBUG_OUTPUT
     if (mpi_rank == 0) {
-      printf("Generating matvec reference for construction error...\n");
+      printf("Calculating construction error...\n");
     }
 #endif
     int64_t body_local[2] = { cell[gbegin].Body[0], cell[gbegin + llen - 1].Body[1] };
@@ -181,11 +241,12 @@ int main(int argc, char* argv[]) {
     mat_vec_reference(*eval, body_local[0], body_local[1], &X3[0], Nbody, body, Xbody);
     loadX(X2, basis[levels].dimN, &X3[0], body_local[0], llen, &cell[gbegin]);
 
-    solveAbsErr(&cerr, X1, X2, lenX);
+    solveAbsErr(&construct_error, X1, X2, lenX);
     std::iter_swap(&X1, &X2);
   }
   MPI_Barrier(MPI_COMM_WORLD);
 
+  int64_t factor_flops[3], local_mem[3], global_mem[3];
   auto inertia = [&](const double shift, bool& is_singular)
   {
     EvalDouble* eval_shifted;
@@ -225,8 +286,8 @@ int main(int argc, char* argv[]) {
         if (mpi_rank == 0) {
           for (int64_t i = 0; i < basis[level].Dims[0]; i++) {
             const double di = nodes[level].params.A_data[i * (basis[level].dimN + 1)];
-            if(std::isnan(di) || std::abs(di) < EPS) is_singular = true;
-            local_count += (di < 0 ? 1 : 0);
+            if (std::isnan(di) || std::abs(di) < EPS) is_singular = true;
+            if (di < 0.) local_count++;
           }
         }
       }
@@ -241,23 +302,57 @@ int main(int argc, char* argv[]) {
           int64_t dim_i = basis[level].Dims[i + local_begin] - basis[level].DimsLr[i + local_begin];
           for (int64_t j = 0; j < dim_i; j++) {
             const double di = nodes[level].params.A_x[i][j * (basis[level].dimR + 1)];
-            if(std::isnan(di) || std::abs(di) < EPS) is_singular = true;
-            local_count += (di < 0 ? 1 : 0);
+            if (std::isnan(di) || std::abs(di) < EPS) is_singular = true;
+            if (di < 0.) local_count++;
           }
         }
       }
     }
     MPI_Allreduce(MPI_IN_PLACE, &local_count, 1, MPI_INT64_T, MPI_SUM, MPI_COMM_WORLD);
+    int64_t dense_cnt = 0;
+    {
+      std::vector<double> A_mat(Nbody * Nbody);
+      struct Matrix A { A_mat.data(), Nbody, Nbody, Nbody };
+      // Dense LDL Inertia
+      gen_matrix(*eval_shifted, Nbody, Nbody, body, body, A.A, A.LDA);
+      ldl_decomp(&A);
+      for (int64_t i = 0; i < A.M; i++) {
+        const double di = A.A[i + i * A.LDA];
+        if (di < 0.) dense_cnt++;
+      }
+      if (mpi_rank == 0) {
+        printf("shift=%.8lf HSS_Inertia=%d vs. Dense_LDL_Inertia=%d\n",
+               -shift, (int)local_count, (int)dense_cnt);
+      }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+#ifdef USE_DENSE_INERTIA
+    return dense_cnt;
+#else
     return local_count;
+#endif
   };
   // Check whether the interval [left,right] contain eigenvalue(s) of interest
 #ifdef DEBUG_OUTPUT
   if (mpi_rank == 0) {
+    {
+      std::vector<double> A_mat(Nbody * Nbody), actual_ev(Nbody);
+      struct Matrix A { A_mat.data(), Nbody, Nbody, Nbody };
+      gen_matrix(*eval, Nbody, Nbody, body, body, A.A, A.LDA);
+      compute_all_eigenvalues(&A, actual_ev.data());
+      printf("Actual eigenvalues\n");
+      for (int64_t i = 0; i < Nbody; i++) {
+        printf("EV[%d]=%.8lf\n", (int)i + 1, actual_ev[i]);
+      }
+    }
     printf("Checking whether starting interval contains target eigenvalue(s)...\n");
   }
 #endif
+  const auto num_ev = k_end - k_begin + 1;
+  std::vector<int64_t> bisect_k (num_ev);
+  std::vector<double> bisect_left(num_ev, left), bisect_right(num_ev, right), bisect_ev(num_ev);
   double bisection_time, bisection_comm_time;
-  bool ss = false;
+  bool ss;
   const auto vl = inertia(left, ss);
   const auto vr = inertia(right, ss);
   if (!(k_begin > vl && k_end <= vr)) {
@@ -268,23 +363,6 @@ int main(int argc, char* argv[]) {
     }
   }
   else {
-    // Initialize global intervals
-    const auto num_ev = k_end - k_begin + 1;
-    std::vector<int64_t> bisect_k (num_ev);
-    std::vector<double> bisect_left(num_ev, left), bisect_right(num_ev, right), bisect_ev(num_ev);
-    for (int64_t idx = 0; idx < num_ev; idx++) {
-      bisect_k[idx] = k_begin + idx;
-    }
-    int64_t idx_begin = 0, idx_end = num_ev - 1;
-    MPI_Barrier(MPI_COMM_WORLD);
-    bisection_time = MPI_Wtime();
-
-#ifdef DEBUG_OUTPUT
-    if (mpi_rank == 0) {
-      printf("Starting bisection: inertia(left=%.3lf)=%d, inertia(right=%.3lf)=%d, k=[%d, %d]\n",
-             left, (int)vl, right, (int)vr, (int)k_begin, (int)k_end);
-    }
-#endif
     auto compute_eigenvalue = [&](const int64_t idx) {
       bool is_singular = false;
       while ((bisect_right[idx] - bisect_left[idx]) >= ev_tol) {
@@ -308,6 +386,19 @@ int main(int argc, char* argv[]) {
       MPI_Barrier(MPI_COMM_WORLD);  // Is this necessary?
       return (bisect_left[idx] + bisect_right[idx]) / 2.;
     };
+    for (int64_t idx = 0; idx < num_ev; idx++) {
+      bisect_k[idx] = k_begin + idx;
+    }
+    int64_t idx_begin = 0, idx_end = num_ev - 1;
+    MPI_Barrier(MPI_COMM_WORLD);
+    bisection_time = MPI_Wtime();
+
+#ifdef DEBUG_OUTPUT
+    if (mpi_rank == 0) {
+      printf("Starting bisection: inertia(left=%.3lf)=%d, inertia(right=%.3lf)=%d, k=[%d, %d]\n",
+             left, (int)vl, right, (int)vr, (int)k_begin, (int)k_end);
+    }
+#endif
     // Compute the smallest and largest eigenvalues first to narrow search interval
 #ifdef DEBUG_OUTPUT
     if (mpi_rank == 0) {
@@ -337,26 +428,97 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
     bisection_time = MPI_Wtime() - bisection_time;
     bisection_comm_time = timer.get_comm_timing();
+
+    // Get local and global memory usage
+    Profile profile;
+    for (int64_t i = 0; i <= levels; i++) {
+      profile.record_factor(basis[i].dimR, basis[i].dimN,
+                            nodes[i].params.L_nnz, nodes[i].params.L_diag, nodes[i].params.L_rows);
+    }
+    profile.get_profile(factor_flops, local_mem);
+    MPI_Reduce(local_mem, global_mem, 3, MPI_INT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
   prog_time = MPI_Wtime() - prog_time;
 
   if (mpi_rank == 0) {
+    const double local_mem_usage = ((double)local_mem[0] + (double)local_mem[1]) * 1.e-9;  // in GiB
+    const double global_mem_usage = ((double)global_mem[0] + (double)global_mem[1]) * 1.e-9;  // in GiB
+    std::vector<double> bisect_ev_abs_err(num_ev, -1), bisect_ev_rel_err(num_ev, -1), ref_ev(num_ev, -1);
+    double max_ev_abs_err = -1;
+    std::string max_ev_abs_ok = "YES";
+    if (compute_ev_acc && Nbody < 20000) {
+      std::vector<double> Adense_mat(Nbody * Nbody), ref_ev_all(Nbody);
+      struct Matrix Adense { Adense_mat.data(), Nbody, Nbody, Nbody };
+      gen_matrix(*eval, Nbody, Nbody, body, body, Adense.A, Adense.LDA);
+      compute_all_eigenvalues(&Adense, ref_ev_all.data());
+      for (int64_t i = 0; i < num_ev; i++) {
+        const auto k = k_begin + i;
+        ref_ev[i] = ref_ev_all[k - 1];
+        bisect_ev_abs_err[i] = std::abs(ref_ev[i] - bisect_ev[i]);
+        bisect_ev_rel_err[i] = bisect_ev_abs_err[i] / ref_ev[i];
+      }
+      max_ev_abs_err = *std::max_element(bisect_ev_abs_err.begin(), bisect_ev_abs_err.end());
+      max_ev_abs_ok = max_ev_abs_err < (0.5 * ev_tol) ? "YES" : "NO";
+    }
 #ifdef OUTPUT_CSV
+    if (print_csv_header) {
+      printf("mpi_nprocs,nthreads,N,leaf_size,theta,epi,rank_max,sample_size,kernel,geom,"
+             "height,construct_min_rank,construct_max_rank,construct_error,construct_time,construct_comm_time,"
+             "construct_local_mem,construct_global_mem,matvec_time,matvec_comm_time,"
+             "bisection_time,bisection_comm_time,prog_time,max_ev_abs_err,max_ev_abs_ok");
+#ifdef PRINT_EV
+      printf(",k,ref_ev,bisect_ev,ev_abs_err,ev_rel_err,ev_abs_ok");
+#endif
+      printf("\n");
+    }
+
+#ifdef PRINT_EV
+    for (int64_t i = 0; i < num_ev; i++) {
+      const auto k = k_begin + i;
+      const std::string ev_abs_ok = bisect_ev_abs_err[i] < (0.5 * ev_tol) ? "YES" : "NO";
+      printf("%d,%d,%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
+             "%d,%d,%d,%.3e,%.5e,%.5e,"
+             "%.5e,%.5e,%.3e,%.3e,"
+             "%.8e,%.8e,%.3e,%.3e,%s,"
+             "%d,%.8e,%.8e,%.3e,%.3e,%s\n",
+             mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
+             (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
+             (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
+             local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, bisection_time,
+             bisection_comm_time, prog_time, max_ev_abs_err, max_ev_abs_ok.c_str(),
+             (int)k, ref_ev[i], bisect_ev[i], bisect_ev_abs_err[i], bisect_ev_rel_err[i], ev_abs_ok.c_str());
+    }
 #else
-    // printf("mpi_nprocs=%d nthreads=%d N=%d leaf_size=%d height=%d theta=%.1lf epi=%.1e\n"
-    //        "construct_min_rank=%d construct_max_rank=%d construct_error=%.3e "
-    //        "construct_time=%.5lf construct_comm_time=%.5lf\n"
-    //        "matvec_time=%.5lf matvec_comm_time=%.5lf\n"
-    //        "factor_time=%.5lf factor_comm_time=%.5lf factor_gflops=%.3lf "
-    //        "local_basis_memory=%.5lf local_matrix_memory=%.5lf\n"
-    //        "total_time=%.5lf\n",
-    //        (int)mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, (int)levels, theta, epi,
-    //        -1, -1, cerr, construct_time, construct_comm_time,
-    //        matvec_time, matvec_comm_time, factor_time, factor_comm_time,
-    //        (double)sum_flops * 1.e-9 / factor_time, percent[0], percent[1], percent[2],
-    //        (double)mem_A[0] * 1.e-9, (double)mem_A[1] * 1.e-9, prog_time);
+    printf("%d,%d,%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
+           "%d,%d,%d,%.3e,%.5e,%.5e,"
+           "%.5e,%.5e,%.3e,%.3e,"
+           "%.8e,%.8e,%.3e,%.3e,%s\n",
+           mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
+           (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
+           (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
+           local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, bisection_time,
+           bisection_comm_time, prog_time, max_ev_abs_err, max_ev_abs_ok.c_str());
+#endif
+#else
+    printf("MPI_NProcs=%d NThreads=%d N=%d Leaf_Size=%d Theta=%.1lf Epi=%.1e Rank_Max=%d Sample_Size=%d\n"
+           "Kernel=%s Geometry=%s Height=%d Basis_Min_Rank=%d Basis_Max_Rank=%d Construct_Error=%.3e\n"
+           "Construct_Time=%.3e Construct_Comm_Time=%.3e Local_Memory=%.3e GiB Global_Memory=%.3e GiB\n"
+           "MatVec_Time=%.3e MatVec_Comm_Time=%.3e\n"
+           "Bisection_Time=%.5e Bisection_Comm_Time=%.5e EV_Max_Abs_Err=%.3e EV_Max_Abs_OK=%s\n"
+           "Prog_Time=%.3e\n",
+           mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
+           (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
+           (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
+           local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, bisection_time,
+           bisection_comm_time, max_ev_abs_err, max_ev_abs_ok.c_str(), prog_time);
+    for (int64_t i = 0; i < num_ev; i++) {
+      const auto k = k_begin + i;
+      const std::string ev_abs_ok = bisect_ev_abs_err[i] < (0.5 * ev_tol) ? "YES" : "NO";
+      printf("K=%d Ref_EV=%.8e Bisection_EV=%.8e EV_Abs_Err=%.2e EV_Rel_Err=%.2e EV_Abs_OK=%s\n",
+             (int)k, ref_ev[i], bisect_ev[i], bisect_ev_abs_err[i], bisect_ev_rel_err[i], ev_abs_ok.c_str());
+    }
 #endif
   }
 
