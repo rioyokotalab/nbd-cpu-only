@@ -13,7 +13,7 @@
 #include <vector>
 
 // Uncomment the following line to print output in CSV format
-// #define OUTPUT_CSV
+#define OUTPUT_CSV
 
 // ScaLAPACK Fortran Interface
 extern "C" {
