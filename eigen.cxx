@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
   constexpr double p = 0.5;
   std::string kernel_name, geom_name;
   EvalDouble* eval;
-  Laplace3D laplace(singularity);
+  Laplace2D laplace(singularity);
   Yukawa3D yukawa(singularity, alpha);
   Gaussian gaussian(alpha);
   Toeplitz toeplitz(p);
@@ -134,6 +134,9 @@ int main(int argc, char* argv[]) {
     case 3: {
       geom_name = "UnitSquareGrid";
       uniform_unit_cube(body, Nbody, 2);
+      double c[3] = { 0, 0, 0 };
+      double r[3] = { 1, 1, 0 };
+      magnify_reloc(body, Nbody, c, c, r, sqrt(Nbody));
       break;
     }
     case 4: {
@@ -259,7 +262,7 @@ int main(int argc, char* argv[]) {
   auto inertia = [&](const double shift, bool& is_singular)
   {
     EvalDouble* eval_shifted;
-    Laplace3D laplace(singularity, -shift);
+    Laplace2D laplace(singularity, -shift);
     Yukawa3D yukawa(singularity, alpha, -shift);
     Gaussian gaussian(alpha, -shift);
     Toeplitz toeplitz(p, -shift);
@@ -510,13 +513,15 @@ int main(int argc, char* argv[]) {
              "Kernel=%s Geometry=%s Height=%d Basis_Min_Rank=%d Basis_Max_Rank=%d Construct_Error=%.3e\n"
              "Construct_Time=%.3lf Construct_Comm_Time=%.3lf Local_Memory=%.3lf GiB Global_Memory=%.3lf GiB\n"
              "MatVec_Time=%.3lf MatVec_Comm_Time=%.3lf\n"
+             "K_Begin=%d K_End=%d Start_Left=%.3lf Start_Right=%.3lf EV_Tol=%.1e\n"
              "Bisection_Time=%.5lf Bisection_Comm_Time=%.5lf EV_Max_Abs_Err=%.3e EV_Max_Abs_OK=%s\n"
              "Prog_Time=%.5lf\n",
              mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
              (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
              (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
-             local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, bisection_time,
-             bisection_comm_time, max_ev_abs_err, max_ev_abs_ok.c_str(), prog_time);
+             local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time,
+             (int)k_begin, (int)k_end, left, right, ev_tol,
+             bisection_time, bisection_comm_time, max_ev_abs_err, max_ev_abs_ok.c_str(), prog_time);
       for (int64_t i = 0; i < num_ev; i++) {
         const auto k = k_begin + i;
         const std::string ev_abs_ok = bisect_ev_abs_err[i] < (0.5 * ev_tol) ? "YES" : "NO";
