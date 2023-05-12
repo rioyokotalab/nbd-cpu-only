@@ -5,6 +5,8 @@
 
 lorasp
 eigen
+dsyev
+dsyevx
 pdsyev
 pdsyevx
 gpu
