@@ -16,7 +16,7 @@
 #include "mkl.h"
 
 // Uncomment the following line to print output in CSV format
-// #define OUTPUT_CSV
+#define OUTPUT_CSV
 
 int main(int argc, char* argv[]) {
   MPI_Init(&argc, &argv);

@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
   constexpr double p = 0.5;
   std::string kernel_name, geom_name;
   EvalDouble* eval;
-  Laplace3D laplace(singularity);
+  Laplace2D laplace(singularity);
   Yukawa3D yukawa(singularity, alpha);
   Gaussian gaussian(alpha);
   Toeplitz toeplitz(p);
@@ -158,6 +158,9 @@ int main(int argc, char* argv[]) {
     case 3: {
       geom_name = "UnitSquareGrid";
       uniform_unit_cube(body, Nbody, 2);
+      double c[3] = { 0, 0, 0 };
+      double r[3] = { 1, 1, 0 };
+      magnify_reloc(body, Nbody, c, c, r, sqrt(Nbody));
       break;
     }
     case 4: {
