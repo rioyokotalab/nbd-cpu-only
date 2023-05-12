@@ -443,13 +443,16 @@ int main(int argc, char* argv[]) {
 
     std::vector<double> bisect_ev_abs_err(num_ev, -1), bisect_ev_rel_err(num_ev, -1), ref_ev(num_ev, -1);
     double max_ev_abs_err = -1;
+    double dsyev_time = 0;
     std::string max_ev_abs_ok = "YES";
     if (mpi_rank == 0) {
       if (compute_ev_acc && Nbody < 20000) {
         std::vector<double> Adense_mat(Nbody * Nbody), ref_ev_all(Nbody);
         struct Matrix Adense { Adense_mat.data(), Nbody, Nbody, Nbody };
         gen_matrix(*eval, Nbody, Nbody, body, body, Adense.A, Adense.LDA);
+        dsyev_time = MPI_Wtime();
         compute_all_eigenvalues(&Adense, ref_ev_all.data());
+        dsyev_time = MPI_Wtime() - dsyev_time;
         for (int64_t i = 0; i < num_ev; i++) {
           const auto k = k_begin + i;
           ref_ev[i] = ref_ev_all[k - 1];
@@ -469,7 +472,7 @@ int main(int argc, char* argv[]) {
         printf("mpi_nprocs,nthreads,N,leaf_size,theta,epi,rank_max,sample_size,kernel,geometry,"
                "height,construct_min_rank,construct_max_rank,construct_error,construct_time,construct_comm_time,"
                "construct_local_mem,construct_global_mem,matvec_time,matvec_comm_time,"
-               "k_begin,k_end,start_left,start_right,ev_tol,"
+               "k_begin,k_end,start_left,start_right,ev_tol,dsyev_time,"
                "bisection_time,bisection_comm_time,prog_time,max_ev_abs_err,max_ev_abs_ok");
 #ifdef PRINT_EV
         printf(",k,ref_ev,bisect_ev,ev_abs_err,ev_rel_err,ev_abs_ok");
@@ -484,14 +487,14 @@ int main(int argc, char* argv[]) {
         printf("%d,%d,%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
                "%d,%d,%d,%.3e,%.3lf,%.3lf,"
                "%.5lf,%.5lf,%.3lf,%.3lf,"
-               "%d,%d,%.3lf,%.3lf,%.1e,"
+               "%d,%d,%.3lf,%.3lf,%.1e,%.5lf,"
                "%.5lf,%.5lf,%.5lf,%.3e,%s,"
                "%d,%.5lf,%.5lf,%.3e,%.3e,%s\n",
                mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
                (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
                (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
                local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, (int)k_begin, (int)k_end,
-               left, right, ev_tol, bisection_time, bisection_comm_time, prog_time, max_ev_abs_err,
+               left, right, ev_tol, dsyev_time, bisection_time, bisection_comm_time, prog_time, max_ev_abs_err,
                max_ev_abs_ok.c_str(), (int)k, ref_ev[i], bisect_ev[i], bisect_ev_abs_err[i],
                bisect_ev_rel_err[i], ev_abs_ok.c_str());
       }
@@ -499,13 +502,13 @@ int main(int argc, char* argv[]) {
       printf("%d,%d,%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
              "%d,%d,%d,%.3e,%.3lf,%.3lf,"
              "%.5lf,%.5lf,%.3lf,%.3lf,"
-             "%d,%d,%.3lf,%.3lf,%.1e,"
+             "%d,%d,%.3lf,%.3lf,%.1e,%.5lf,"
              "%.5lf,%.5lf,%.5lf,%.3e,%s\n",
              mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
              (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
              (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
              local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, (int)k_begin, (int)k_end,
-             left, right, ev_tol, bisection_time, bisection_comm_time, prog_time, max_ev_abs_err,
+             left, right, ev_tol, dsyev_time, bisection_time, bisection_comm_time, prog_time, max_ev_abs_err,
              max_ev_abs_ok.c_str());
 #endif
 #else
@@ -513,14 +516,14 @@ int main(int argc, char* argv[]) {
              "Kernel=%s Geometry=%s Height=%d Basis_Min_Rank=%d Basis_Max_Rank=%d Construct_Error=%.3e\n"
              "Construct_Time=%.3lf Construct_Comm_Time=%.3lf Local_Memory=%.3lf GiB Global_Memory=%.3lf GiB\n"
              "MatVec_Time=%.3lf MatVec_Comm_Time=%.3lf\n"
-             "K_Begin=%d K_End=%d Start_Left=%.3lf Start_Right=%.3lf EV_Tol=%.1e\n"
+             "K_Begin=%d K_End=%d Start_Left=%.3lf Start_Right=%.3lf EV_Tol=%.1e DSYEV_Time=%.5lf\n"
              "Bisection_Time=%.5lf Bisection_Comm_Time=%.5lf EV_Max_Abs_Err=%.3e EV_Max_Abs_OK=%s\n"
              "Prog_Time=%.5lf\n",
              mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
              (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
              (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
              local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time,
-             (int)k_begin, (int)k_end, left, right, ev_tol,
+             (int)k_begin, (int)k_end, left, right, ev_tol, dsyev_time,
              bisection_time, bisection_comm_time, max_ev_abs_err, max_ev_abs_ok.c_str(), prog_time);
       for (int64_t i = 0; i < num_ev; i++) {
         const auto k = k_begin + i;
