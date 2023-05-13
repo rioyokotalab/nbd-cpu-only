@@ -97,7 +97,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
       for (int64_t i = 0; i < rank; i++) {
         int64_t piv = (int64_t)ipiv[i] - 1;
         std::copy(&Xbodies[piv * 3], &Xbodies[piv * 3 + 3], &Xpiv[i * 3]);
-        vdMul(rank, &S[0], &Aall[i * M], &A[(M + i) * LDA]);
+        vdmul(rank, &S[0], &Aall[i * M], &A[(M + i) * LDA]);
       }
       std::copy(Xpiv.begin(), Xpiv.end(), Xbodies);
     }
@@ -490,6 +490,12 @@ void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm)
 
   level_merge_cpu(X, N, comm);
   LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', N, 1, A, N, params->ipiv, X, N);
+}
+
+void vdmul(const int64_t n, const double* a, const double* b, double* y) {
+  for (int64_t i = 0; i < n; i++) {
+    y[i] = a[i] * b[i];
+  }
 }
 
 void dotranspose(const int64_t m, const int64_t n, double* a, const int64_t lda, double* b, const int64_t ldb) {
