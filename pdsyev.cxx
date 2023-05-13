@@ -243,18 +243,26 @@ int main(int argc, char* argv[]) {
   }
   MPI_Barrier(MPI_COMM_WORLD);
   pdsyev_time = MPI_Wtime() - pdsyev_time;
+  int64_t local_mem_byte = sizeof(double) * (local_nrows * local_ncols + LWORK);
+  int64_t global_mem_byte;
+  MPI_Reduce(&local_mem_byte, &global_mem_byte, 1, MPI_INT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
 
   // Print outputs
   if (mpi_rank == 0) {
+    const double local_mem_gib = (double)local_mem_byte * 1.e-9;
+    const double global_mem_gib = (double)global_mem_byte * 1.e-9;
 #ifndef OUTPUT_CSV
-    printf("NProcs=%d NThreads=%d N=%d NB=%d Kernel=%s Geometry=%s PDSYEV_Time=%.5lf\n",
-           blacs_nprocs, omp_get_max_threads(), Nbody, NB, kernel_name.c_str(), geom_name.c_str(), pdsyev_time);
+    printf("NProcs=%d NThreads=%d N=%d NB=%d Kernel=%s Geometry=%s "
+           "PDSYEV_Local_Mem=%.3lf PDSYEV_Global_Mem=%.3lf PDSYEV_Time=%.5lf\n",
+           blacs_nprocs, omp_get_max_threads(), Nbody, NB, kernel_name.c_str(), geom_name.c_str(),
+           local_mem_gib, global_mem_gib, pdsyev_time);
 #else
     if (print_csv_header == 1) {
-      printf("nprocs,nthreads,N,NB,kernel,geometry,pdsyev_time\n");
+      printf("nprocs,nthreads,N,NB,kernel,geometry,pdsyev_local_mem,pdsyev_global_mem,pdsyev_time\n");
     }
-    printf("%d,%d,%d,%d,%s,%s,%.5lf\n",
-           blacs_nprocs, omp_get_max_threads(), Nbody, NB, kernel_name.c_str(), geom_name.c_str(), pdsyev_time);
+    printf("%d,%d,%d,%d,%s,%s,%.3lf,%.3lf,%.5lf\n",
+           blacs_nprocs, omp_get_max_threads(), Nbody, NB, kernel_name.c_str(), geom_name.c_str(),
+           local_mem_gib, global_mem_gib, pdsyev_time);
 #endif
   }
 
