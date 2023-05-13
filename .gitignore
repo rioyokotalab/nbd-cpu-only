@@ -11,6 +11,8 @@ pdsyev
 pdsyevx
 gpu
 
+make.inc
+
 # User-specific files
 *.rsuser
 *.suo
