@@ -1,6 +1,6 @@
 
 CXX			= mpicxx -std=c++14
-CFLAGS		= -O3 -m64 -Wall -Wextra -I. -I"${MKLROOT}/include" -fopenmp
+CFLAGS		= -DUSE_MKL -O3 -m64 -Wall -Wextra -I. -I"${MKLROOT}/include" -fopenmp
 LDFLAGS 	= -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
 LAPACK_LDFLAGS			= -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed \
 											-lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl

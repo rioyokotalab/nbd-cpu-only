@@ -13,7 +13,12 @@
 #include <stdlib.h>
 #include <vector>
 
+#ifdef USE_MKL
 #include "mkl.h"
+#else
+#include "cblas.h"
+#include "lapacke.h"
+#endif
 
 // Uncomment the following line to print output in CSV format
 #define OUTPUT_CSV

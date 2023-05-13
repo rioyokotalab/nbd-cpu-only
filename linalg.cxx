@@ -2,7 +2,12 @@
 #include "nbd.hxx"
 #include "kernel.hxx"
 
+#ifdef USE_MKL
 #include "mkl.h"
+#else
+#include "cblas.h"
+#include "lapacke.h"
+#endif
 
 #include <vector>
 #include <algorithm>
@@ -56,7 +61,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
   if (M > 0 && (Nclose > 0 || Nfar > 0)) {
     int64_t ldm = std::max(M, Nclose + Nfar);
     std::vector<double> Aall(M * ldm, 0.), U(M * M), S(M * 2);
-    std::vector<MKL_INT> ipiv(M);
+    std::vector<int32_t> ipiv(M);
     gen_matrix(eval, Nclose, M, Cbodies, Xbodies, &Aall[0], ldm);
     gen_matrix(eval, Nfar, M, Fbodies, Xbodies, &Aall[Nclose], ldm);
 
@@ -460,10 +465,10 @@ void lastParamsCreate(struct BatchedFactorParams* params, double* A, double* X, 
   params->ONE_DATA = (double*)malloc(sizeof(double) * Lwork);
   params->L_tmp = Lwork;
 
-  std::vector<double> I(N, 1.);
+  std::vector<double> Imat(N, 1.);
   for (int64_t i = 0; i < clen; i++)
-    std::fill(I.begin() + i * S, I.begin() + i * S + cdims[i], 0.);
-  memcpy(params->ONE_DATA, &I[0], sizeof(double) * N);
+    std::fill(Imat.begin() + i * S, Imat.begin() + i * S + cdims[i], 0.);
+  memcpy(params->ONE_DATA, Imat.data(), sizeof(double) * N);
   params->ipiv = (int*)malloc(sizeof(int) * N);
   params->info = (int*)malloc(sizeof(int));
 }
