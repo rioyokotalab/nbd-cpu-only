@@ -74,7 +74,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
     LAPACKE_dgetrf(LAPACK_COL_MAJOR, Nclose + Nfar, M, &Aall[0], ldm, &ipiv[0]);
     LAPACKE_dlaset(LAPACK_COL_MAJOR, 'L', M - 1, M - 1, 0., 0., &Aall[1], ldm);
 
-    mkl_domatcopy('C', 'T', M, M, 1., &Aall[0], ldm, &U[0], M);
+    dotranspose(M, M, &Aall[0], ldm, &U[0], M);
     LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'O', 'N', M, M, &U[0], M, &S[0], NULL, M, NULL, M, &S[M]);
 
     double s0 = epi;
@@ -84,7 +84,7 @@ int64_t compute_basis(const EvalDouble& eval, double epi, int64_t rank_min, int6
       std::distance(S.begin(), std::find_if(S.begin() + rank_min, S.begin() + rank_max, [s0](double& s) { return s < s0; })) : rank_max;
 
     if (rank > 0) {
-      mkl_domatcopy('C', 'T', M, rank, 1., &U[0], M, &Aall[0], M);
+      dotranspose(M, rank, &U[0], M, &Aall[0], M);
       std::fill(ipiv.begin(), ipiv.end(), 0);
       LAPACKE_dgeqp3(LAPACK_COL_MAJOR, rank, M, &Aall[0], M, &ipiv[0], &S[0]);
       LAPACKE_dormqr(LAPACK_COL_MAJOR, 'R', 'N', M, rank, rank, &Aall[0], M, &S[0], &U[0], M);
@@ -490,6 +490,13 @@ void chol_solve(struct BatchedFactorParams* params, const struct CellComm* comm)
 
   level_merge_cpu(X, N, comm);
   LAPACKE_dgetrs(LAPACK_COL_MAJOR, 'N', N, 1, A, N, params->ipiv, X, N);
+}
+
+void dotranspose(const int64_t m, const int64_t n, double* a, const int64_t lda, double* b, const int64_t ldb) {
+  // Copy rows of A to columns of B
+  for (int64_t i = 0; i < m; i++) {
+    cblas_dcopy(n, a + i, lda, b + ldb * i, 1);
+  }
 }
 
 void compute_all_eigenvalues(struct Matrix* D, double* EV) {
