@@ -7,10 +7,12 @@
 #include "omp.h"
 #include <algorithm>
 #include <cstring>
+#include <inttypes.h>
 #include <limits>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 
 // Uncomment the following line to print output in CSV format
 #define OUTPUT_CSV
@@ -28,7 +30,8 @@ int main(int argc, char* argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
-  int64_t Nbody = argc > 1 ? atol(argv[1]) : 8192;
+  const std::string Nbody_str = argc > 1 ? std::string(argv[1]) : "8192";
+  int64_t Nbody = std::stoll(Nbody_str, nullptr, 10);
   double theta = argc > 2 ? atof(argv[2]) : 0;
   int64_t leaf_size = argc > 3 ? atol(argv[3]) : 256;
   double epi = argc > 4 ? atof(argv[4]) : 1e-8;
@@ -484,13 +487,13 @@ int main(int argc, char* argv[]) {
       for (int64_t i = 0; i < num_ev; i++) {
         const auto k = k_begin + i;
         const std::string ev_abs_ok = bisect_ev_abs_err[i] < (0.5 * ev_tol) ? "YES" : "NO";
-        printf("%d,%d,%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
+        printf("%d,%d,%" PRId64 ",%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
                "%d,%d,%d,%.3e,%.3lf,%.3lf,"
                "%.5lf,%.5lf,%.3lf,%.3lf,"
                "%d,%d,%.3lf,%.3lf,%.1e,%.5lf,"
                "%.5lf,%.5lf,%.5lf,%.3e,%s,"
                "%d,%.5lf,%.5lf,%.3e,%.3e,%s\n",
-               mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
+               mpi_size, omp_get_max_threads(), Nbody, (int)leaf_size, theta, epi, (int)rank_max,
                (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
                (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
                local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, (int)k_begin, (int)k_end,
@@ -499,12 +502,12 @@ int main(int argc, char* argv[]) {
                bisect_ev_rel_err[i], ev_abs_ok.c_str());
       }
 #else
-      printf("%d,%d,%d,%d,%.1lf,%.1e,%d,%d,%s,%s,"
+      printf("%d,%d,%" PRId64 ",%d,%.1lf,%.1e,%d,%d,%s,%s,"
              "%d,%d,%d,%.3e,%.3lf,%.3lf,"
              "%.5lf,%.5lf,%.3lf,%.3lf,"
              "%d,%d,%.3lf,%.3lf,%.1e,%.5lf,"
              "%.5lf,%.5lf,%.5lf,%.3e,%s\n",
-             mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
+             mpi_size, omp_get_max_threads(), Nbody, (int)leaf_size, theta, epi, (int)rank_max,
              (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
              (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
              local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time, (int)k_begin, (int)k_end,
@@ -512,14 +515,14 @@ int main(int argc, char* argv[]) {
              max_ev_abs_ok.c_str());
 #endif
 #else
-      printf("MPI_NProcs=%d NThreads=%d N=%d Leaf_Size=%d Theta=%.1lf Epi=%.1e Rank_Max=%d Sample_Size=%d\n"
+      printf("MPI_NProcs=%d NThreads=%d N=%" PRId64 " Leaf_Size=%d Theta=%.1lf Epi=%.1e Rank_Max=%d Sample_Size=%d\n"
              "Kernel=%s Geometry=%s Height=%d Basis_Min_Rank=%d Basis_Max_Rank=%d Construct_Error=%.3e\n"
              "Construct_Time=%.3lf Construct_Comm_Time=%.3lf Local_Memory=%.3lf GiB Global_Memory=%.3lf GiB\n"
              "MatVec_Time=%.3lf MatVec_Comm_Time=%.3lf\n"
              "K_Begin=%d K_End=%d Start_Left=%.3lf Start_Right=%.3lf EV_Tol=%.1e DSYEV_Time=%.5lf\n"
              "Bisection_Time=%.5lf Bisection_Comm_Time=%.5lf EV_Max_Abs_Err=%.3e EV_Max_Abs_OK=%s\n"
              "Prog_Time=%.5lf\n",
-             mpi_size, omp_get_max_threads(), (int)Nbody, (int)leaf_size, theta, epi, (int)rank_max,
+             mpi_size, omp_get_max_threads(), Nbody, (int)leaf_size, theta, epi, (int)rank_max,
              (int)sp_pts, kernel_name.c_str(), geom_name.c_str(), (int)levels, (int)construct_min_rank,
              (int)construct_max_rank, construct_error, construct_time, construct_comm_time,
              local_mem_usage, global_mem_usage, matvec_time, matvec_comm_time,
