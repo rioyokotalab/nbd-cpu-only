@@ -77,6 +77,7 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
     
     if (l < levels) {
       int64_t seg = basis[l + 1].dimS;
+      #pragma omp parallel for
       for (int64_t i = 0; i < nodes; i++) {
         int64_t childi = std::get<0>(comm[l].LocalChild[i + ibegin]);
         int64_t clen = std::get<1>(comm[l].LocalChild[i + ibegin]);
@@ -102,6 +103,7 @@ void buildBasis(const EvalDouble& eval, struct Base basis[], struct Cell* cells,
             matrix_data[seg_matrix * (i - ibegin) + j * (seg_dim + 1)] = 1.;
       }
 
+    #pragma omp parallel for
     for (int64_t i = 0; i < nodes; i++) {
       int64_t ske_len = basis[l].Dims[i + ibegin];
       double* mat = &matrix_data[seg_matrix * i];
